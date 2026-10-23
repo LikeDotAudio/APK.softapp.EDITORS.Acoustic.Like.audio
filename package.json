@@ -1,0 +1,11 @@
+{
+  "name": "acoustic-like-audio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "ACOUSTIC.LIKE.AUDIO — room acoustics softapp built on CAD.Like.audio. No build step: plain ES modules.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}

@@ -1,0 +1,71 @@
+// Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+// MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+import { pointInPolygon } from '../acoustics/geometry.js';
+
+/**
+ * WHERE THE FIELD IS SAMPLED
+ *
+ * One grid per surface the views paint: the plan slice (at ear height, by
+ * default the mix position's), the floor and ceiling, and one per wall. Cells
+ * are square and the same size on every face, so the six views read as one
+ * room rather than six resolutions.
+ *
+ * Rows run top-down — the plan's row 0 is its largest y, a wall's is the
+ * ceiling — so a grid drops straight into ImageData.
+ */
+
+export function buildGrids(room, sliceZ, res) {
+  const cell = Math.max(room.L, room.W, room.H) / res;
+  const xs = room.poly.map((p) => p.x);
+  const ys = room.poly.map((p) => p.y);
+  const x0 = Math.min(...xs);
+  const y1 = Math.max(...ys);
+  const nx = Math.max(2, Math.ceil((Math.max(...xs) - x0) / cell));
+  const ny = Math.max(2, Math.ceil((y1 - Math.min(...ys)) / cell));
+  const plane = (kind, z) => ({ kind, x0, y1, cell, nx, ny, z });
+  return {
+    cell,
+    plan: plane('plan', sliceZ),
+    floor: plane('floor', 0.02),
+    ceiling: plane('ceiling', room.H - 0.02),
+    walls: room.walls.map((w) => ({
+      kind: 'wall',
+      wall: w.i,
+      face: w.face,
+      nu: Math.max(2, Math.ceil(w.len / cell)),
+      nz: Math.max(2, Math.ceil(room.H / cell)),
+    })),
+  };
+}
+
+/** Sample points of a grid, xyz interleaved; NaN where a plan cell falls outside the room. */
+export function gridPoints(room, g) {
+  if (g.kind === 'wall') {
+    const w = room.walls[g.wall];
+    const out = new Float64Array(g.nu * g.nz * 3);
+    for (let j = 0; j < g.nz; j++) {
+      const z = room.H * (1 - (j + 0.5) / g.nz);
+      for (let i = 0; i < g.nu; i++) {
+        const t = (i + 0.5) / g.nu;
+        const k = (j * g.nu + i) * 3;
+        out[k] = w.a.x + (w.b.x - w.a.x) * t + w.nIn.x * 0.02;
+        out[k + 1] = w.a.y + (w.b.y - w.a.y) * t + w.nIn.y * 0.02;
+        out[k + 2] = z;
+      }
+    }
+    return out;
+  }
+  const out = new Float64Array(g.nx * g.ny * 3);
+  for (let j = 0; j < g.ny; j++) {
+    const y = g.y1 - (j + 0.5) * g.cell;
+    for (let i = 0; i < g.nx; i++) {
+      const x = g.x0 + (i + 0.5) * g.cell;
+      const k = (j * g.nx + i) * 3;
+      const inside = pointInPolygon(x, y, room.poly);
+      out[k] = inside ? x : NaN;
+      out[k + 1] = y;
+      out[k + 2] = g.z;
+    }
+  }
+  return out;
+}

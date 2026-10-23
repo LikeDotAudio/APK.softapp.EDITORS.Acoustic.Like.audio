@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+     MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ACOUSTIC.LIKE.AUDIO — Room Acoustics on the CAD</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">🔊 ACOUSTIC<span>.LIKE.AUDIO</span></div>
+    <div class="group" id="modes">
+      <button data-mode="cad" title="Edit the drawing in the CAD (Esc)">✋ CAD</button>
+      <button data-mode="place-speaker" title="Click the plan to place a speaker (Shift keeps placing)">🔊 ＋ Speaker</button>
+      <button data-mode="place-mic" title="Click the plan to place a microphone">🎤 ＋ Mic</button>
+    </div>
+    <div class="group" id="viewmode">
+      <button data-view="six" title="Plan, ceiling and four elevations">▦ 6 views</button>
+      <button data-view="3d" title="The room in 3-D, with the plan beside it">◫ 3-D</button>
+    </div>
+    <div class="group" id="method">
+      <button data-method="wave" title="Image sources with phase — interference, SBIR, boundary gain">Wave</button>
+      <button data-method="energy" title="Direct + diffuse energy per octave band — coverage">Energy</button>
+      <button data-method="modal" title="Room modes — the low end, below Schroeder">Modal</button>
+    </div>
+    <label class="freq"><input type="range" id="freq" min="1.30103" max="3.30103" step="0.005"><output id="freqOut"></output></label>
+    <div class="status" id="status"></div>
+  </header>
+
+  <main>
+    <section id="views" class="six">
+      <div class="tile plan" data-face="plan">
+        <header>Plan · CAD.Like.audio <span class="sub">draw the room here · double-click a title to enlarge</span></header>
+        <div class="stage">
+          <iframe id="cad" src="../EDITORS.CAD.Like.audio/dist/index.html#/drawing?host=acoustic" title="CAD.Like.audio"></iframe>
+          <canvas class="overlay"></canvas>
+          <div class="hits"></div>
+          <div class="capture"></div>
+        </div>
+      </div>
+      <div class="tile face" data-face="ceiling"><canvas></canvas><div class="readout"></div></div>
+      <div class="tile face" data-face="front"><canvas></canvas><div class="readout"></div></div>
+      <div class="tile face" data-face="back"><canvas></canvas><div class="readout"></div></div>
+      <div class="tile face" data-face="left"><canvas></canvas><div class="readout"></div></div>
+      <div class="tile face" data-face="right"><canvas></canvas><div class="readout"></div></div>
+      <div class="tile t3d" data-face="3d"><canvas></canvas></div>
+    </section>
+    <aside id="inspector"></aside>
+  </main>
+
+  <footer id="meters"></footer>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

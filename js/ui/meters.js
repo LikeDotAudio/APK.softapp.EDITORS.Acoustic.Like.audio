@@ -1,0 +1,383 @@
+// Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+// MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+import { BANDS } from '../acoustics/bands.js';
+import { directivityQ, deviceGain, frame } from '../acoustics/patterns.js';
+import { allModes } from '../acoustics/room.js';
+import { selectedDevice } from '../model/store.js';
+import { fitCanvas } from '../views/glyphs.js';
+
+/**
+ * THE METER BRIDGE
+ *
+ * What the monitored microphone (the selected one, else the mix position)
+ * hears, read the way a console reads it: a level meter, an octave RTA, a
+ * frequency response with the room's modes marked under it, the echogram and
+ * its Schroeder decay, the ISO 3382 numbers as meter tiles, RT60 per band
+ * against the EBU Tech 3276 window, and the polar pattern of whatever is
+ * selected. Click the response to tune the wave field to that frequency.
+ */
+
+const A_WEIGHT = [-16.1, -8.6, -3.2, 0, 1.2, 1.0];
+const GRID = '#263042';
+const TEXT = '#9aa4b2';
+const FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+
+export function createMeters({ root, store, engine, onListen }) {
+  root.innerHTML = `
+    <div class="meter m-spl"><h4>SPL <span class="sub spl-mic"></span></h4><canvas></canvas></div>
+    <div class="meter m-rta"><h4>Octave RTA <span class="sub">direct + diffuse</span></h4><canvas></canvas></div>
+    <div class="meter m-fr wide"><h4>Frequency response <span class="sub">wave · modal · click to tune</span></h4><canvas></canvas></div>
+    <div class="meter m-echo wide"><h4>Echogram <span class="sub">arrivals · tail · Schroeder</span></h4><canvas></canvas></div>
+    <div class="meter m-iso"><h4>ISO 3382 <button class="listen" title="Hear the estimated impulse response at this mic">▶ Listen</button></h4><div class="tiles"></div></div>
+    <div class="meter m-rt"><h4>RT60 <span class="sub">Sabine · Eyring · EBU</span></h4><canvas></canvas></div>
+    <div class="meter m-polar"><h4>Polar <span class="sub pol-name"></span></h4><canvas></canvas></div>`;
+  const cv = (sel) => root.querySelector(`${sel} canvas`);
+  root.querySelector('.listen').addEventListener('click', () => onListen());
+
+  cv('.m-fr').addEventListener('click', (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const f = 20 * 50 ** ((e.clientX - r.left - 30) / (r.width - 40));
+    if (f >= 20 && f <= 1000) store.setSettings({ freq: Math.round(f), method: store.state.settings.method === 'energy' ? 'wave' : store.state.settings.method });
+  });
+
+  function render() {
+    const out = engine.out;
+    const { state } = store;
+    const rep = out.reports?.[out.monitorId];
+    const mic = state.mics.find((m) => m.id === out.monitorId);
+    root.classList.toggle('empty', !rep);
+    root.querySelector('.spl-mic').textContent = mic ? (mic.mix ? 'MIX' : mic.name) : '';
+    drawSpl(cv('.m-spl'), rep, state.settings);
+    drawRta(cv('.m-rta'), rep, state.settings);
+    drawResponse(cv('.m-fr'), out, state.settings);
+    drawEcho(cv('.m-echo'), rep);
+    drawIso(root.querySelector('.m-iso .tiles'), rep, state.settings);
+    drawRt(cv('.m-rt'), out.room, state.settings);
+    drawPolar(cv('.m-polar'), selectedDevice(state) ?? state.speakers[0], state.settings, root.querySelector('.pol-name'));
+  }
+  return { render };
+}
+
+function noData(ctx, w, h, text = 'Place a speaker and a mic') {
+  ctx.fillStyle = TEXT;
+  ctx.font = FONT;
+  ctx.fillText(text, 8, h / 2);
+}
+
+function broadband(rep, aWeight) {
+  let e = 0;
+  rep.energy.forEach((b, i) => {
+    e += 10 ** ((b.total + (aWeight ? A_WEIGHT[i] : 0)) / 10);
+  });
+  return 10 * Math.log10(e);
+}
+
+function drawSpl(canvas, rep, settings) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  if (!rep) return noData(ctx, w, h, '—');
+  const lo = 40;
+  const hi = 130;
+  const top = 8;
+  const bot = h - 30;
+  const y = (db) => bot - ((Math.max(lo, Math.min(hi, db)) - lo) / (hi - lo)) * (bot - top);
+  const value = broadband(rep, settings.aWeight);
+  const seg = 3;
+  const bars = [
+    { x: 4, db: value, label: settings.aWeight ? 'dBA' : 'dBZ' },
+    { x: 40, db: rep.wave, label: `${settings.freq.toFixed(0)}` },
+  ];
+  for (const b of bars) {
+    for (let yy = bot; yy > top; yy -= seg + 1) {
+      const db = lo + ((bot - yy) / (bot - top)) * (hi - lo);
+      const lit = db <= b.db;
+      const c = db > 105 ? '#ef4444' : db > 85 ? '#facc15' : '#22c55e';
+      ctx.fillStyle = lit ? c : '#1a2130';
+      ctx.fillRect(b.x, yy - seg, 20, seg);
+    }
+    ctx.fillStyle = TEXT;
+    ctx.font = FONT;
+    ctx.fillText(b.label, b.x - 2, h - 18);
+  }
+  ctx.fillStyle = TEXT;
+  for (let db = lo; db <= hi; db += 10) {
+    ctx.fillText(String(db), 66, y(db) + 3);
+  }
+  ctx.fillStyle = '#e5e7eb';
+  ctx.font = '600 15px ui-monospace, monospace';
+  ctx.fillText(value.toFixed(1), 4, h - 3);
+  ctx.font = FONT;
+}
+
+function drawRta(canvas, rep, settings) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  if (!rep) return noData(ctx, w, h);
+  const vals = rep.energy;
+  const top = Math.ceil(Math.max(...vals.map((v) => v.total)) / 10) * 10 + 5;
+  const range = 50;
+  const y = (db) => h - 18 - ((Math.max(top - range, db) - (top - range)) / range) * (h - 30);
+  const bw = (w - 30) / vals.length;
+  ctx.strokeStyle = GRID;
+  ctx.fillStyle = TEXT;
+  ctx.font = FONT;
+  for (let db = top - range; db <= top; db += 10) {
+    ctx.beginPath();
+    ctx.moveTo(26, y(db));
+    ctx.lineTo(w, y(db));
+    ctx.stroke();
+    ctx.fillText(String(db), 0, y(db) + 3);
+  }
+  vals.forEach((v, i) => {
+    const x = 28 + i * bw;
+    const grad = ctx.createLinearGradient(0, y(v.total), 0, h - 18);
+    grad.addColorStop(0, '#38bdf8');
+    grad.addColorStop(1, '#0c4a6e');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x + 3, y(v.total), bw - 6, h - 18 - y(v.total));
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillRect(x + 3, y(v.reverb) - 1, bw - 6, 2);
+    ctx.fillStyle = i === settings.band ? '#e5e7eb' : TEXT;
+    ctx.fillText(BANDS[i] >= 1000 ? `${BANDS[i] / 1000}k` : String(BANDS[i]), x + bw / 2 - 9, h - 5);
+  });
+}
+
+function drawResponse(canvas, out, settings) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  const r = out.response;
+  if (!r || !out.room) return noData(ctx, w, h);
+  const x = (f) => 30 + (Math.log(f / 20) / Math.log(50)) * (w - 40);
+  const all = [...r.wave, ...r.modal].filter(Number.isFinite);
+  const top = Math.ceil(Math.max(...all) / 6) * 6 + 3;
+  const range = 42;
+  const y = (db) => 6 + ((top - Math.max(top - range, Math.min(top, db))) / range) * (h - 30);
+  ctx.strokeStyle = GRID;
+  ctx.fillStyle = TEXT;
+  ctx.font = FONT;
+  for (const f of [20, 50, 100, 200, 500, 1000]) {
+    ctx.beginPath();
+    ctx.moveTo(x(f), 6);
+    ctx.lineTo(x(f), h - 24);
+    ctx.stroke();
+    ctx.fillText(f >= 1000 ? '1k' : String(f), x(f) - 8, h - 12);
+  }
+  for (let db = top; db >= top - range; db -= 6) {
+    ctx.beginPath();
+    ctx.moveTo(30, y(db));
+    ctx.lineTo(w, y(db));
+    ctx.stroke();
+    ctx.fillText(String(db), 0, y(db) + 3);
+  }
+  for (const m of allModes(out.room, 300)) {
+    const c = m.type === 'axial' ? '#ef4444' : m.type === 'tangential' ? '#f59e0b' : '#64748b';
+    ctx.fillStyle = c;
+    ctx.fillRect(x(m.f), h - 24, 1.5, m.type === 'axial' ? 8 : m.type === 'tangential' ? 5 : 3);
+  }
+  const fs = 2000 * Math.sqrt(out.room.perBand[2].eyring / out.room.V);
+  ctx.strokeStyle = '#a78bfa';
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(x(fs), 6);
+  ctx.lineTo(x(fs), h - 24);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#a78bfa';
+  ctx.fillText(`Schroeder ${fs.toFixed(0)}`, x(fs) + 3, 16);
+  const trace = (vals, colour, width) => {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    let pen = false;
+    r.freqs.forEach((f, i) => {
+      const v = vals[i];
+      if (!Number.isFinite(v)) {
+        pen = false;
+        return;
+      }
+      if (pen) ctx.lineTo(x(f), y(v));
+      else ctx.moveTo(x(f), y(v));
+      pen = true;
+    });
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  };
+  trace(r.modal, '#22d3ee', 1.2);
+  trace(r.wave, '#f43f5e', 1.8);
+  ctx.strokeStyle = '#fde047';
+  ctx.beginPath();
+  ctx.moveTo(x(settings.freq), 6);
+  ctx.lineTo(x(settings.freq), h - 24);
+  ctx.stroke();
+  ctx.fillStyle = '#f43f5e';
+  ctx.fillText('wave', w - 74, 16);
+  ctx.fillStyle = '#22d3ee';
+  ctx.fillText('modal', w - 40, 16);
+}
+
+function drawEcho(canvas, rep) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  if (!rep) return noData(ctx, w, h);
+  const eg = rep.echogram;
+  const tMax = Math.min(eg.bins.length * eg.dt, eg.tD + Math.max(0.15, eg.T * 0.8));
+  const x = (t) => 30 + (t / tMax) * (w - 36);
+  const peak = Math.max(...eg.arrivals.map((a) => a.level));
+  const y = (db) => 6 + ((peak - Math.max(peak - 60, db)) / 60) * (h - 30);
+  ctx.strokeStyle = GRID;
+  ctx.fillStyle = TEXT;
+  ctx.font = FONT;
+  for (let db = 0; db >= -60; db -= 20) {
+    ctx.beginPath();
+    ctx.moveTo(30, y(peak + db));
+    ctx.lineTo(w, y(peak + db));
+    ctx.stroke();
+    ctx.fillText(String(db), 2, y(peak + db) + 3);
+  }
+  for (const ms of [50, 80]) {
+    const t = eg.tD + ms / 1000;
+    ctx.strokeStyle = '#475569';
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x(t), 6);
+    ctx.lineTo(x(t), h - 24);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillText(`${ms}ms`, x(t) + 2, h - 26);
+  }
+  ctx.fillStyle = 'rgba(245,158,11,.35)';
+  for (let i = 0; i < eg.tail.length; i += 4) {
+    const e = eg.tail[i] / eg.dt;
+    if (!e) continue;
+    const t = i * eg.dt;
+    if (t > tMax) break;
+    const db = 10 * Math.log10(e * 0.001);
+    ctx.fillRect(x(t), y(db), 1.5, h - 24 - y(db));
+  }
+  const ORDER = ['#f8fafc', '#38bdf8', '#a78bfa', '#f472b6', '#64748b'];
+  for (const a of eg.arrivals) {
+    if (a.t > tMax) continue;
+    ctx.fillStyle = ORDER[Math.min(a.order, 4)];
+    ctx.fillRect(x(a.t), y(a.level), a.order ? 1.5 : 2.5, h - 24 - y(a.level));
+  }
+  let acc = 0;
+  const sch = new Float64Array(eg.bins.length);
+  for (let i = eg.bins.length - 1; i >= 0; i--) sch[i] = acc += eg.bins[i];
+  const i0 = Math.floor(eg.tD / eg.dt);
+  ctx.strokeStyle = '#22c55e';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = i0; i < sch.length && i * eg.dt <= tMax; i += 2) {
+    const db = peak + 10 * Math.log10(sch[i] / sch[i0]);
+    if (i === i0) ctx.moveTo(x(i * eg.dt), y(db));
+    else ctx.lineTo(x(i * eg.dt), y(db));
+  }
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.fillStyle = TEXT;
+  ctx.fillText(`${(tMax * 1000).toFixed(0)} ms`, w - 46, h - 12);
+  ctx.fillText('0', 28, h - 12);
+}
+
+function drawIso(el, rep, settings) {
+  if (!rep) {
+    el.innerHTML = '<div class="tile"><b>—</b><span>no mic</span></div>';
+    return;
+  }
+  const iso = rep.iso;
+  const e = rep.energy[settings.band];
+  const f = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
+  const tiles = [
+    ['EDT', `${f(iso.EDT)} s`],
+    ['T20', `${f(iso.T20)} s`],
+    ['T30', `${f(iso.T30)} s`],
+    ['C50', `${f(iso.C50, 1)} dB`],
+    ['C80', `${f(iso.C80, 1)} dB`],
+    ['D50', `${f(iso.D50 * 100, 0)} %`],
+    ['Ts', `${f(iso.Ts, 0)} ms`],
+    ['ITDG', `${f(rep.itdgMs, 1)} ms`],
+    ['D/R', `${f(e.direct - e.reverb, 1)} dB`],
+    ['Modal', `${f(rep.modal, 1)} dB`],
+  ];
+  el.innerHTML = tiles.map(([k, v]) => `<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('') + `<div class="tile wide"><span>@ ${BANDS[settings.band]} Hz octave · ${rep.firstReflections.length} early reflections</span></div>`;
+}
+
+function drawRt(canvas, room, settings) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  if (!room) return;
+  const vals = room.perBand;
+  const max = Math.max(1, ...vals.map((v) => v.sabine)) * 1.1;
+  const y = (t) => h - 18 - (t / max) * (h - 30);
+  const tm = 0.3 * (room.V / 100) ** (1 / 3);
+  ctx.fillStyle = 'rgba(34,197,94,.15)';
+  ctx.fillRect(28, y(tm + 0.05), w - 28, y(tm - 0.05) - y(tm + 0.05));
+  ctx.fillStyle = '#22c55e';
+  ctx.font = FONT;
+  ctx.fillText(`EBU Tm ${tm.toFixed(2)} s`, w - 92, y(tm + 0.05) - 3);
+  ctx.strokeStyle = GRID;
+  ctx.fillStyle = TEXT;
+  for (let t = 0; t <= max; t += max > 2 ? 0.5 : 0.2) {
+    ctx.beginPath();
+    ctx.moveTo(28, y(t));
+    ctx.lineTo(w, y(t));
+    ctx.stroke();
+    ctx.fillText(t.toFixed(1), 2, y(t) + 3);
+  }
+  const bw = (w - 30) / vals.length;
+  vals.forEach((v, i) => {
+    const x = 30 + i * bw;
+    ctx.fillStyle = '#64748b';
+    ctx.fillRect(x + 2, y(v.sabine), bw / 2 - 3, h - 18 - y(v.sabine));
+    ctx.fillStyle = i === settings.band ? '#38bdf8' : '#0ea5e9';
+    ctx.fillRect(x + bw / 2, y(v.eyring), bw / 2 - 3, h - 18 - y(v.eyring));
+    ctx.fillStyle = TEXT;
+    ctx.fillText(BANDS[i] >= 1000 ? `${BANDS[i] / 1000}k` : String(BANDS[i]), x + bw / 2 - 9, h - 5);
+  });
+}
+
+function drawPolar(canvas, dev, settings, nameEl) {
+  const { ctx, w, h } = fitCanvas(canvas);
+  if (!dev) {
+    nameEl.textContent = '';
+    return noData(ctx, w, h, 'Select a device');
+  }
+  const freq = settings.method === 'energy' ? BANDS[settings.band] : settings.freq;
+  nameEl.textContent = `${dev.role || dev.name} · ${freq.toFixed(0)} Hz · Q ${directivityQ(dev, freq).toFixed(1)}`;
+  const cx = w / 2;
+  const cy = h / 2 + 4;
+  const R = Math.min(w, h) / 2 - 12;
+  ctx.strokeStyle = GRID;
+  for (const db of [0, -6, -12, -18, -24]) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, R * (1 + db / 30), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(cx - R, cy);
+  ctx.lineTo(cx + R, cy);
+  ctx.moveTo(cx, cy - R);
+  ctx.lineTo(cx, cy + R);
+  ctx.stroke();
+  const probe = { ...dev, _frame: frame(0, 0) };
+  const curve = (colour, dirOf) => {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    for (let i = 0; i <= 360; i += 3) {
+      const a = i * (Math.PI / 180);
+      const g = Math.max(-30, deviceGain(probe, dirOf(a), freq));
+      const r = R * (1 + g / 30);
+      const px = cx + Math.sin(a) * r;
+      const py = cy - Math.cos(a) * r;
+      if (i) ctx.lineTo(px, py);
+      else ctx.moveTo(px, py);
+    }
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  };
+  curve('#38bdf8', (a) => [Math.cos(a), -Math.sin(a), 0]);
+  curve('#f472b6', (a) => [Math.cos(a), 0, Math.sin(a)]);
+  ctx.font = FONT;
+  ctx.fillStyle = '#38bdf8';
+  ctx.fillText('H', 6, 14);
+  ctx.fillStyle = '#f472b6';
+  ctx.fillText('V', 18, 14);
+  ctx.fillStyle = TEXT;
+  ctx.fillText('0°', cx - 6, cy - R - 2);
+}
