@@ -7,7 +7,8 @@ import { mirrorPoint } from './geometry.js';
  * IMAGE SOURCES FOR AN EXTRUDED ROOM
  *
  * Walls are vertical and floor and ceiling horizontal, so the two families are
- * independent: a 2-D image of the plan (mirrored across walls) times a 1-D
+ * independent (a sloped ceiling drawn in an elevation is stood in for by its
+ * mean height — the image set of the equivalent flat room): a 2-D image of the plan (mirrored across walls) times a 1-D
  * image in height (mirrored across floor and ceiling). Each combination is one
  * virtual source; its order is the sum of the two.
  *
@@ -46,14 +47,15 @@ export function planImages(room, src, maxOrder) {
   return out;
 }
 
-export function heightImages(z, H, maxOrder) {
+/** Mirrors in the floor at z0 and the ceiling at z1 (a drawn section's mean floor and ceiling; 0 and H for a flat room). */
+export function heightImages(z, z1, maxOrder, z0 = 0) {
   const out = [{ z, sign: 1, floor: 0, ceiling: 0, order: 0, last: '' }];
   let frontier = out;
   for (let order = 1; order <= maxOrder; order++) {
     const next = [];
     for (const img of frontier) {
-      if (img.last !== 'floor') next.push({ z: -img.z, sign: -img.sign, floor: img.floor + 1, ceiling: img.ceiling, order, last: 'floor' });
-      if (img.last !== 'ceiling') next.push({ z: 2 * H - img.z, sign: -img.sign, floor: img.floor, ceiling: img.ceiling + 1, order, last: 'ceiling' });
+      if (img.last !== 'floor') next.push({ z: 2 * z0 - img.z, sign: -img.sign, floor: img.floor + 1, ceiling: img.ceiling, order, last: 'floor' });
+      if (img.last !== 'ceiling') next.push({ z: 2 * z1 - img.z, sign: -img.sign, floor: img.floor, ceiling: img.ceiling + 1, order, last: 'ceiling' });
     }
     out.push(...next);
     frontier = next;
@@ -64,7 +66,7 @@ export function heightImages(z, H, maxOrder) {
 /** Every virtual source of `src` up to total order `maxOrder`, with per-band energy reflection. */
 export function roomImages(room, src, maxOrder) {
   const plan = planImages(room, src, Math.min(maxOrder, planOrderCap(room)));
-  const height = heightImages(src.z, room.H, maxOrder);
+  const height = heightImages(src.z, room.zCeiling ?? room.H, maxOrder, room.zFloor ?? 0);
   const out = [];
   for (const p of plan) {
     const wallLoss = BANDS.map((_, b) => p.walls.reduce((e, i) => e * (1 - room.walls[i].material.alpha[b]), 1));

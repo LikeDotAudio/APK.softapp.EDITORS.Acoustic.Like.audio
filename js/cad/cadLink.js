@@ -6,7 +6,9 @@
  * CAD.Like.audio, embedded in our iframe, posts three things — `view` (its
  * world→screen transform and canvas box), `geometry` (walls and closed rooms)
  * and `mirror` (the Virtual Mirror axes). This turns them into callbacks and
- * sends the three requests the bridge accepts: `hello`, `fit`, `mirror`.
+ * sends the four requests the bridge accepts: `hello`, `fit`, `mirror`, and
+ * `sheet` — jump to the drawing on a layer (the plan, or one wall's
+ * elevation), drawing `seed` there first if the layer is empty.
  *
  * The protocol string is the contract; it lives in
  * EDITORS.CAD.Like.audio/src/shell/hostBridge/hostBridge.ts.
@@ -34,5 +36,7 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady }) {
     hello: () => send('hello'),
     fit: () => send('fit'),
     setMirror: (x, enabled = true) => send('mirror', { x, enabled }),
+    /** `seed`: [[x, y], …] in CAD units, or omitted. */
+    sheet: (layer, { color, seed } = {}) => send('sheet', { layer, color, seed }),
   };
 }

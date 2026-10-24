@@ -1,12 +1,14 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { listen } from './audio/auralize.js';
+import { ELEVATION_LAYER, seedOutline } from './acoustics/elevations.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
 import { createEngine } from './compute/engine.js';
 import { createStore } from './model/store.js';
 import { createInspector } from './ui/inspector.js';
 import { createMeters } from './ui/meters.js';
 import { createFaceView } from './views/faceView.js';
+import { FACE_COLOURS } from './views/glyphs.js';
 import { fieldScale } from './views/paint.js';
 import { createPlanView } from './views/plan.js';
 import { createView3d } from './views/view3d.js';
@@ -45,8 +47,28 @@ const engine = createEngine(store, (out, phase) => {
 /** Views report drag start/end; the store's 'drag' events already drive the coarse recompute. */
 const onDrag = () => {};
 
+/**
+ * Jump the CAD to one of the room's drawings — all in the one file, each on
+ * its own layer: 'plan', or a wall's face. A wall not drawn yet is seeded
+ * with the room's current outline in that view, under the plan, so there is
+ * something to drag into a slope or a vault.
+ */
+function jumpTo(sheet) {
+  if (!cad.link) return;
+  store.setSheet(sheet);
+  if (sheet === 'plan') {
+    cad.link.sheet(engine.out.planLayer ?? '0');
+    return;
+  }
+  const room = engine.out.room;
+  const k = METRES_PER_UNIT[store.state.cad.geometry?.units ?? store.state.cad.view?.units ?? 'm'] ?? 1;
+  const drawn = engine.out.elevations?.some((e) => e.face === sheet);
+  const seed = !drawn && room ? seedOutline(room, sheet).map((p) => [+(p.x / k).toFixed(4), +(p.y / k).toFixed(4)]) : undefined;
+  cad.link.sheet(ELEVATION_LAYER[sheet], { color: FACE_COLOURS[sheet], seed });
+}
+
 const plan = createPlanView({ tile: document.querySelector('.tile.plan .stage'), iframe, store, engine, onDrag });
-const faces = ['ceiling', 'front', 'back', 'left', 'right'].map((face) => createFaceView({ tile: document.querySelector(`.tile[data-face="${face}"]`), face, store, engine, onDrag }));
+const faces = ['ceiling', 'front', 'back', 'left', 'right'].map((face) => createFaceView({ tile: document.querySelector(`.tile[data-face="${face}"]`), face, store, engine, onDrag, onJump: () => jumpTo(face === 'ceiling' ? 'plan' : face) }));
 const view3d = createView3d({ canvas: document.querySelector('.tile.t3d canvas'), store, engine });
 const meters = createMeters({
   root: document.getElementById('meters'),
@@ -57,7 +79,8 @@ const meters = createMeters({
     if (rep) listen(rep.echogram);
   },
 });
-const inspector = createInspector({ root: document.getElementById('inspector'), store, engine, cad });
+const inspector = createInspector({ root: document.getElementById('inspector'), store, engine, cad, jumpTo });
+document.getElementById('toPlan').addEventListener('click', () => jumpTo('plan'));
 
 let frame = 0;
 function renderGeometry() {
@@ -68,10 +91,11 @@ function renderGeometry() {
 function renderAll() {
   cancelAnimationFrame(frame);
   frame = requestAnimationFrame(() => {
+    // the layout first: a tile the toolbar just un-hid (3-D) must have its size before it is drawn
+    syncToolbar();
     renderGeometry();
     meters.render();
     inspector.render();
-    syncToolbar();
   });
 }
 
@@ -137,6 +161,10 @@ function syncToolbar() {
   for (const b of document.querySelectorAll('#viewmode button')) b.classList.toggle('on', b.dataset.view === settings.view);
   for (const b of document.querySelectorAll('#method button')) b.classList.toggle('on', b.dataset.method === settings.method);
   views.className = settings.view === '3d' ? 'three' : 'six';
+  const { sheet } = store.state;
+  document.getElementById('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
+  document.getElementById('toPlan').hidden = sheet === 'plan';
+  for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
   document.getElementById('freqOut').textContent = settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${settings.freq} Hz`;
   freq.disabled = settings.method === 'energy';

@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, C } from './bands.js';
+import { heightsAtXY } from './elevations.js';
 import { distToSegment } from './geometry.js';
 import { criticalDistance } from './analysis.js';
 import { axialModes, inFrame, nullFractions, schroeder } from './room.js';
@@ -50,12 +51,15 @@ export function advise(room, speakers, mics, settings, mirror) {
     const p = inFrame(room, mix);
     const fl = p.fromFront / room.L;
     const fw = p.fromLeft / room.W;
-    const fh = mix.z / room.H;
+    // Height is read where the ears are: under a sloped ceiling the floor-to-ceiling there, not the room's mean.
+    const hm = heightsAtXY(room, mix.x, mix.y);
+    const Hm = hm.ceiling - hm.floor;
+    const fh = (mix.z - hm.floor) / Hm;
     const lHits = nullHits(fl);
     add(Math.abs(fl - 0.38) <= 0.03 ? 'ok' : 'warn', '38 % rule (length)', `Ears at ${pct(fl)} of L from the front wall (target 38 %).${lHits.length ? ` On length nulls: ${lHits.join(', ')}.` : ''}`);
     add(Math.abs(fw - 0.5) <= 0.01 ? 'ok' : 'warn', 'Centred (width)', `Ears at ${pct(fw)} of W — 50 % keeps L/R reflections symmetrical.`);
     const hHits = nullHits(fh);
-    add(fh >= 0.38 && fh <= 0.42 ? 'ok' : Math.abs(fh - 0.5) < 0.04 ? 'warn' : 'info', 'Ear height', `${mix.z.toFixed(2)} m = ${pct(fh)} of H (target 38–42 %, ${(0.38 * room.H).toFixed(2)}–${(0.42 * room.H).toFixed(2)} m).${hHits.length ? ` On height nulls: ${hHits.join(', ')}.` : ''}`);
+    add(fh >= 0.38 && fh <= 0.42 ? 'ok' : Math.abs(fh - 0.5) < 0.04 ? 'warn' : 'info', 'Ear height', `${mix.z.toFixed(2)} m = ${pct(fh)} of H${room.sloped ? ` here (${Hm.toFixed(2)} m)` : ''} (target 38–42 %, ${(hm.floor + 0.38 * Hm).toFixed(2)}–${(hm.floor + 0.42 * Hm).toFixed(2)} m).${hHits.length ? ` On height nulls: ${hHits.join(', ')}.` : ''}`);
     if (mirror?.enabled && Math.abs(mix.x - mirror.x) > 0.01) add('warn', 'Off the mirror axis', `Mix position is ${Math.abs(mix.x - mirror.x).toFixed(2)} m from the CAD mirror axis.`);
   }
 
@@ -73,7 +77,9 @@ export function advise(room, speakers, mics, settings, mirror) {
       const dist = Math.hypot(...d);
       if (s.kind === 'monitor') add(dist <= rc ? 'ok' : 'warn', `${tag}: critical distance`, `Listener at ${dist.toFixed(2)} m, R_c ${rc.toFixed(2)} m @ ${BANDS[band]} Hz — ${dist <= rc ? 'direct field dominates' : 'the room dominates; move closer or raise Q'}.`);
     }
-    if (s.kind !== 'sub' && Math.abs(s.z / room.H - 0.5) < 0.04) add('warn', `${tag}: at half height`, `Acoustic centre at ${pct(s.z / room.H)} of H — it cannot drive the first vertical mode.`);
+    const hs = heightsAtXY(room, s.x, s.y);
+    const fs = (s.z - hs.floor) / (hs.ceiling - hs.floor);
+    if (s.kind !== 'sub' && Math.abs(fs - 0.5) < 0.04) add('warn', `${tag}: at half height`, `Acoustic centre at ${pct(fs)} of H — it cannot drive the first vertical mode.`);
     if (s.mount === 'free') {
       const fr = frame(s.aim, 0);
       let behind = Infinity;
@@ -88,7 +94,7 @@ export function advise(room, speakers, mics, settings, mirror) {
       }
     }
     if (s.mount === 'free') {
-      const near = Math.min(...room.walls.map((w) => distToSegment(s, w.a, w.b)), s.z, room.H - s.z);
+      const near = Math.min(...room.walls.map((w) => distToSegment(s, w.a, w.b)), s.z - hs.floor, hs.ceiling - s.z);
       if (near < 0.5) add('warn', `${tag}: near a surface`, `${near.toFixed(2)} m from a boundary (AcousticRooms keeps sources ≥ 0.5 m).`);
     }
   }

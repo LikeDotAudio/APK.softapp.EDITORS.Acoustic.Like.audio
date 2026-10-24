@@ -1,5 +1,6 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+import { silhouette, silhouetteLoop } from '../acoustics/elevations.js';
 import { DEG } from '../acoustics/geometry.js';
 import { FACE_COLOURS, dashedLine, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
@@ -18,6 +19,10 @@ import { planLabel } from './plan.js';
  * Every speaker and mic appears in every view, projected. Dragging one in an
  * elevation moves it along the view's horizontal and sets its height — the one
  * thing the plan cannot.
+ *
+ * Clicking anywhere else jumps the CAD to that wall's elevation (the ceiling
+ * jumps it back to the plan): the walls are drawn in the same CAD file, and a
+ * sloped ceiling or raked floor drawn there is the outline this view shows.
  */
 
 /** The axis pointing right in each elevation, as seen from inside the room. */
@@ -31,7 +36,7 @@ function rightAxis(room, face) {
 
 const TITLES = { ceiling: 'Ceiling (reflected plan)', front: 'Front elevation', back: 'Back elevation', left: 'Left elevation', right: 'Right elevation' };
 
-export function createFaceView({ tile, face, store, engine, onDrag }) {
+export function createFaceView({ tile, face, store, engine, onDrag, onJump }) {
   const canvas = tile.querySelector('canvas');
   const readout = tile.querySelector('.readout');
   let map = null;
@@ -49,9 +54,9 @@ export function createFaceView({ tile, face, store, engine, onDrag }) {
     }
     const ra = rightAxis(room, face);
     const us = room.poly.map((p) => p.x * ra.x + p.y * ra.y);
-    return fit(w, h, pad, Math.min(...us), Math.max(...us), 0, room.H, (p) => ({ u: p.x * ra.x + p.y * ra.y, v: p.z }), (u, v, d) => {
+    return fit(w, h, pad, Math.min(...us), Math.max(...us), 0, room.Hmax, (p) => ({ u: p.x * ra.x + p.y * ra.y, v: p.z }), (u, v, d) => {
       const du = u - (d.x * ra.x + d.y * ra.y);
-      return { x: d.x + du * ra.x, y: d.y + du * ra.y, z: Math.max(0.05, Math.min(room.H - 0.05, v)) };
+      return { x: d.x + du * ra.x, y: d.y + du * ra.y, z: Math.max(0.05, Math.min(room.Hmax - 0.05, v)) };
     }, ra);
   }
 
@@ -82,6 +87,13 @@ export function createFaceView({ tile, face, store, engine, onDrag }) {
         else outline.moveTo(s.x, s.y);
       });
       outline.closePath();
+    } else if (room.sloped) {
+      silhouetteLoop(silhouette(room, face)).forEach((p, i) => {
+        const s = toS(p.u, p.z);
+        if (i) outline.lineTo(s.x, s.y);
+        else outline.moveTo(s.x, s.y);
+      });
+      outline.closePath();
     } else {
       const a = toS(map.u0, 0);
       const b = toS(map.u1, room.H);
@@ -92,6 +104,8 @@ export function createFaceView({ tile, face, store, engine, onDrag }) {
 
     if (show.field && out.values && out.fieldGrids && out.fieldRoom?.walls.length === room.walls.length) {
       ctx.imageSmoothingEnabled = true;
+      ctx.save();
+      ctx.clip(outline);
       if (face === 'ceiling') {
         const g = out.fieldGrids.ceiling;
         const img = gridCanvas(out.values.ceiling, g.nx, g.ny, out.scale);
@@ -105,7 +119,7 @@ export function createFaceView({ tile, face, store, engine, onDrag }) {
           const ua = wall.a.x * map.ra.x + wall.a.y * map.ra.y;
           const ub = wall.b.x * map.ra.x + wall.b.y * map.ra.y;
           const img = gridCanvas(out.values.walls[i], g.nu, g.nz, out.scale);
-          const p = toS(ua, room.H);
+          const p = toS(ua, room.Hmax);
           const q = toS(ub, 0);
           ctx.save();
           if (ub < ua) {
@@ -116,6 +130,7 @@ export function createFaceView({ tile, face, store, engine, onDrag }) {
           ctx.restore();
         });
       }
+      ctx.restore();
     }
     ctx.strokeStyle = FACE_COLOURS[face];
     ctx.lineWidth = 1.5;
@@ -132,6 +147,11 @@ export function createFaceView({ tile, face, store, engine, onDrag }) {
     ctx.fillStyle = '#9aa4b2';
     ctx.font = '10px system-ui';
     if (mat) ctx.fillText(mat.name, 10, 29);
+    const drawn = face !== 'ceiling' && room.profiles?.some((p) => p.face === face);
+    ctx.fillStyle = state.sheet === face || (face === 'ceiling' && state.sheet === 'plan') ? FACE_COLOURS[face] : '#64748b';
+    ctx.textAlign = 'right';
+    ctx.fillText(face === 'ceiling' ? (state.sheet === 'plan' ? 'plan in the CAD' : 'click → plan in the CAD') : state.sheet === face ? '✎ in the CAD' : drawn ? 'drawn in the CAD · click to edit' : 'click to draw in the CAD', w - 10, 29);
+    ctx.textAlign = 'left';
     if (show.field && out.scale && state.speakers.length) drawColourBar(ctx, w - 150, h - 26, 140, 8, out.scale, planLabel(state.settings));
   }
 
@@ -243,7 +263,10 @@ export function createFaceView({ tile, face, store, engine, onDrag }) {
   canvas.addEventListener('pointerdown', (e) => {
     const r = canvas.getBoundingClientRect();
     const hit = pick(e.clientX - r.left, e.clientY - r.top);
-    if (!hit) return;
+    if (!hit) {
+      onJump?.();
+      return;
+    }
     store.select({ kind: hit.kind, id: hit.dev.id });
     const dev0 = hit.dev;
     dragFrom(
@@ -278,7 +301,7 @@ export function createFaceView({ tile, face, store, engine, onDrag }) {
         const ua = wall.a.x * map.ra.x + wall.a.y * map.ra.y;
         const ub = wall.b.x * map.ra.x + wall.b.y * map.ra.y;
         const t = (u - ua) / (ub - ua);
-        if (t >= 0 && t <= 1) value = sampleGrid(out.values.walls[i], g.nu, g.nz, t, 1 - v / out.room.H);
+        if (t >= 0 && t <= 1) value = sampleGrid(out.values.walls[i], g.nu, g.nz, t, 1 - v / out.room.Hmax);
       });
     }
     readout.textContent = Number.isFinite(value) ? `${value.toFixed(1)} dB · ${u.toFixed(2)} m, ${v.toFixed(2)} m` : `${u.toFixed(2)} m, ${v.toFixed(2)} m`;

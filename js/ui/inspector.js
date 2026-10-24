@@ -31,7 +31,7 @@ const MATERIAL_OPTIONS = [...new Set(MATERIALS.map((m) => m.category))].map((gro
 
 const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
 
-export function createInspector({ root, store, engine, cad }) {
+export function createInspector({ root, store, engine, cad, jumpTo }) {
   let tab = 'Inspect';
   let pending = false;
 
@@ -199,7 +199,22 @@ export function createInspector({ root, store, engine, cad }) {
       parts.push(row('Virtual width', num(settings.virtualRoom.w, (v) => set({ virtualRoom: { ...settings.virtualRoom, w: v } }), { unit: 'm', min: 1 })));
       parts.push(row('Virtual length', num(settings.virtualRoom.l, (v) => set({ virtualRoom: { ...settings.virtualRoom, l: v } }), { unit: 'm', min: 1 })));
     }
+    const drawn = new Set((out.elevations ?? []).map((e) => e.face));
     parts.push(
+      row(
+        'Drawn in the CAD',
+        h(
+          'span',
+          { class: 'sheets' },
+          ...['plan', 'front', 'back', 'left', 'right'].map((f) =>
+            button(f === 'plan' ? '⌂ Plan' : `${drawn.has(f) ? '✎' : '＋'} ${f[0].toUpperCase()}${f.slice(1)}`, () => jumpTo?.(f), {
+              class: S().sheet === f ? 'on' : '',
+              title: f === 'plan' ? 'Jump the CAD to the plan' : drawn.has(f) ? `Jump the CAD to the ${f} elevation` : `Draw the ${f} elevation in the CAD — seeded with the room's outline`,
+            }),
+          ),
+        ),
+      ),
+      ...(drawn.size ? [h('p', { class: 'hint' }, `Shaped by the ${[...drawn].join(', ')} elevation${drawn.size > 1 ? 's' : ''}: the ceiling height below is used only where no elevation reaches.`)] : []),
       row('Ceiling height', num(settings.roomHeight, (v) => set({ roomHeight: v }), { unit: 'm', min: 1.5, step: 0.05 })),
       row('Front faces', select(settings.frontDeg, [{ value: 90, label: 'Up the sheet (+Y)' }, { value: 270, label: 'Down (−Y)' }, { value: 0, label: 'Right (+X)' }, { value: 180, label: 'Left (−X)' }], (v) => set({ frontDeg: +v }))),
       h('h4', {}, 'Surfaces'),
@@ -208,7 +223,7 @@ export function createInspector({ root, store, engine, cad }) {
     if (!room) return parts;
     parts.push(
       h('h4', {}, 'Working space'),
-      h('p', { class: 'stat' }, `L ${fmt(room.L)} · W ${fmt(room.W)} · H ${fmt(room.H)} m · ${fmt(room.area, 1)} m² · ${fmt(room.V, 1)} m³ · ${room.walls.length} walls${room.rect ? ' · rectangle' : room.convex ? ' · convex' : ' · re-entrant'}`),
+      h('p', { class: 'stat' }, `L ${fmt(room.L)} · W ${fmt(room.W)} · H ${fmt(room.H)} m${room.sloped ? ` (mean; ${fmt(room.Hmax)} at the highest)` : ''} · ${fmt(room.area, 1)} m² · ${fmt(room.V, 1)} m³ · ${room.walls.length} walls${room.rect ? ' · rectangle' : room.convex ? ' · convex' : ' · re-entrant'}`),
       h(
         'table',
         { class: 'grid' },

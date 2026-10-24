@@ -167,7 +167,7 @@ export function modalDb(room, mp, pt) {
   let im = 0;
   for (const m of mp.modes) {
     const psi =
-      Math.cos((m.nx * Math.PI * q.u) / mp.L) * Math.cos((m.ny * Math.PI * q.v) / mp.W) * Math.cos((m.nz * Math.PI * pt.z) / mp.H);
+      Math.cos((m.nx * Math.PI * q.u) / mp.L) * Math.cos((m.ny * Math.PI * q.v) / mp.W) * Math.cos((m.nz * Math.PI * (pt.z - (room.zFloor ?? 0))) / mp.H);
     re += m.re * psi;
     im += m.im * psi;
   }

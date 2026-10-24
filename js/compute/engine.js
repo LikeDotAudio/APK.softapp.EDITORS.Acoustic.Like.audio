@@ -2,6 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { advise } from '../acoustics/advisor.js';
 import { layoutCheck } from '../acoustics/layouts.js';
+import { ELEVATION_FACES, elevationFaceOf } from '../acoustics/elevations.js';
 import { buildRoom } from '../acoustics/room.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { buildGrids } from './grids.js';
@@ -17,14 +18,27 @@ import { runJob } from './compute.js';
  * to where it is, not to everywhere it has been.
  */
 
-export function roomsFromCad(geometry) {
+/** Every closed loop on the sheet, in metres, largest first; `face` names the elevation a loop's layer holds, or null for the plan. */
+export function loopsFromCad(geometry) {
   if (!geometry) return [];
   const k = METRES_PER_UNIT[geometry.units] ?? 1;
+  const names = new Map((geometry.layers ?? []).map((l) => [l.id, l.name]));
   return geometry.rooms
-    .map((r) => ({ id: r.id, layerId: r.layerId, poly: r.points.map(([x, y]) => ({ x: x * k, y: y * k })) }))
+    .map((r) => ({ id: r.id, layerId: r.layerId, face: elevationFaceOf(names.get(r.layerId) ?? r.layerId), poly: r.points.map(([x, y]) => ({ x: x * k, y: y * k })) }))
     .map((r) => ({ ...r, area: Math.abs(r.poly.reduce((s, p, i) => { const q = r.poly[(i + 1) % r.poly.length]; return s + p.x * q.y - q.x * p.y; }, 0) / 2) }))
-    .filter((r) => r.area > 1)
+    .filter((r) => r.area > (r.face ? 0.1 : 1))
     .sort((a, b) => b.area - a.area);
+}
+
+/** The plan candidates: loops not on an elevation layer. */
+export function roomsFromCad(geometry) {
+  return loopsFromCad(geometry).filter((r) => !r.face);
+}
+
+/** The largest loop on each elevation layer: [{ face, poly }]. */
+export function elevationsFromCad(geometry) {
+  const loops = loopsFromCad(geometry);
+  return ELEVATION_FACES.map((face) => loops.find((r) => r.face === face)).filter(Boolean).map((r) => ({ face: r.face, poly: r.poly }));
 }
 
 export function createEngine(store, onResult) {
@@ -53,7 +67,9 @@ export function createEngine(store, onResult) {
       poly = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: l }, { x: 0, y: l }];
       out.virtual = true;
     }
-    return buildRoom(poly, settings);
+    out.planLayer = picked?.layerId ?? null;
+    out.elevations = elevationsFromCad(cad.geometry);
+    return buildRoom(poly, settings, out.elevations);
   }
 
   function run(job) {
@@ -103,7 +119,7 @@ export function createEngine(store, onResult) {
     const room = currentRoom();
     const mix = state.mics.find((m) => m.mix);
     const sliceZ = settings.sliceHeight ?? mix?.z ?? 1.2;
-    const grids = buildGrids(room, Math.min(sliceZ, room.H - 0.05), coarse ? Math.max(16, settings.resolution / 2) : settings.resolution);
+    const grids = buildGrids(room, Math.min(sliceZ, room.Hmax - 0.05), coarse ? Math.max(16, settings.resolution / 2) : settings.resolution);
     out.room = room;
     out.grids = grids;
     const mirror = state.cad.mirror ? { enabled: state.cad.mirror.enabled, x: state.cad.mirror.xMetres } : null;

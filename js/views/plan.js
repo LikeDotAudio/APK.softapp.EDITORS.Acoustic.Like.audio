@@ -19,6 +19,9 @@ import { drawColourBar, gridCanvas } from './paint.js';
  * pans or zooms. Drawing the room, editing it and mirroring it stay the CAD's
  * job; the overlay follows.
  *
+ * While the CAD is on one of the walls' elevations (same file, another layer)
+ * the overlay stands aside: there is no plan under it to lay anything on.
+ *
  * The overlay takes no pointer events except on what it owns: a device can be
  * dragged (Shift-drag turns it), anywhere else the CAD gets the mouse. In a
  * placing mode a capture sheet covers the plan for the one click.
@@ -122,6 +125,9 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       ctx.fillText(state.cad.connected ? 'Waiting for the CAD view…' : 'Loading CAD.Like.audio…', 16, 24);
       return;
     }
+    // On an elevation the sheet under us is a wall, not the plan: our plan-frame overlay would land on it.
+    hits.hidden = state.sheet !== 'plan';
+    if (state.sheet !== 'plan') return;
     const room = out.room;
     const { settings } = state;
     const show = settings.show;

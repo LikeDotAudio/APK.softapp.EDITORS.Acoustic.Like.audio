@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
-import { DEG } from '../acoustics/geometry.js';
+import { heightsAtXY } from '../acoustics/elevations.js';
+import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { css, colourOf } from './paint.js';
 import { fitCanvas } from './glyphs.js';
 
@@ -15,6 +16,8 @@ import { fitCanvas } from './glyphs.js';
  * the OS with nothing to fetch.
  *
  * Drag to orbit, wheel to zoom. Ceiling shows when the camera is under it.
+ * A room cut by elevations drawn in the CAD is drawn as cut: every floor and
+ * ceiling cell at its own height, every wall up to the ceiling above it.
  */
 
 export function createView3d({ canvas, store, engine }) {
@@ -23,8 +26,8 @@ export function createView3d({ canvas, store, engine }) {
   function basis(room) {
     const xs = room.poly.map((p) => p.x);
     const ys = room.poly.map((p) => p.y);
-    const c = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, z: room.H / 2 };
-    const size = Math.max(room.L, room.W, room.H);
+    const c = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, z: room.Hmax / 2 };
+    const size = Math.max(room.L, room.W, room.Hmax);
     const yaw = (cam.yaw + store.state.settings.frontDeg - 90) * DEG;
     const pitch = cam.pitch * DEG;
     const eye = {
@@ -60,23 +63,32 @@ export function createView3d({ canvas, store, engine }) {
     const scale = out.scale;
     const show = store.state.settings.show.field && ok && store.state.speakers.length > 0;
 
-    const plane = (g, vals, z, kind) => {
+    const level = (kind, x, y) => (room.sloped ? heightsAtXY(room, x, y)[kind] : kind === 'floor' ? 0 : room.H);
+    /** A floor or ceiling as cells; `vals` null paints them flat. Each corner sits at its surface's height. */
+    const plane = (g, vals, kind) => {
       const step = Math.max(1, Math.round(g.nx / 70));
       for (let j = 0; j < g.ny; j += step)
         for (let i = 0; i < g.nx; i += step) {
-          const v = vals[j * g.nx + i];
-          if (Number.isNaN(v)) continue;
           const x = g.x0 + i * g.cell;
           const y = g.y1 - j * g.cell;
           const s = g.cell * step;
-          faces.push({ pts: [{ x, y, z }, { x: x + s, y, z }, { x: x + s, y: y - s, z }, { x, y: y - s, z }], fill: css(colourOf(v, scale)), kind });
+          let v = NaN;
+          if (vals) {
+            v = vals[j * g.nx + i];
+            if (Number.isNaN(v)) continue;
+          } else if (!pointInPolygon(x + s / 2, y - s / 2, room.poly)) continue;
+          const P = (px, py) => ({ x: px, y: py, z: level(kind, px, py) });
+          faces.push({ pts: [P(x, y), P(x + s, y), P(x + s, y - s), P(x, y - s)], fill: vals ? css(colourOf(v, scale)) : '#1b2130', kind });
         }
     };
+    const cells = grids ?? out.grids;
 
-    if (show) plane(grids.floor, values.floor, 0, 'floor');
+    if (show) plane(grids.floor, values.floor, 'floor');
+    else if (room.sloped && cells) plane(cells.floor, null, 'floor');
     else faces.push({ pts: room.poly.map((p) => ({ ...p, z: 0 })), fill: '#1b2130', kind: 'floor' });
-    if (B.eye.z < room.H) {
-      if (show) plane(grids.ceiling, values.ceiling, room.H, 'ceiling');
+    if (B.eye.z < room.Hmax) {
+      if (show) plane(grids.ceiling, values.ceiling, 'ceiling');
+      else if (room.sloped && cells) plane(cells.ceiling, null, 'ceiling');
       else faces.push({ pts: room.poly.map((p) => ({ ...p, z: room.H })), fill: '#1b2130', kind: 'ceiling' });
     }
 
@@ -84,8 +96,18 @@ export function createView3d({ canvas, store, engine }) {
       const facing = (B.eye.x - wall.a.x) * wall.nIn.x + (B.eye.y - wall.a.y) * wall.nIn.y;
       if (facing < 0) return;
       const g = grids?.walls[wi];
+      const P = (t, z) => ({ x: wall.a.x + (wall.b.x - wall.a.x) * t, y: wall.a.y + (wall.b.y - wall.a.y) * t, z });
+      const span = (t) => {
+        const p = P(t, 0);
+        return room.sloped ? heightsAtXY(room, p.x, p.y) : { floor: 0, ceiling: room.H };
+      };
       if (!show || !g) {
-        faces.push({ pts: [{ ...wall.a, z: 0 }, { ...wall.b, z: 0 }, { ...wall.b, z: room.H }, { ...wall.a, z: room.H }], fill: '#202838', kind: 'wall' });
+        const n = room.sloped ? 12 : 1;
+        for (let i = 0; i < n; i++) {
+          const a = span(i / n);
+          const b = span((i + 1) / n);
+          faces.push({ pts: [P(i / n, a.floor), P((i + 1) / n, b.floor), P((i + 1) / n, b.ceiling), P(i / n, a.ceiling)], fill: '#202838', kind: 'wall' });
+        }
         return;
       }
       const vals = values.walls[wi];
@@ -94,9 +116,10 @@ export function createView3d({ canvas, store, engine }) {
         for (let i = 0; i < g.nu; i += step) {
           const t0 = i / g.nu;
           const t1 = Math.min(1, (i + step) / g.nu);
-          const z1 = room.H * (1 - j / g.nz);
-          const z0 = Math.max(0, room.H * (1 - (j + step) / g.nz));
-          const P = (t, z) => ({ x: wall.a.x + (wall.b.x - wall.a.x) * t, y: wall.a.y + (wall.b.y - wall.a.y) * t, z });
+          const sp = span((t0 + t1) / 2);
+          const z1 = Math.min(sp.ceiling, room.Hmax * (1 - j / g.nz));
+          const z0 = Math.max(sp.floor, room.Hmax * (1 - (j + step) / g.nz));
+          if (z1 <= z0) continue;
           const v = vals[j * g.nu + i];
           faces.push({ pts: [P(t0, z0), P(t1, z0), P(t1, z1), P(t0, z1)], fill: Number.isNaN(v) ? '#202838' : css(colourOf(v, scale)), kind: 'wall' });
         }
@@ -122,19 +145,26 @@ export function createView3d({ canvas, store, engine }) {
 
     ctx.strokeStyle = 'rgba(255,255,255,.35)';
     ctx.lineWidth = 1;
-    for (const z of [0, room.H]) {
+    // the floor's and ceiling's edges, traced along each wall so a slope bends them
+    const steps = room.sloped ? 16 : 1;
+    for (const kind of ['floor', 'ceiling']) {
       ctx.beginPath();
-      room.poly.forEach((p, i) => {
-        const s = proj({ ...p, z });
-        if (i) ctx.lineTo(s.x, s.y);
-        else ctx.moveTo(s.x, s.y);
-      });
+      let first = true;
+      for (const wall of room.walls)
+        for (let i = 0; i <= steps; i++) {
+          const x = wall.a.x + ((wall.b.x - wall.a.x) * i) / steps;
+          const y = wall.a.y + ((wall.b.y - wall.a.y) * i) / steps;
+          const s = proj({ x, y, z: level(kind, x, y) });
+          if (first) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+          first = false;
+        }
       ctx.closePath();
       ctx.stroke();
     }
     for (const p of room.poly) {
-      const a = proj({ ...p, z: 0 });
-      const b = proj({ ...p, z: room.H });
+      const a = proj({ ...p, z: level('floor', p.x, p.y) });
+      const b = proj({ ...p, z: level('ceiling', p.x, p.y) });
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);

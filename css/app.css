@@ -134,3 +134,10 @@ table.modes button { padding: 0 5px; font-size: 10px; }
   main { grid-template-columns: 1fr; grid-template-rows: 1fr 300px; }
   #views.six { grid-template-columns: 1fr 1fr; grid-template-areas: "plan plan" "ceiling front" "left right" "back back"; grid-template-rows: 2fr 1fr 1fr 1fr; }
 }
+
+/* The CAD holds the plan and every wall's elevation; these jump it between them. */
+.sheets { display: flex; flex-wrap: wrap; gap: 3px; grid-column: 2 / -1; }
+.sheets button { padding: 1px 6px; font-size: 11px; }
+#toPlan { margin-left: 8px; padding: 0 6px; font-size: 11px; }
+.tile.face > canvas { cursor: pointer; }
+.tile.face.editing { outline: 2px solid #7dd3fc; outline-offset: -2px; }

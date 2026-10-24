@@ -46,6 +46,8 @@ export function createStore() {
     settings: structuredClone(DEFAULT_SETTINGS),
     selected: null,
     mode: 'cad',
+    /** Which drawing the CAD is showing: 'plan', or the elevation's face. Not saved: the CAD decides where it opens. */
+    sheet: 'plan',
     placeKind: { speaker: 'monitor', mic: 'omni' },
     cad: { geometry: null, view: null, mirror: null, connected: false },
     fileName: null,
@@ -134,6 +136,11 @@ export function createStore() {
     },
     setMode(mode) {
       state.mode = mode;
+      emit('mode');
+    },
+    setSheet(sheet) {
+      state.sheet = sheet;
+      if (sheet !== 'plan') state.mode = 'cad';
       emit('mode');
     },
     setPlaceKind(kind, preset) {

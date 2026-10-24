@@ -7,6 +7,7 @@
 ## What it does
 
 - **The plan is the CAD.** CAD.Like.audio runs live in the plan tile, opened as `#/drawing?host=acoustic`. You draw the room there as a closed loop. Everything acoustic is drawn as an overlay on that sheet and follows it as you pan and zoom.
+- **The walls are in the CAD too.** Click an elevation tile and the CAD jumps to that wall's drawing: the same file, on its own layer (`Elevation Front`, `Back`, `Left`, `Right`). A wall not drawn yet is seeded with the room's current outline, under the plan. Drag it into a sloped ceiling, a raked floor or a vault. The room becomes the plan extruded and cut by every elevation drawn: the ceiling is the lowest any of them allows there, the floor the highest. Volume, surface areas and RT are integrated over that real shape. Image sources and modes stand in with the mean floor and ceiling height. Click the ceiling tile (or ⌂ Plan) to jump back.
 - **Six drawings or a 3-D room.** The plan is extruded to a ceiling height, with a front direction you choose. That gives the plan (a slice at ear height) plus the reflected ceiling and the front, back, left and right elevations. The 3-D view is a cut-away. Every surface is painted with its sound field.
 - **Sources and receivers.**
   - Speakers come as studio monitors, 90×50 and 60×40 projection horns, or subs. Each can be free-standing, flush/soffit, in a corner or in a trihedral corner.
@@ -38,13 +39,14 @@ The CAD is in an iframe. The CAD's `src/shell/hostBridge/` and `js/cad/cadLink.j
 | CAD → app | `geometry` | visible walls (arcs tessellated), closed rooms, layers, file name |
 | CAD → app | `mirror` | Symmetrical Mode on/off, axis x |
 | app → CAD | `hello` · `fit` · `mirror {x, enabled}` | resend · zoom to drawing · place the mirror axis |
+| app → CAD | `sheet {layer, color?, seed?}` | jump to the drawing on that layer and make it current; draw `seed` there first if the layer is empty |
 
 The CAD only publishes; it never reads this app's state. The overlay is saved in the browser per CAD file name. It can be exported as JSON, and positions can be exported in the AcousticRooms metadata shape.
 
 ## Layout
 
 ```
-js/acoustics/   physics, no DOM: bands, materials, patterns, devices, room, images, field, analysis, layouts, symmetry, advisor
+js/acoustics/   physics, no DOM: bands, materials, patterns, devices, room, elevations, images, field, analysis, layouts, symmetry, advisor
 js/compute/     sample grids, the job, the worker, the engine that schedules it
 js/views/       plan overlay, ceiling + elevations, 3-D, colour map, glyphs
 js/ui/          inspector (every parameter), meter bridge
@@ -69,6 +71,7 @@ The tests check the following against closed forms:
 - 7.1.4 placement lands inside its reference windows
 - mirroring is its own inverse
 - the advisor flags a seat at half the length
+- a shed roof drawn in a side elevation gives V = L·W·mean height and the true sloped area; front and side elevations intersect; a seeded elevation reads back as the room it came from
 
 ## References
 

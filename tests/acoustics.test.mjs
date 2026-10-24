@@ -10,6 +10,8 @@ import { makeMic, makeSpeaker } from '../js/acoustics/devices.js';
 import { layoutCheck, layoutPositions } from '../js/acoustics/layouts.js';
 import { mirrorBearing, mirrorDevice, mirrorName, syncTwin } from '../js/acoustics/symmetry.js';
 import { advise } from '../js/acoustics/advisor.js';
+import { heightsAt, seedOutline } from '../js/acoustics/elevations.js';
+import { heightImages } from '../js/acoustics/images.js';
 
 const settings = (over = {}) => ({
   roomHeight: 3,
@@ -131,4 +133,58 @@ test('SBIR is measured to the wall behind the box, not the one it faces', () => 
   const note = advise(room, [spk], [], settings(), null).find((n) => n.title.endsWith('SBIR'));
   assert.match(note.detail, /^0\.60 m/);
   assert.match(note.detail, /143 Hz/);
+});
+
+// ---------------------------------------------------------------- elevations drawn in the CAD
+
+// A shed roof over a 5 × 7 m plan facing +y: 4 m at the front wall, 2.5 m at the back.
+// The right elevation is seen from inside with the front at its left; the left one, front at its right.
+const shedRight = [{ x: 20, y: -9 }, { x: 27, y: -9 }, { x: 27, y: -6.5 }, { x: 20, y: -5 }];
+const shedLeft = [{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 4 }, { x: 0, y: 2.5 }];
+
+test('no elevation drawn: the plan at the ceiling height, exactly as before', () => {
+  const room = buildRoom(rect(5, 7), settings());
+  assert.equal(room.sloped, false);
+  assert.equal(room.V, 105);
+  assert.equal(room.Hmax, 3);
+  assert.equal(room.perBand[2].S, 2 * 35 + 24 * 3);
+});
+
+test('a side elevation drawn anywhere on the sheet slopes the ceiling, front at the right end', () => {
+  for (const [face, poly] of [['right', shedRight], ['left', shedLeft]]) {
+    const room = buildRoom(rect(5, 7), settings(), [{ face, poly }]);
+    assert.ok(Math.abs(heightsAt(room, 0, 2.5).ceiling - 4) < 1e-3, `${face}: 4 m at the front`);
+    assert.ok(Math.abs(heightsAt(room, 7, 2.5).ceiling - 2.5) < 1e-3, `${face}: 2.5 m at the back`);
+    assert.ok(Math.abs(room.V - 5 * 7 * 3.25) / (5 * 7 * 3.25) < 0.005, `${face}: V = L·W·mean height, got ${room.V}`);
+    assert.ok(Math.abs(room.H - 3.25) < 0.01);
+    assert.ok(Math.abs(room.Hmax - 4) < 0.05);
+    const slope = Math.hypot(7, 1.5) * 5;
+    assert.ok(Math.abs(room.perBand[2].S - (35 + slope + 7 * 3.25 * 2 + 5 * 4 + 5 * 2.5)) < 0.5, 'a slope is bigger than its plan');
+  }
+});
+
+test('front and side elevations both cut: the ceiling is the lower of the two', () => {
+  // a pitched cross-section: 2 m at the side walls, 4 m on the centre line
+  const gable = [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 2 }, { x: 2.5, y: 4 }, { x: 0, y: 2 }];
+  const room = buildRoom(rect(5, 7), settings(), [{ face: 'right', poly: shedRight }, { face: 'front', poly: gable }]);
+  assert.ok(Math.abs(heightsAt(room, 0, 2.5).ceiling - 4) < 1e-3);
+  assert.ok(Math.abs(heightsAt(room, 0, 0).ceiling - 2) < 1e-3);
+  assert.ok(Math.abs(heightsAt(room, 7, 2.5).ceiling - 2.5) < 1e-3);
+});
+
+test('a raked floor lifts the floor images with it', () => {
+  const room = buildRoom(rect(5, 7), settings(), [{ face: 'left', poly: [{ x: 0, y: 1 }, { x: 7, y: 0 }, { x: 7, y: 4 }, { x: 0, y: 4 }] }]);
+  assert.ok(room.zFloor > 0.4 && room.zFloor < 0.6, `mean floor ${room.zFloor}`);
+  const img = heightImages(1.5, room.zCeiling, 1, room.zFloor);
+  const floorImg = img.find((i) => i.last === 'floor');
+  assert.ok(Math.abs(floorImg.z - (2 * room.zFloor - 1.5)) < 1e-9);
+});
+
+test('a seeded elevation reads back as the room it was drawn from', () => {
+  const flat = buildRoom(rect(5, 7), settings());
+  for (const face of ['front', 'back', 'left', 'right']) {
+    const room = buildRoom(rect(5, 7), settings(), [{ face, poly: seedOutline(flat, face) }]);
+    assert.ok(Math.abs(room.V - 105) < 0.5, `${face}: ${room.V}`);
+    assert.ok(Math.abs(heightsAt(room, 3, 2).ceiling - 3) < 1e-3);
+  }
 });

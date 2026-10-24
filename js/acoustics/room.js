@@ -2,6 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, C, airM } from './bands.js';
 import { DEG, angleDiff, ensureCCW, isConvex, signedArea, simplifyPolygon } from './geometry.js';
+import { measureSection, profileFromLoop } from './elevations.js';
 import { material } from './materials.js';
 
 /**
@@ -15,6 +16,12 @@ import { material } from './materials.js';
  *
  * "Working space" length and width are measured in the front frame, the way
  * the Dolby Room Design Tool measures them: L front-to-back, W left-to-right.
+ *
+ * Elevations drawn in the CAD (elevations.js) cut the extrusion: a sloped
+ * ceiling, a raked floor. Then V, S and every surface's area are integrated
+ * over the real shape, and H is the MEAN height (zCeiling − zFloor) — the box
+ * the image sources and the modal sum stand in with — while Hmax bounds the
+ * drawings. With no elevation drawn, H = Hmax = the ceiling height setting.
  */
 
 export const FACES = ['floor', 'ceiling', 'front', 'back', 'left', 'right'];
@@ -34,9 +41,10 @@ export function frontFrame(frontDeg) {
   return { f, r: { x: f.y, y: -f.x } };
 }
 
-export function buildRoom(polyMetres, settings) {
+/** `loops`: the elevations drawn in the CAD, [{ face, poly }] in sheet metres. */
+export function buildRoom(polyMetres, settings, loops = []) {
   const poly = ensureCCW(simplifyPolygon(polyMetres));
-  const H = settings.roomHeight;
+  const Hbase = settings.roomHeight;
   const { f, r } = frontFrame(settings.frontDeg);
   const mats = settings.faceMaterials;
 
@@ -53,26 +61,6 @@ export function buildRoom(polyMetres, settings) {
   const floor = material(mats.floor);
   const ceiling = material(mats.ceiling);
   const area = signedArea(poly);
-  const V = area * H;
-
-  const perBand = BANDS.map((_, band) => {
-    let S = 2 * area;
-    let A = area * (floor.alpha[band] + ceiling.alpha[band]);
-    for (const w of walls) {
-      S += w.len * H;
-      A += w.len * H * w.material.alpha[band];
-    }
-    const abar = Math.min(A / S, 0.99);
-    const m4V = 4 * airM(band) * V;
-    return {
-      S,
-      A,
-      abar,
-      sabine: (0.161 * V) / (A + m4V),
-      eyring: (0.161 * V) / (-S * Math.log(1 - abar) + m4V),
-      R: (S * abar) / (1 - abar),
-    };
-  });
 
   const projF = poly.map((p) => p.x * f.x + p.y * f.y);
   const projR = poly.map((p) => p.x * r.x + p.y * r.y);
@@ -87,9 +75,42 @@ export function buildRoom(polyMetres, settings) {
   const L = frame.front - frame.back;
   const W = frame.right - frame.left;
 
+  const room = { poly, walls, frame, L, W, area, Hbase, profiles: loops.map((l) => profileFromLoop(l.face, l.poly, L, W)) };
+  const m = room.profiles.length
+    ? measureSection(room)
+    : { V: area * Hbase, floorArea: area, ceilingArea: area, zFloor: 0, zCeiling: Hbase, Hmax: Hbase, wallAreas: walls.map((w) => w.len * Hbase) };
+  walls.forEach((w, i) => (w.area = m.wallAreas[i]));
+  const H = m.zCeiling - m.zFloor;
+  const V = m.V;
+
+  const perBand = BANDS.map((_, band) => {
+    let S = m.floorArea + m.ceilingArea;
+    let A = m.floorArea * floor.alpha[band] + m.ceilingArea * ceiling.alpha[band];
+    for (const w of walls) {
+      S += w.area;
+      A += w.area * w.material.alpha[band];
+    }
+    const abar = Math.min(A / S, 0.99);
+    const m4V = 4 * airM(band) * V;
+    return {
+      S,
+      A,
+      abar,
+      sabine: (0.161 * V) / (A + m4V),
+      eyring: (0.161 * V) / (-S * Math.log(1 - abar) + m4V),
+      R: (S * abar) / (1 - abar),
+    };
+  });
+
   return {
     poly,
     H,
+    Hbase,
+    Hmax: m.Hmax,
+    zFloor: m.zFloor,
+    zCeiling: m.zCeiling,
+    profiles: room.profiles,
+    sloped: room.profiles.length > 0,
     walls,
     floor,
     ceiling,
