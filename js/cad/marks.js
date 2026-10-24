@@ -10,6 +10,7 @@ import { elevationOrigin } from '../acoustics/patches.js';
 import { firstReflections, heatOf, reflectionPanels } from '../acoustics/reflectionPanels.js';
 import { fromFrame } from '../acoustics/room.js';
 import { turbo } from '../views/paint.js';
+import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows.js';
 
 /**
  * WHAT THIS APP DRAWS INTO THE CAD FILE
@@ -36,6 +37,9 @@ import { turbo } from '../views/paint.js';
  *                surface doing the reflecting, coloured by how loud the bounce
  *                arrives against the direct sound (hot = a panel goes here),
  *                labelled with its delay and level.
+ *   windows      the room's glass (acoustics/windows.js) on its elevations:
+ *                each pane painted with its glass and its casing round it in
+ *                wood, so the room hears both, named GLASS-1 … with its size.
  *   sections     the wall build and the floor build as sections, layer by
  *                layer, drawn five times true size so the layers read.
  *   arrangement  the speaker layout's reference lines from the mix seat — the
@@ -57,7 +61,7 @@ import { turbo } from '../views/paint.js';
  * Everything here works in sheet METRES; `toCad` scales to drawing units last.
  */
 
-export const MARK_KEYS = ['labels', 'panels', 'cutaways', 'sections', 'arrangement', 'blowup'];
+export const MARK_KEYS = ['labels', 'panels', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup'];
 
 const LAYOUT_LAYER = 'Speaker layout';
 const CUTAWAY_LAYER = '3-D cut-aways';
@@ -88,6 +92,7 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
 
   if (on.labels) out.labels = toCad(labelMarks(room, settings, planLayer));
   if (on.panels && mix) out.panels = toCad(panelMarks(room, state, mix));
+  if (on.windows !== false) out.windows = toCad(windowMarks(room, settings.windows?.[planLayer] ?? []));
   if (on.arrangement) out.arrangement = toCad(arrangementMarks(room, settings, mix, state));
   // the tower over each plan: its blow-up, and on top of the room being designed the cut-aways
   const towers = on.blowup ? rooms.map((r) => ({ room: r.room, ...blowupMarks(r.room, r.name, has, state) })) : [];
@@ -204,6 +209,21 @@ function panelDetails(room, face, panels, product) {
     texts.push({ text: `${p.name} · answers ${p.speaker} · ${mm(b.x1 - b.x0)} × ${mm(b.y1 - b.y0)} · left edge ${mm(b.x0)} · bottom ${mm(b.y0)} · centre ${mm((b.x0 + b.x1) / 2)} / ${mm((b.y0 + b.y1) / 2)} · ${product}`, x: sx, y: r3(y), height: size * 0.85 });
   }
   return { kind: 'drawing', layer: ELEVATION_LAYER[face], name: `panel-details-${face}`, at: [r3(origin.x), r3(origin.y)], lines, texts };
+}
+
+// ------------------------------------------------------------------ windows
+
+function windowMarks(room, windows) {
+  const items = [];
+  const text = 0.04;
+  windows.map(makeWindow).forEach((win, i) => {
+    const at = windowOnSheet(room, win);
+    if (!at) return;
+    items.push({ kind: 'fill', layer: at.layer, paletteId: win.glass, points: at.glass });
+    for (const points of at.casing) items.push({ kind: 'fill', layer: at.layer, paletteId: CASING_MATERIAL, points });
+    items.push({ kind: 'text', layer: at.layer, at: [at.label[0], at.label[1] + text * 0.5], text: `GLASS-${i + 1} · ${mm(win.w)} × ${mm(win.h)} · sill ${mm(win.sill)} · casing ${mm(win.casing)}`, height: text });
+  });
+  return items;
 }
 
 // ------------------------------------------------------------------ arrangement

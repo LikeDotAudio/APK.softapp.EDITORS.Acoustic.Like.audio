@@ -16,7 +16,11 @@
  * traced off the studio's floor plan (`traced`). The plan has no scale, so
  * TANDA_PX_PER_M is read off the furniture drawn in it (a mixer's chair, the
  * consoles, the couches) and the heights are a studio's usual; set either from
- * a survey and every Tanda room follows.
+ * a survey and every Tanda room follows. Studio 2 is drawn as it is being
+ * built — symmetrical — rather than as the plan sketches it.
+ *
+ * A room may carry `windows` (acoustics/windows.js): its glass, drawn into its
+ * elevations with their casings when the room is picked, and editable after.
  *
  * Every plan is in metres with the listener facing +Y (the front wall at the
  * top, frontDeg 90), centred on x = 0 and starting at y = 0, wound counter-
@@ -140,7 +144,8 @@ export const ROOM_LIBRARY = [
   { id: 'tanda-a-studio-1', group: 'Tanda, Saskatoon', name: 'Tanda A — Studio 1', note: 'the live room with the grand, glass to Tanda A', h: 3.6, live: true, poly: tanda([[15, 15], [405, 20], [402, 455], [12, 502]], 'right') },
   { id: 'tanda-a-iso-1', group: 'Tanda, Saskatoon', name: 'Tanda A — ISO 1', note: 'the booth over Tanda A, glass down into it', h: 2.7, live: true, poly: tanda([[415, 18], [692, 18], [690, 145], [420, 178]], 'down') },
   { id: 'tanda-b', group: 'Tanda, Saskatoon', name: 'Tanda B — control room', note: 'under construction: the big angled room, couch at the back, an alcove off the glass', h: 3.2, poly: tanda([[160, 615], [277, 570], [300, 602], [377, 630], [397, 585], [500, 545], [572, 715], [572, 800], [500, 965], [400, 950], [382, 887], [290, 950], [165, 910], [130, 830], [130, 720], [165, 660]], 'left') },
-  { id: 'tanda-b-studio-2', group: 'Tanda, Saskatoon', name: 'Tanda B — Studio 2', note: 'under construction: the second live room, glass to ISO 2', h: 3.0, live: true, poly: tanda([[5, 968], [160, 912], [285, 962], [250, 1208], [5, 1208]], 'up') },
+  // built symmetrical, not as traced: the plan's 4.65 m width and 4.95 m depth, the front folded to a point on the centre line, a big pane in each fold
+  { id: 'tanda-b-studio-2', group: 'Tanda, Saskatoon', name: 'Tanda B — Studio 2', note: 'under construction: the second live room, symmetrical, its front folded into two big windows — glass to ISO 2 and to Tanda B', h: 3.0, live: true, poly: fan(4.65, 4.95, 0.9), windows: [{ face: 'front', at: 4.65 / 4, w: 1.8, h: 1.4, sill: 0.8, casing: 0.1 }, { face: 'front', at: (3 * 4.65) / 4, w: 1.8, h: 1.4, sill: 0.8, casing: 0.1 }] },
   { id: 'tanda-b-iso-2', group: 'Tanda, Saskatoon', name: 'Tanda B — ISO 2', note: 'under construction: the booth beside Tanda B', h: 2.7, live: true, poly: tanda([[5, 762], [95, 760], [160, 912], [5, 968]], 'right') },
 ];
 

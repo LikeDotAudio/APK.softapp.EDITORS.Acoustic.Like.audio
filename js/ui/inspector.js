@@ -14,6 +14,7 @@ import { allModes, fromFrame, inFrame, schroeder } from '../acoustics/room.js';
 import { ROOM_LIBRARY, grabBag, planArea } from '../acoustics/roomLibrary.js';
 import { subCrawl } from '../acoustics/subDesigner.js';
 import { mirrorDevice } from '../acoustics/symmetry.js';
+import { GLASS_TYPES, makeWindow } from '../acoustics/windows.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { selectedDevice } from '../model/store.js';
 import { groupPatches, shortName, swatch } from '../views/treatments.js';
@@ -434,7 +435,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
   // --------------------------------------------------------------- Treatments
   function treatmentsPane() {
     const room = engine.out.room;
-    const parts = [h('h3', {}, 'Treatments'), h('p', { class: 'hint' }, HOW_TO_TREAT), ...cadMarksPart()];
+    const parts = [h('h3', {}, 'Treatments'), h('p', { class: 'hint' }, HOW_TO_TREAT), ...cadMarksPart(), ...windowsPart()];
     if (!room) return parts;
     const warnings = room.patchWarnings ?? [];
     if (warnings.length) parts.push(h('ul', { class: 'advice' }, ...warnings.map((w) => h('li', { class: 'warn' }, h('span', {}, w)))));
@@ -712,11 +713,43 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const products = PRODUCTS.map((p) => ({ value: p.id, label: p.name }));
     return [
       h('h4', {}, 'Drawn into the CAD'),
-      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('reflections', 'rays & reflection heat in the cut-aways'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout')),
+      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('windows', 'windows and their casings'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('reflections', 'rays & reflection heat in the cut-aways'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout')),
       row('Wall panel', select(ap.wall, products, (v) => set({ autoPanels: { ...ap, wall: v } }))),
       row('Panel size', num(ap.w, (v) => set({ autoPanels: { ...ap, w: v } }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(ap.h, (v) => set({ autoPanels: { ...ap, h: v } }), { unit: 'm tall', min: 0.2, step: 0.05 })),
       row('Ceiling cloud', select(ap.ceiling, products, (v) => set({ autoPanels: { ...ap, ceiling: v } }))),
       h('p', { class: 'hint' }, 'A panel goes wherever a speaker’s first reflection meets a wall on its way to the mix seat, named LEFT-1, RIGHT-2 … on the wall’s elevation. They move when the speakers or the seat move, and the room hears them like any treatment.'),
+    ];
+  }
+
+  /**
+   * The room's glass: each window's wall, where along it, the pane's size and
+   * sill, and the casing round it — the frame takes wall too, and whatever
+   * hangs beside a window has to clear it. Drawn into the elevation, heard as glass.
+   */
+  function windowsPart() {
+    const layer = engine.out.planLayer;
+    if (!layer || !engine.out.room) return [];
+    const all = S().settings.windows ?? {};
+    const list = (all[layer] ?? []).map(makeWindow);
+    const put = (next) => set({ windows: { ...all, [layer]: next } });
+    const up = (i, patch) => put(list.map((w, j) => (j === i ? { ...w, ...patch } : w)));
+    const faces = ['front', 'back', 'left', 'right'].map((f) => ({ value: f, label: cap(f) }));
+    const glass = GLASS_TYPES.map((id) => ({ value: id, label: lookup(id).name }));
+    const room = engine.out.room;
+    return [
+      h('h4', {}, `Windows · ${list.length}`),
+      ...list.flatMap((w, i) => [
+        h('h5', {}, `GLASS-${i + 1}`),
+        row('Wall', select(w.face, faces, (v) => up(i, { face: v })), num(w.at, (v) => up(i, { at: v }), { unit: 'm from its left', min: 0, step: 0.05 })),
+        row('Glass', num(w.w, (v) => up(i, { w: v }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(w.h, (v) => up(i, { h: v }), { unit: 'm tall', min: 0.2, step: 0.05 })),
+        row('Height', num(w.sill, (v) => up(i, { sill: v }), { unit: 'm sill', min: 0, step: 0.05 }), h('em', { class: 'sub' }, ` top ${fmt(w.sill + w.h, 2)} m`)),
+        row('Casing', num(w.casing, (v) => up(i, { casing: v }), { unit: 'm each side', min: 0, step: 0.01 })),
+        row('Pane', select(w.glass, glass, (v) => up(i, { glass: v }))),
+        w.sill + w.h + w.casing > (room.Hmax ?? room.H) ? h('p', { class: 'hint warn' }, 'The casing runs past the ceiling.') : '',
+        h('div', { class: 'actions' }, button('Remove', () => put(list.filter((_, j) => j !== i)))),
+      ]),
+      h('div', { class: 'actions' }, button('＋ Window', () => put([...list, makeWindow({ at: room.W / 2 }, list.length)]))),
+      h('p', { class: 'hint' }, 'Each window is drawn on its wall’s elevation: the pane painted as glass, the casing round it as wood, both heard by the room. Width is true along the wall, even on a splay. Turn them off above to leave the walls plain.'),
     ];
   }
 

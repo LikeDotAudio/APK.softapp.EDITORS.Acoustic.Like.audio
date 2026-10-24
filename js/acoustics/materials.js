@@ -76,6 +76,7 @@ export const MATERIALS = [
   // wood — browns
   m('wood-panel', 'Plywood panelling, 1/4 in', 'Wood', [0.28, 0.22, 0.17, 0.09, 0.1, 0.11], 25, 0.2, 'flat', '#a0703c'),
   m('door-wood', 'Door, solid wood', 'Wood', [0.14, 0.1, 0.06, 0.08, 0.1, 0.1], 25, 0.05, 'flat', '#7a4e26'),
+  m('casing-wood', 'Window casing, painted wood trim', 'Wood', [0.14, 0.1, 0.06, 0.08, 0.1, 0.1], 25, 0.1, 'flat', '#e8e2d4'),
   // glass — blues
   m('glass-window', 'Glass, ordinary window', 'Glass', [0.35, 0.25, 0.18, 0.12, 0.07, 0.04], 28, 0.05, 'flat', '#7fb4d8'),
   m('glass-heavy', 'Plate glass, window pane', 'Glass', [0.18, 0.06, 0.04, 0.03, 0.02, 0.02], 35, 0.05, 'flat', '#4f8fc0'),

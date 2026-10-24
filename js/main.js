@@ -12,6 +12,7 @@ import { consoleOf, consoleSettled, consoleSpot } from './acoustics/console.js';
 import { paletteItems } from './acoustics/materials.js';
 import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
 import { makeMic } from './acoustics/devices.js';
+import { makeWindow } from './acoustics/windows.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
 import { buildMarks, hashOf, MARK_KEYS } from './cad/marks.js';
 import { F_MAX, F_MIN } from './compute/compute.js';
@@ -500,7 +501,9 @@ function pickDrawnRoom() {
   const { h, id, entry, ox, oy, k } = pendingRoom;
   pendingRoom = null;
   const heights = { ...store.state.settings.roomHeights, [loop.layerId]: +h.toFixed(3) };
-  store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90, roomHeights: heights });
+  // its glass, if it has any, belongs to the loop just drawn
+  const windows = { ...store.state.settings.windows, [loop.layerId]: (entry.windows ?? []).map(makeWindow) };
+  store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90, roomHeights: heights, windows });
   // furnished, and with its people in it: the console, couch and rack into the CAD as real blocks, the listeners seated
   if (entry.group) {
     const { furniture, seats, door } = furnish(entry);

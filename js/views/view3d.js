@@ -415,6 +415,7 @@ export function createView3d({ canvas, store, engine }) {
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
     }
+    drawMetreStick(ctx, proj, room, B, level);
 
     const mix = state.mics.find((m) => m.mix);
     if (tracing) drawRays(ctx, proj, room, state, mix, w);
@@ -572,6 +573,47 @@ export function createView3d({ canvas, store, engine }) {
   );
 
   return { render };
+}
+
+/**
+ * The metre stick, as XYZ: three 1 m arms from the floor corner nearest the
+ * eye (the cut-away leaves it open), X and Y along the drawing's own axes
+ * turned into the room, Z straight up, each banded every 10 cm like a
+ * surveyor's rod so the room's size reads at a glance from any orbit.
+ */
+const STICK_AXES = [
+  { key: 'X', dir: { x: 1, y: 0, z: 0 }, rgb: [239, 68, 68] },
+  { key: 'Y', dir: { x: 0, y: 1, z: 0 }, rgb: [34, 197, 94] },
+  { key: 'Z', dir: { x: 0, y: 0, z: 1 }, rgb: [59, 130, 246] },
+];
+function drawMetreStick(ctx, proj, room, B, level) {
+  const corner = room.poly.reduce((a, p) => (Math.hypot(p.x - B.eye.x, p.y - B.eye.y) < Math.hypot(a.x - B.eye.x, a.y - B.eye.y) ? p : a));
+  const o = { x: corner.x, y: corner.y, z: level('floor', corner.x, corner.y) };
+  // a horizontal arm points toward the room's middle, so it lies along the floor, not out of the room
+  const into = { x: Math.sign(B.c.x - o.x) || 1, y: Math.sign(B.c.y - o.y) || 1, z: 1 };
+  const at = (dir, t) => ({ x: o.x + dir.x * into.x * t, y: o.y + dir.y * into.y * t, z: o.z + dir.z * t });
+  const base = proj(o);
+  if (base.depth <= 0.01) return;
+  ctx.font = '10px ui-monospace, monospace';
+  for (const { key, dir, rgb } of STICK_AXES) {
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 10; i++) {
+      const a = proj(at(dir, i / 10));
+      const b = proj(at(dir, (i + 1) / 10));
+      if (a.depth <= 0.01 || b.depth <= 0.01) continue;
+      ctx.strokeStyle = i % 2 ? '#f1f5f9' : css(rgb);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    const tip = proj(at(dir, 1.08));
+    ctx.fillStyle = css(rgb);
+    const sign = dir.z || (dir.x ? into.x : into.y) > 0 ? '' : '−'; // −X when the arm runs against the drawing's axis
+    ctx.fillText(`${sign}${key}`, tip.x - 4, tip.y + 4);
+  }
+  ctx.fillStyle = '#e5e7eb';
+  ctx.fillText('1 m', base.x + 6, base.y + 12);
 }
 
 /** '#rrggbb' → [r, g, b]; grey when it is not one. */
