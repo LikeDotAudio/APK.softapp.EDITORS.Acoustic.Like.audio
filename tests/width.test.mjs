@@ -60,3 +60,17 @@ test('the mixer turning swings the arrangement round it; rising lifts it', async
     assert.ok(Math.abs(((s.aim - b.aim + 360) % 360) - 90) < 0.11);
   }
 });
+
+test('a nose snaps to the front, square-on to a wall, then to 15° steps', async () => {
+  const { noseMarks, snapNose } = await import('../js/acoustics/layouts.js');
+  // a 5 × 7 room with its front-right corner cut at 45°
+  const splay = buildRoom([{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 6 }, { x: 4, y: 7 }, { x: 0, y: 7 }], settings);
+  const marks = noseMarks(splay, 90);
+  assert.ok(marks.some((m) => Math.abs(m.deg - 45) < 1e-6), 'the splay, square-on');
+  assert.equal(marks.filter((m) => Math.abs(m.deg - 90) < 1e-6).length, 1, 'front and front wall are one mark');
+  assert.deepEqual(snapNose(93, marks, 90), { aim: 90, mark: 'the front' });
+  assert.equal(snapNose(49, marks, 90).aim, 45);
+  // nothing near: 15° steps from the front, else the whole degree
+  assert.equal(snapNose(117, marks, 90).aim, 120);
+  assert.deepEqual(snapNose(112.4, marks, 90), { aim: 112, mark: null });
+});

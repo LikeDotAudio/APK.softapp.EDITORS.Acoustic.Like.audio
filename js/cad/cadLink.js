@@ -96,6 +96,8 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     marks: (key, hash, items) => send('marks', { key, hash, items }),
     /** Products onto the sheet as the user's own blocks (the furniture a library room comes with). */
     place: (layer, items) => send('place', { layer, items }),
+    /** Set where placed products sit: [{ id: 'block:<n>', at: [x, y], rotation? }] in CAD units (the console at the mixer's nose). */
+    move: (items) => send('move', { items }),
     arm: (paletteId) => {
       send('arm', { paletteId });
       popup?.focus();

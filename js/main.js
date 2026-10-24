@@ -6,6 +6,7 @@ import { buildRoom } from './acoustics/room.js';
 import { arrayFront, carryArray, LAYOUTS } from './acoustics/layouts.js';
 import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
 import { widthSweep } from './acoustics/widthFinder.js';
+import { consoleOf, consoleSettled, consoleSpot } from './acoustics/console.js';
 import { paletteItems } from './acoustics/materials.js';
 import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
 import { makeMic } from './acoustics/devices.js';
@@ -62,6 +63,7 @@ const engine = createEngine(store, (out, phase) => {
   if (out.error) console.error(out.error);
   renderAll();
   syncMarks();
+  followConsole();
   pickDrawnRoom();
 });
 
@@ -169,6 +171,8 @@ store.subscribe((state, what) => {
   }
   if (what === 'model' || what === 'settings' || what === 'state') engine.update();
   else if (what === 'selection') {
+    // a wall touched on the plan: its form is on the Inspect tab
+    if (state.selected?.kind === 'wall') inspector.showWall(state.selected.id);
     engine.update();
     renderAll();
   } else if (what === 'fit') {
@@ -381,6 +385,24 @@ function syncWidthTicks() {
   const best = fit?.preset === store.state.settings.layout.preset ? fit.best : null;
   const list = document.getElementById('bestWidth');
   if (list) list.replaceChildren(...(best ? [Object.assign(document.createElement('option'), { value: Math.round(best.r * 1000) })] : []));
+}
+
+/**
+ * Keep the console at the mixer's nose (acoustics/console.js): after every
+ * recompute — so while the seat is dragged or turned too — the nearest
+ * console on the sheet is moved square in front of the mix seat, its near
+ * edge the set number of people clear. Nothing is sent once it is there.
+ */
+function followConsole() {
+  const { settings, mics, cad: { geometry } } = store.state;
+  const mix = mics.find((m) => m.mix);
+  if (!cad.link || !geometry || !mix || settings.console?.follow === false) return;
+  const desk = consoleOf(patchesFromCad(geometry), mix);
+  if (!desk) return;
+  const spot = consoleSpot(mix, desk.paletteId, settings.console?.people ?? 2);
+  if (consoleSettled(desk, spot)) return;
+  const k = METRES_PER_UNIT[geometry.units] ?? 1;
+  cad.link.move([{ id: desk.id, at: [+(spot.x / k).toFixed(4), +(spot.y / k).toFixed(4)], rotation: spot.rotation }]);
 }
 
 /** Change the array's centre offset or radius (mm), or its rotation (degrees), carrying the speakers placed in it along. */

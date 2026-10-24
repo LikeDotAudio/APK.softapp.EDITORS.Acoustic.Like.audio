@@ -6,6 +6,7 @@ import { DEG, angleDiff, ensureCCW, isConvex, signedArea, simplifyPolygon } from
 import { measureSection, profileFromLoop } from './elevations.js';
 import { material } from './materials.js';
 import { layPatches } from './patches.js';
+import { openingsOn, wallKey } from './wallChains.js';
 
 /**
  * THE ROOM: A PLAN, EXTRUDED
@@ -35,6 +36,11 @@ import { layPatches } from './patches.js';
  * patches are not unioned: a surface's patched area is simply capped at its
  * own area, scaling every patch on it down alike — good enough for design
  * intent, and it never counts a wall twice.
+ *
+ * A wall can be told what it is (settings.walls, keyed by wallKey): its own
+ * finish instead of its face's, and a note in the user's words. A plan of wall
+ * pieces with gaps (wallChains.js) brings its OPENINGS: each lies on a wall
+ * and is mixed in like a patch of 'opening', α 1 — sound leaves by it.
  */
 
 export const FACES = ['floor', 'ceiling', 'front', 'back', 'left', 'right'];
@@ -59,7 +65,7 @@ export function frontFrame(frontDeg) {
  * `patches`: what is painted on the surfaces, [{ id, paletteId, layer, poly }]
  * in sheet metres (engine.js patchesFromCad).
  */
-export function buildRoom(polyMetres, settings, loops = [], patches = []) {
+export function buildRoom(polyMetres, settings, loops = [], patches = [], openings = []) {
   const poly = ensureCCW(simplifyPolygon(polyMetres));
   const Hbase = settings.roomHeight;
   const { f, r } = frontFrame(settings.frontDeg);
@@ -75,7 +81,11 @@ export function buildRoom(polyMetres, settings, loops = [], patches = []) {
     const nIn = { x: -t.y, y: t.x };
     const outwardDeg = Math.atan2(-nIn.y, -nIn.x) / DEG;
     const face = faceOf(outwardDeg, settings.frontDeg);
-    return { i, a, b, len, t, nIn, face, material: withBuild(material(mats[face]), built.walls) };
+    const key = wallKey({ a, b });
+    const told = settings.walls?.[key] ?? {};
+    const w = { i, a, b, len, t, nIn, face, key, note: told.note ?? '', told: Boolean(told.material), material: withBuild(material(told.material ?? mats[face]), built.walls) };
+    w.openings = openingsOn(w, openings);
+    return w;
   });
 
   const area = signedArea(poly);
@@ -105,7 +115,8 @@ export function buildRoom(polyMetres, settings, loops = [], patches = []) {
   const on = (surface, wall = null) => laid.pieces.filter((p) => p.surface === surface && p.wall === wall);
   const floor = effective(withBuild(material(mats.floor), built.floor), m.floorArea, on('floor'));
   const ceiling = effective(material(mats.ceiling), m.ceilingArea, on('ceiling'));
-  walls.forEach((w) => (w.material = effective(w.material, w.area, on('wall', w.i))));
+  const gaps = (w) => w.openings.map((o) => ({ material: material('opening'), paletteId: 'opening', area: o.width * (w.area / w.len) }));
+  walls.forEach((w) => (w.material = effective(w.material, w.area, [...on('wall', w.i), ...gaps(w)])));
   const surfaces = [
     { key: 'floor', face: 'floor', area: m.floorArea, material: floor },
     { key: 'ceiling', face: 'ceiling', area: m.ceilingArea, material: ceiling },
@@ -142,6 +153,7 @@ export function buildRoom(polyMetres, settings, loops = [], patches = []) {
     profiles: room.profiles,
     sloped: room.profiles.length > 0,
     walls,
+    openings,
     floor,
     ceiling,
     surfaces,

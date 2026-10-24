@@ -122,6 +122,41 @@ export function soundingSpeakers(speakers, settings) {
  */
 export const arrayFront = (settings) => settings.frontDeg + (settings.layout?.rotate ?? 0);
 
+/**
+ * The marks a listener's nose snaps to as it turns: the room's front, and
+ * square-on to every wall (a splayed corner too). They are the room's, so
+ * they stay put while the arrangement swings round with the seat.
+ * [{ deg, name }], world degrees CCW from +x, one per direction.
+ */
+export function noseMarks(room, frontDeg) {
+  const marks = [{ deg: wrap180(frontDeg), name: 'the front' }];
+  for (const w of room?.walls ?? []) {
+    const deg = wrap180(Math.atan2(-w.nIn.y, -w.nIn.x) / DEG);
+    if (!marks.some((m) => Math.abs(angleDiff(m.deg, deg)) < 0.5)) marks.push({ deg, name: `${w.face} wall, square-on` });
+  }
+  return marks;
+}
+
+/**
+ * Snap a nose's bearing: onto a mark within `tol`°, else onto the 15° steps
+ * from the front within `stepTol`°, else to the whole degree. { aim, mark }
+ * where `mark` names what it locked to, null when free.
+ */
+export function snapNose(aim, marks, frontDeg, { tol = 6, step = 15, stepTol = 3 } = {}) {
+  let best = null;
+  for (const m of marks) {
+    const d = Math.abs(angleDiff(aim, m.deg));
+    if (d <= tol && (!best || d < best.d)) best = { d, m };
+  }
+  if (best) return { aim: +best.m.deg.toFixed(1), mark: best.m.name };
+  const off = angleDiff(aim, frontDeg);
+  const stepped = Math.round(off / step) * step;
+  if (Math.abs(off - stepped) <= stepTol) return { aim: +wrap180(frontDeg + stepped).toFixed(1), mark: `${Math.abs(stepped)}° ${stepped > 0 ? 'left' : stepped < 0 ? 'right' : ''} of the front`.replace(/ +of/, ' of') };
+  return { aim: Math.round(wrap180(aim)), mark: null };
+}
+
+const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+
 /** The mains, L C R; every other speaker of an arrangement is a surround or a height. */
 export const isMain = (role) => role === 'L' || role === 'C' || role === 'R';
 

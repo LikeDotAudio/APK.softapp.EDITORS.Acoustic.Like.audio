@@ -3,7 +3,7 @@
 import { BANDS, C } from '../acoustics/bands.js';
 import { criticalDistance } from '../acoustics/analysis.js';
 import { DEG, mirrorPoint, segmentCross } from '../acoustics/geometry.js';
-import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre } from '../acoustics/layouts.js';
+import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, noseMarks, snapNose } from '../acoustics/layouts.js';
 import { fromFrame } from '../acoustics/room.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { boxSize, MIC_PRESETS, isListener } from '../acoustics/devices.js';
@@ -79,6 +79,12 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     const p = toWorld(e.clientX, e.clientY);
     const room = engine.out.room;
     const { mode, placeKind } = store.state;
+    if (mode === 'pick-wall') {
+      // touch a wall: the nearest one within a finger's width, kept picked so the next touch moves on
+      const w = room && nearestWall(room, p, 14 / pxPerMetre());
+      store.select(w ? { kind: 'wall', id: w.key } : null);
+      return;
+    }
     if (mode === 'place-speaker') store.addSpeaker(placeKind.speaker, { x: p.x, y: p.y, z: placeKind.speaker === 'sub' ? 0.3 : 1.2 }, { aim: store.state.settings.frontDeg + 180 });
     else if (mode === 'place-mic') store.addMic(placeKind.mic, { x: p.x, y: p.y, z: room ? +(room.H * 0.4).toFixed(2) : 1.2 }, { aim: store.state.settings.frontDeg });
     if (!e.shiftKey) store.setMode('cad');
@@ -97,7 +103,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         el.className = 'hit';
         el.dataset.id = d.id;
         el.dataset.kind = kind;
-        el.title = kind === 'speaker' ? 'Drag to move · Shift-drag to aim · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)' : 'Drag to move · Shift-drag to turn';
+        el.title = kind === 'speaker' ? 'Drag to move · Shift-drag to aim · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)' : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)';
         el.addEventListener('pointerdown', (e) => startDrag(e, el));
         hits.appendChild(el);
       }
@@ -110,6 +116,8 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
 
   /** The hold-to-orbit drag in progress, for render's read-out: { listener, dist, az, toe, id, partner }. */
   let orbit = null;
+  /** A listener being turned (Shift-drag): { id, mark } — the room mark its nose is locked to, for the read-out. */
+  let turning = null;
   const HOLD_MS = 380;
 
   function startDrag(e, el) {
@@ -152,7 +160,13 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         if (held) applyOrbit(orbit, p, ev.shiftKey);
         else if (ev.shiftKey) {
           const aim = (Math.atan2(p.y - dev.y, p.x - dev.x) * 180) / Math.PI;
-          store.update(kind, id, { aim: Math.round(aim) }, true);
+          if (kind === 'mic') {
+            // a listener's nose snaps to the room's marks (Alt turns it freely)
+            const { settings } = store.state;
+            const snap = ev.altKey ? { aim: Math.round(aim), mark: null } : snapNose(aim, noseMarks(engine.out.room, settings.frontDeg), settings.frontDeg);
+            turning = { id, mark: snap.mark };
+            store.update(kind, id, { aim: snap.aim }, true);
+          } else store.update(kind, id, { aim: Math.round(aim) }, true);
         } else store.update(kind, id, { x: origin.x + p.x - start.x, y: origin.y + p.y - start.y }, true);
         onDrag(true);
       },
@@ -161,6 +175,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         el.removeEventListener('wheel', wheel);
         el.classList.remove('holding');
         orbit = null;
+        turning = null;
         store.commit();
         onDrag(false);
       },
@@ -250,7 +265,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       ctx.stroke();
       ctx.restore();
       const c = toScreen(room.poly[0].x, room.poly[0].y);
-      drawLabel(ctx, c.x + 80, c.y + 14, 'virtual room — draw a closed plan in the CAD', '#7dd3fc');
+      drawLabel(ctx, c.x + 80, c.y + 14, `virtual room — draw the plan's walls in the CAD (a gap up to ${Math.round((settings.maxOpening ?? 4) * 1000)} mm is an opening)`, '#7dd3fc');
     }
 
     // The CAD draws the floor's treatments itself; the selected one is only outlined, so the list and the sheet meet.
@@ -273,6 +288,8 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       ctx.stroke();
       ctx.restore();
     }
+
+    drawWallMarks(ctx, room, state, toScreen);
 
     if (show.guides || show.nulls) drawPlanGuides(ctx, room, show, toScreen);
     if (out.subs?.cells?.length) drawSubMap(ctx, out.subs, toScreen, pxPerMetre());
@@ -340,6 +357,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       }
     }
     if (orbit) drawOrbit(ctx, orbit, toScreen, pxPerMetre());
+    if (turning) drawTurning(ctx, turning, state.mics.find((m) => m.id === turning.id), toScreen, pxPerMetre());
     ctx.restore();
 
     syncHits();
@@ -356,6 +374,63 @@ export function planLabel(settings) {
 }
 
 /** The room as the CAD would show it, for when the CAD is in another window. */
+/** The wall nearest p (metres) within `reach` metres, or null. */
+export function nearestWall(room, p, reach) {
+  let best = null;
+  for (const w of room.walls) {
+    const s = Math.max(0, Math.min(w.len, (p.x - w.a.x) * w.t.x + (p.y - w.a.y) * w.t.y));
+    const d = Math.hypot(p.x - (w.a.x + w.t.x * s), p.y - (w.a.y + w.t.y * s));
+    if (d <= reach && (!best || d < best.d)) best = { w, d };
+  }
+  return best?.w ?? null;
+}
+
+/**
+ * The walls as things to touch: in Walls mode each one outlined and numbered,
+ * the picked one lit with its length and what it was told it is; and always,
+ * every opening — the space to the next piece of wall — with its width.
+ */
+function drawWallMarks(ctx, room, state, toScreen) {
+  const picking = state.mode === 'pick-wall';
+  const picked = state.selected?.kind === 'wall' ? state.selected.id : null;
+  const at = (w, s) => toScreen(w.a.x + w.t.x * s, w.a.y + w.t.y * s);
+  ctx.save();
+  ctx.lineCap = 'round';
+  room.walls.forEach((w, n) => {
+    const on = w.key === picked;
+    if (!on && !picking) return;
+    const a = toScreen(w.a.x, w.a.y);
+    const b = toScreen(w.b.x, w.b.y);
+    ctx.strokeStyle = on ? '#ffffff' : 'rgba(125, 211, 252, .7)';
+    ctx.lineWidth = on ? 5 : 3;
+    ctx.shadowColor = on ? '#fff' : 'transparent';
+    ctx.shadowBlur = on ? 8 : 0;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    const m = at(w, w.len / 2);
+    const text = `${n + 1} · ${w.face.toUpperCase()} · ${Math.round(w.len * 1000)} mm${on && w.note ? ` · ${w.note}` : ''}`;
+    drawLabel(ctx, m.x + w.nIn.x * 16, m.y - w.nIn.y * 16, on ? text : String(n + 1), on ? '#ffffff' : '#7dd3fc', { force: on });
+  });
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#f4902c';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]);
+  for (const w of room.walls) {
+    for (const o of w.openings ?? []) {
+      const a = at(w, o.from);
+      const b = at(w, o.to);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      drawLabel(ctx, (a.x + b.x) / 2 + w.nIn.x * 14, (a.y + b.y) / 2 - w.nIn.y * 14, `opening ${Math.round(o.width * 1000)} mm`, '#f4902c', { force: true });
+    }
+  }
+  ctx.restore();
+}
+
 function drawWalls(ctx, room, toScreen) {
   ctx.save();
   ctx.strokeStyle = '#d4d4d4';
@@ -511,6 +586,18 @@ function drawOrbit(ctx, o, toScreen, ppm) {
   }
   ctx.restore();
   drawLabel(ctx, p.x, p.y - 22, `${o.name} · ${Math.abs(o.az)}° ${o.az > 0 ? 'left' : o.az < 0 ? 'right' : 'centre'} · ${o.dist.toFixed(2)} m · toe ${o.toe > 0 ? '+' : ''}${o.toe}°${o.partner ? ' · partner mirrored' : ''}`, '#22d3ee', { force: true });
+}
+
+/** The turn read-out: the nose's line out across the room, and the mark it is locked to. */
+function drawTurning(ctx, t, m, toScreen, ppm) {
+  if (!m) return;
+  const c = toScreen(m.x, m.y);
+  const b = (m.aim ?? 0) * DEG;
+  const far = toScreen(m.x + 30 * Math.cos(b), m.y + 30 * Math.sin(b));
+  const colour = t.mark ? '#fde047' : '#94a3b8';
+  dashedLine(ctx, c, far, colour, t.mark ? [] : [3, 4], t.mark ? 1.5 : 1);
+  const at = toScreen(m.x + Math.cos(b) * Math.max(0.6, 40 / ppm), m.y + Math.sin(b) * Math.max(0.6, 40 / ppm));
+  drawLabel(ctx, at.x, at.y - 12, `${Math.round(wrap(m.aim ?? 0))}°${t.mark ? ` · ${t.mark}` : ''}`, colour, { force: true });
 }
 
 /** The sub crawl's map: every tried position as a square, green good → red bad, the best five numbered. */

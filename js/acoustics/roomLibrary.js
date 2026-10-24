@@ -18,6 +18,7 @@
  */
 
 import { pointInPolygon } from './geometry.js';
+import { NOSE_M, PERSON_M } from './console.js';
 
 const FT = 0.3048;
 
@@ -174,7 +175,8 @@ export function furnish(room) {
   }
   const mixY = front - 0.38 * L;
   const desk = W < 4 ? { id: 'desk-1800x900', w: 1.8, d: 0.9 } : W < 6.5 ? { id: 'console-2400x1000', w: 2.4, d: 1.0 } : { id: 'console-3200x1200', w: 3.2, d: 1.2 };
-  const deskY = mixY + 0.35 + desk.d / 2;
+  // the console at the mixer's nose, two people clear (console.js)
+  const deskY = mixY + NOSE_M + 2 * PERSON_M + desk.d / 2;
   furniture.push({ paletteId: desk.id, x: cx, y: deskY, rotation: 0 });
   seats.push({ kind: 'mixer', x: cx, y: mixY, z: ear, aim: face, mix: true });
   if (mixY - 1.0 > y0 + 0.5) seats.push({ kind: 'producer', x: cx, y: mixY - 1.0, z: ear + 0.1, aim: face });

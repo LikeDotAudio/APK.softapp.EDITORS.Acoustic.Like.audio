@@ -38,8 +38,14 @@ export const DEFAULT_SETTINGS = {
   symmetric: true,
   layout: { preset: '7.1.4', radius: 2.0, rotate: 0, mains: 'dmt12', surround: 'dmt8' },
   isolation: DEFAULT_ISOLATION,
+  /** What the user has said each wall is, by wallKey: { material?, note? } — its own finish, and what it is in their words. */
+  walls: {},
+  /** The widest gap between wall pieces still read as an opening (a door, a pass-through), metres; wider is a plan not yet closed. */
+  maxOpening: 4,
   /** Speakers are placed relative to the listener: moving the mix seat carries them (subs and flush-mounted boxes stay). */
   followListener: true,
+  /** The console follows the mixer: square in front of their nose, `people` people clear of it. */
+  console: { follow: true, people: 2 },
   /** Ceiling heights of the other plan loops on the sheet (library rooms), by layer id, for their blow-ups. */
   roomHeights: {},
   /** What this app draws into the CAD itself (cad/marks.js): labels, reflection panels, cut-aways, construction sections. */

@@ -126,9 +126,46 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     );
     const parts = [h('h3', {}, 'Devices'), add, list];
     if (selected?.kind === 'patch') parts.push(...patchDetails(selected.id, true));
-    else if (!dev) parts.push(h('p', { class: 'hint' }, 'Pick ＋ Speaker or ＋ Mic, then click on the plan. Drag to move, Shift-drag to aim; drag in an elevation to set height. Click a treatment in an elevation to see what it is.'));
+    else if (selected?.kind === 'wall') parts.push(...wallForm(selected.id));
+    else if (!dev) parts.push(h('p', { class: 'hint' }, 'Pick ＋ Speaker or ＋ Mic, then click on the plan. Drag to move, Shift-drag to aim; drag in an elevation to set height. Click a treatment in an elevation to see what it is. ▭ Walls, then touch a wall, to say what it is.'));
     else parts.push(...(selected.kind === 'speaker' ? speakerForm(dev) : micForm(dev)));
     return parts;
+  }
+
+  /**
+   * A wall touched on the plan: where it is, how big, the openings in it and
+   * what the user says it is — a finish of its own instead of its face's, and
+   * a note in their words, both kept under its wallKey in settings.walls.
+   */
+  function wallForm(key) {
+    const room = engine.out.room;
+    const n = room?.walls.findIndex((w) => w.key === key) ?? -1;
+    if (n < 0) return [h('p', { class: 'hint' }, 'That wall is not in the plan any more.')];
+    const w = room.walls[n];
+    const told = S().settings.walls?.[key] ?? {};
+    const tell = (patch) => {
+      const next = { ...told, ...patch };
+      for (const k of Object.keys(next)) if (next[k] === '' || next[k] == null) delete next[k];
+      const walls = { ...S().settings.walls };
+      if (Object.keys(next).length) walls[key] = next;
+      else delete walls[key];
+      set({ walls });
+    };
+    const faceMat = S().settings.faceMaterials[w.face];
+    const count = room.walls.length;
+    const pick = (i) => store.select({ kind: 'wall', id: room.walls[(i + count) % count].key });
+    const opening = (o) => `${Math.round(o.width * 1000)} mm wide, ${Math.round(o.from * 1000)}–${Math.round(o.to * 1000)} mm along`;
+    return [
+      h('h3', {}, `Wall ${n + 1} · ${surfaceLabel(room, `wall:${n}`)}`),
+      h('p', { class: 'stat' }, `${Math.round(w.len * 1000)} mm long · ${Math.round((w.area / w.len) * 1000)} mm high · ${fmt(w.area, 1)} m²`),
+      row('What it is', select(told.material ?? faceMat, MATERIAL_OPTIONS, (v) => tell({ material: v === faceMat ? '' : v }))),
+      told.material ? h('p', { class: 'hint' }, `Its own finish; the rest of the ${w.face} face is ${lookup(faceMat)?.name ?? faceMat}.`) : h('p', { class: 'hint' }, `The ${w.face} face's finish — pick another to make this wall its own.`),
+      row('In your words', text(told.note ?? '', (v) => tell({ note: v.trim() }))),
+      ...(w.openings.length
+        ? [h('h4', {}, 'Openings — the space to the next piece of wall'), h('ul', {}, ...w.openings.map((o) => h('li', {}, opening(o))))]
+        : []),
+      h('div', { class: 'actions' }, button('◀ Previous wall', () => pick(n - 1)), button('Next wall ▶', () => pick(n + 1))),
+    ];
   }
 
   // Power drive is the datasheet's way — sensitivity × watts, held at max SPL;
@@ -313,6 +350,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       ...(drawn.size ? [h('p', { class: 'hint' }, `Shaped by the ${[...drawn].join(', ')} elevation${drawn.size > 1 ? 's' : ''}: the ceiling height below is used only where no elevation reaches.`)] : []),
       row('Ceiling height', num(settings.roomHeight, (v) => set({ roomHeight: v }), { unit: 'm', min: 1.5, step: 0.05 })),
       row('Front faces', select(settings.frontDeg, [{ value: 90, label: 'Up the sheet (+Y)' }, { value: 270, label: 'Down (−Y)' }, { value: 0, label: 'Right (+X)' }, { value: 180, label: 'Left (−X)' }], (v) => set({ frontDeg: +v }))),
+      row('Widest opening', num((settings.maxOpening ?? 4) * 1000, (v) => set({ maxOpening: Math.max(0.1, v / 1000) }), { unit: 'mm — wider gaps between wall pieces leave the plan open', min: 100, step: 100 })),
       h('h4', {}, 'Base materials'),
       ...['floor', 'ceiling', 'front', 'back', 'left', 'right'].map((f) => row(f[0].toUpperCase() + f.slice(1), select(settings.faceMaterials[f], MATERIAL_OPTIONS, (v) => store.setFaceMaterial(f, v)))),
     );
@@ -359,7 +397,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
           const pct = sf.area > 0 ? (100 * (m.patched ?? 0)) / sf.area : 0;
           return h(
             'tr',
-            { class: m.patched > 0 ? 'treated' : '' },
+            { class: m.patched > 0 ? 'treated' : '', ...(sf.key.startsWith('wall:') ? { onclick: () => showWall(room.walls[+sf.key.slice(5)]?.key), title: 'Show this wall' } : {}) },
             h('td', { title: base?.name ?? m.name }, surfaceLabel(room, sf.key), h('div', { class: 'sub' }, shortName(base?.name ?? m.name, 17))),
             h('td', {}, fmt(sf.area, 1)),
             h('td', {}, m.patched > 0 ? [`${fmt(pct, 0)} %`, h('div', { class: 'sub' }, `${fmt(m.patched, 1)} m²`)] : '—'),
@@ -528,6 +566,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       h('p', { class: 'stat' }, mirror ? `Virtual Mirror ${mirror.enabled ? 'ON' : 'off'} at x = ${fmt(mirror.xMetres)} m${mirror.axes?.length > 1 ? ` (${mirror.axes.length} axes)` : ''}` : 'CAD has not reported a mirror yet.'),
       row('Place in mirrored pairs', check(settings.symmetric, (v) => set({ symmetric: v }))),
       row('Speakers follow the mixer', check(settings.followListener, (v) => set({ followListener: v }))),
+      row('Console at the mixer’s nose', check(settings.console?.follow !== false, (v) => set({ console: { ...settings.console, follow: v } })), num(settings.console?.people ?? 2, (v) => set({ console: { ...settings.console, people: Math.max(0, v) } }), { step: 0.5, min: 0, unit: 'people clear' })),
       h(
         'div',
         { class: 'actions' },
@@ -838,6 +877,14 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     ];
   }
 
+  /** A wall picked anywhere: selected and shown on the Inspect tab. */
+  function showWall(key) {
+    if (!key) return;
+    tab = 'Inspect';
+    if (S().selected?.kind === 'wall' && S().selected.id === key) render();
+    else store.select({ kind: 'wall', id: key });
+  }
+
   const PANES = { Inspect: inspectPane, Room: roomPane, Build: buildPane, Treatments: treatmentsPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Subs: subsPane, Advisor: advisorPane, File: filePane };
 
   return {
@@ -847,6 +894,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       tab = t;
       render();
     },
+    showWall,
     /** A treatment clicked in a view: selected, and shown where its details are — unless the Treatments list already is. */
     showPatch: (id) => {
       if (tab !== 'Treatments') tab = 'Inspect';

@@ -4,6 +4,7 @@ import { advise } from '../acoustics/advisor.js';
 import { arrayFront, layoutCentre, layoutCheck, soundingSpeakers } from '../acoustics/layouts.js';
 import { ELEVATION_FACES, elevationFaceOf } from '../acoustics/elevations.js';
 import { buildRoom } from '../acoustics/room.js';
+import { planFromWalls } from '../acoustics/wallChains.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { buildGrids } from './grids.js';
 import { F_MAX, F_MIN, runJob } from './compute.js';
@@ -35,6 +36,32 @@ export function roomsFromCad(geometry) {
   return loopsFromCad(geometry).filter((r) => !r.face);
 }
 
+/**
+ * A plan drawn as wall pieces that never close — a doorway left open: on each
+ * plan layer the pieces joined across their gaps (wallChains.js), the largest
+ * room that makes. { layerId, poly, openings } or null.
+ */
+export function openPlanFromCad(geometry, maxGap) {
+  if (!Array.isArray(geometry?.walls)) return null;
+  const k = METRES_PER_UNIT[geometry.units] ?? 1;
+  const names = new Map((geometry.layers ?? []).map((l) => [l.id, l.name]));
+  const byLayer = new Map();
+  for (const w of geometry.walls) {
+    const name = names.get(w.layerId) ?? w.layerId;
+    if (elevationFaceOf(name) || String(name).trim().toLowerCase() === 'ceiling') continue;
+    if (!byLayer.has(w.layerId)) byLayer.set(w.layerId, []);
+    byLayer.get(w.layerId).push({ a: { x: w.a[0] * k, y: w.a[1] * k }, b: { x: w.b[0] * k, y: w.b[1] * k } });
+  }
+  let best = null;
+  for (const [layerId, segs] of byLayer) {
+    const plan = planFromWalls(segs, maxGap);
+    if (!plan) continue;
+    const area = Math.abs(plan.poly.reduce((s, p, i) => { const q = plan.poly[(i + 1) % plan.poly.length]; return s + p.x * q.y - q.x * p.y; }, 0) / 2);
+    if (area > 1 && (!best || area > best.area)) best = { layerId, area, ...plan };
+  }
+  return best;
+}
+
 /** The largest loop on each elevation layer: [{ face, poly }]. */
 export function elevationsFromCad(geometry) {
   const loops = loopsFromCad(geometry);
@@ -53,7 +80,14 @@ export function patchesFromCad(geometry) {
   const names = new Map((geometry.layers ?? []).map((l) => [l.id, l.name]));
   return geometry.patches
     .filter((p) => p && Array.isArray(p.points) && p.points.length >= 3)
-    .map((p) => ({ id: String(p.id), paletteId: p.paletteId, layer: names.get(p.layerId) ?? p.layerId, poly: p.points.map(([x, y]) => ({ x: x * k, y: y * k })) }));
+    .map((p) => ({
+      id: String(p.id),
+      paletteId: p.paletteId,
+      layer: names.get(p.layerId) ?? p.layerId,
+      poly: p.points.map(([x, y]) => ({ x: x * k, y: y * k })),
+      // a placed product's centre and turn, for the furniture this app keeps in place (the console)
+      ...(Array.isArray(p.at) ? { at: { x: p.at[0] * k, y: p.at[1] * k }, rotation: p.rotation ?? 0 } : {}),
+    }));
 }
 
 export function createEngine(store, onResult) {
@@ -74,18 +108,25 @@ export function createEngine(store, onResult) {
     const rooms = roomsFromCad(cad.geometry);
     out.rooms = rooms;
     let poly;
+    let openings = [];
     const picked = rooms.find((r) => r.id === settings.roomId) ?? rooms[0];
+    // no closed loop: the wall pieces, closed across their gaps — each gap an opening
+    const open = picked ? null : openPlanFromCad(cad.geometry, settings.maxOpening);
     if (picked) {
       poly = picked.poly;
+      out.virtual = false;
+    } else if (open) {
+      poly = open.poly;
+      openings = open.openings;
       out.virtual = false;
     } else {
       const { w, l } = settings.virtualRoom;
       poly = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: l }, { x: 0, y: l }];
       out.virtual = true;
     }
-    out.planLayer = picked?.layerId ?? null;
+    out.planLayer = picked?.layerId ?? open?.layerId ?? null;
     out.elevations = elevationsFromCad(cad.geometry);
-    return buildRoom(poly, settings, out.elevations, patchesFromCad(cad.geometry));
+    return buildRoom(poly, settings, out.elevations, patchesFromCad(cad.geometry), openings);
   }
 
   function run(job) {
