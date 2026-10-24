@@ -1,0 +1,66 @@
+name: Publish to acoustics.cad.like.audio
+
+# Publishes this page to GitHub Pages, served at the custom domain
+# acoustics.cad.like.audio (Settings → Pages → Custom domain).
+#
+# The CAD iframe is ../EDITORS.CAD.Like.audio/dist/index.html and the host
+# bridge only talks to its own origin, so the CAD cannot come from
+# cad.like.audio: its tracked dist/ is copied in beside this page, at the path
+# the iframe already names. The nightly run picks up CAD changes on their own.
+#
+# DNS: acoustics.cad.like.audio is a CNAME to likedotaudio.github.io.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Assemble
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚚 Get latest code
+        uses: actions/checkout@v4
+        with:
+          path: acoustic
+
+      - name: 🚚 Get the CAD
+        uses: actions/checkout@v4
+        with:
+          repository: LikeDotAudio/APK.softapp.EDITORS.CAD.Like.audio
+          path: cad
+
+      - name: 🧩 Lay out the site
+        run: |
+          mkdir -p _site/EDITORS.CAD.Like.audio
+          cp -r acoustic/index.html acoustic/css acoustic/js acoustic/LICENSE _site/
+          cp -r cad/dist _site/EDITORS.CAD.Like.audio/dist
+
+      - name: 📂 Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site/
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 🚀 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
