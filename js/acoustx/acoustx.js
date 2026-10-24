@@ -35,6 +35,7 @@ import {
   traceRays,
 } from './classic.js';
 import { DEFAULT_USER, VIEWS, boxPath, drawBox, fit, nudgeUser, project } from './roomView.js';
+import { renderMarkdown } from './markdown.js';
 
 /**
  * ACOUSTIC X (CLASSIC)
@@ -360,7 +361,10 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     for (const w of Object.values(wins)) if (!w.el.hidden) w.refresh();
   }
 
+  /** The window in front: what the tool bar, the Display menu and F1 act on. */
+  let frontWin = null;
   function front(win) {
+    frontWin = win;
     win.el.style.zIndex = String(++zTop);
     for (const w of Object.values(wins)) w.el.classList.toggle('front', w === win);
     // the Fast Guide follows the module in front
@@ -374,6 +378,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     const k = Object.keys(wins).length;
     const el = h('div', { class: 'acx-win', hidden: true, style: `left:${40 + 28 * k}px;top:${56 + 24 * k}px;width:${size.w}px;height:${size.h}px` });
     const win = { name, el, syncers: [], status: null, progress: null, refresh: null, render: () => {}, compute: () => {} };
+    const helpB = h('button', { title: 'Help on this window (F1)', onclick: () => openHelp(HELP_FOR[name]) }, '?');
     const minB = h('button', { title: 'Minimise', onclick: () => el.classList.toggle('min') }, '_');
     const maxB = h('button', { title: 'Maximise', onclick: () => toggleMax() }, '□');
     const xB = h('button', { class: 'x', title: 'Close', onclick: () => close(name) }, '×');
@@ -398,7 +403,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     });
     ico.addEventListener('dblclick', (e) => (e.stopPropagation(), close(name)));
     document.addEventListener('pointerdown', (e) => !sys.contains(e.target) && e.target !== ico && !ico.contains(e.target) && (sys.hidden = true));
-    const bar = h('div', { class: 'acx-title', ondblclick: () => toggleMax() }, ico, h('span', { class: 'txt' }, title), minB, maxB, xB, sys);
+    const bar = h('div', { class: 'acx-title', ondblclick: () => toggleMax() }, ico, h('span', { class: 'txt' }, title), helpB, minB, maxB, xB, sys);
     function toggleMax() {
       el.classList.remove('min');
       el.classList.toggle('max');
@@ -2427,6 +2432,262 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     win.refresh = () => {};
   });
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // HELP — the documentation, Documentation/acoustic-x and /acoustics
+  // ═════════════════════════════════════════════════════════════════════════
+  const DOC_BASE = new URL('../../Documentation/', import.meta.url);
+  const HELP_FOR = {
+    start: 'acoustic-x/01-using-acoustic-x.md',
+    guide: 'acoustic-x/01-using-acoustic-x.md',
+    reports: 'acoustic-x/01-using-acoustic-x.md#start-screen-fast-guide-reports',
+    general: 'acoustic-x/02-general-parameters.md',
+    modal: 'acoustic-x/03-modal-response.md',
+    sbir: 'acoustic-x/04-sbir.md',
+    rays: 'acoustic-x/05-ray-tracing.md',
+    reverb: 'acoustic-x/06-reverb-time.md',
+    calc: 'acoustic-x/07-calculator.md',
+  };
+  const HELP_TOC = [
+    ['acoustic-x/README.md', 'Contents'],
+    ['acoustic-x/01-using-acoustic-x.md', '1 · Using Acoustic X'],
+    ['acoustic-x/02-general-parameters.md', '2 · General parameters'],
+    ['acoustic-x/03-modal-response.md', '3 · Modal Response'],
+    ['acoustic-x/04-sbir.md', '4 · Speaker Boundary Interference'],
+    ['acoustic-x/05-ray-tracing.md', '5 · Ray Tracing'],
+    ['acoustic-x/06-reverb-time.md', '6 · Reverb Time'],
+    ['acoustic-x/07-calculator.md', '7 · Calculator'],
+    ['acoustics/README.md', 'The acoustics engine — all of its math'],
+  ];
+  /** KaTeX, fetched the first time Help shows math; null if it cannot be had (the math then reads as TeX). */
+  let katexP = null;
+  function loadKatex() {
+    katexP ??= new Promise((res) => {
+      const css = h('link', { rel: 'stylesheet', href: 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css' });
+      const js = h('script', { src: 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js' });
+      js.onload = () => res(window.katex ?? null);
+      js.onerror = () => res(null);
+      document.head.append(css, js);
+    });
+    return katexP;
+  }
+  let helpAt = 'acoustic-x/README.md';
+  const helpBack = [];
+  makeWindow('help', 'Acoustic X Help', { w: 860, h: 600, foot: false }, (win) => {
+    const tocEls = HELP_TOC.map(([path, label]) => {
+      const it = h('div', { class: 'item', onclick: () => showHelp(path) }, label);
+      it.dataset.path = path;
+      return it;
+    });
+    const page = h('div', { class: 'help-page' });
+    const backB = h('button', { title: 'Back', onclick: () => helpBack.length && showHelp(helpBack.pop(), false) }, '◄ Back');
+    const where = h('span', { class: 'small muted' });
+    win.el.append(h('div', { class: 'acx-body' }, h('div', { class: 'help-toc scroll' }, tocEls), h('div', { class: 'acx-right' }, h('div', { class: 'btns', style: 'margin:0' }, backB, h('button', { onclick: () => showHelp('acoustic-x/README.md') }, 'Contents'), where), h('div', { class: 'scroll help-scroll' }, page))));
+    page.addEventListener('click', (e) => {
+      const a = e.target.closest('a[data-href]');
+      if (!a) return;
+      e.preventDefault();
+      const href = a.dataset.href;
+      if (href.startsWith('#')) return page.querySelector(`[id="${CSS.escape(href.slice(1))}"]`)?.scrollIntoView();
+      const url = new URL(href, new URL(helpAt.split('#')[0], DOC_BASE));
+      if (url.href.startsWith(DOC_BASE.href) && /\.md$/.test(url.pathname)) showHelp(url.href.slice(DOC_BASE.href.length));
+      else window.open(url.href, '_blank', 'noopener');
+    });
+    async function showHelp(path, remember = true) {
+      const [file, hash] = path.split('#');
+      if (remember && helpAt !== path) helpBack.push(helpAt);
+      helpAt = path;
+      for (const t of tocEls) t.classList.toggle('on', t.dataset.path === file);
+      where.textContent = `Documentation/${file}`;
+      backB.disabled = !helpBack.length;
+      let md;
+      try {
+        const r = await fetch(new URL(file, DOC_BASE));
+        if (!r.ok) throw new Error(`${r.status}`);
+        md = await r.text();
+      } catch (err) {
+        page.replaceChildren(h('p', { class: 'warn' }, `This help page could not be loaded (${err.message}). The chapters are in the repository under Documentation/${file}.`));
+        return;
+      }
+      page.innerHTML = renderMarkdown(md);
+      page.parentElement.scrollTop = 0;
+      if (hash) page.querySelector(`[id="${CSS.escape(hash)}"]`)?.scrollIntoView();
+      const math = page.querySelectorAll('.math');
+      if (!math.length) return;
+      const katex = await loadKatex();
+      if (!katex) return page.classList.add('tex');
+      for (const el of math) {
+        try {
+          katex.render(el.dataset.tex, el, { displayMode: el.classList.contains('display'), throwOnError: false });
+        } catch {
+          /* leave it as TeX */
+        }
+      }
+    }
+    win.showHelp = showHelp;
+    win.refresh = () => {};
+  });
+  /** Open Help at a chapter (or where it was). */
+  function openHelp(path) {
+    open('help');
+    wins.help.showHelp(path ?? helpAt, Boolean(path));
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'F1') return;
+    const anyOpen = Object.values(wins).some((w) => !w.el.hidden) || !frame.hidden;
+    if (!anyOpen) return;
+    e.preventDefault();
+    openHelp(HELP_FOR[frontWin?.name]);
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // THE LEGACY LAYOUT — one program window, as the 1997 program was
+  // ═════════════════════════════════════════════════════════════════════════
+  /**
+   * Its menu bar (File, Edit, View, Run, Display, Module, Window, Help), its
+   * tool bar (file, Run, the view group, the module group, calculator, Fast
+   * Guide, help) and its status bar (what the mouse is over, the time and
+   * date), with the module windows inside it. The tool bar's Room, Chart
+   * and Data act on the window in front, so the windows lose their own
+   * view strips. Off, the windows float over the app as before.
+   */
+  const LEGACY_KEY = 'acx.legacy';
+  let legacy = false;
+  try {
+    legacy = localStorage.getItem(LEGACY_KEY) === '1';
+  } catch {
+    /* no storage: the floating layout */
+  }
+  const client = h('div', { class: 'acx-client' });
+  const hint = h('div', { class: 'acx-status' }, 'Ready');
+  const clock = h('div', { class: 'acx-status clock' });
+  const tick = () => (clock.textContent = new Date().toLocaleString([], { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }));
+  tick();
+  setInterval(tick, 30000);
+  const paneFront = (k) => frontWin?.showPane?.(k);
+  const runFront = () => frontWin && wins[frontWin.name] === frontWin && frontWin.el.querySelector('.start') && start(frontWin);
+  const visibleWins = () => Object.values(wins).filter((w) => !w.el.hidden);
+  function arrange(kind) {
+    const ws = visibleWins();
+    const W = client.clientWidth;
+    const H = client.clientHeight;
+    ws.forEach((w, i) => {
+      w.el.classList.remove('max', 'min');
+      const st = w.el.style;
+      if (kind === 'cascade') Object.assign(st, { left: `${12 + 24 * i}px`, top: `${12 + 24 * i}px`, width: `${Math.min(860, W - 40)}px`, height: `${Math.min(600, H - 40)}px` });
+      else {
+        const n = ws.length;
+        const across = kind === 'vertical';
+        const size = (across ? W : H) / n;
+        Object.assign(st, across ? { left: `${i * size}px`, top: '0px', width: `${size}px`, height: `${H}px` } : { left: '0px', top: `${i * size}px`, width: `${W}px`, height: `${size}px` });
+      }
+      requestAnimationFrame(() => w.render());
+    });
+  }
+  const toolbar = h('div', { class: 'acx-toolbar' });
+  const statusbar = h('div', { class: 'acx-statusbar' }, hint, clock);
+  const TOOLS = [
+    ['↻', 'New — every window back to the room being designed', () => (pullFromRoom(), refreshAll())],
+    ['🖶', 'Print Report… — the Report Print Manager', () => open('reports')],
+    null,
+    ['▶ Run', 'Run — start the calculation in the window in front', runFront],
+    null,
+    ['Room', 'Room View — the window in front', () => paneFront('room')],
+    ['Chart', 'Chart View — the window in front', () => paneFront('chart')],
+    ['Data', 'Data View — the window in front', () => paneFront('data')],
+    null,
+    ['⌂', 'Start Screen', () => open('start')],
+    ['Modal', 'Modal Response', () => open('modal')],
+    ['SBIR', 'Speaker Boundary Interference Response', () => open('sbir')],
+    ['Ray', 'Ray Tracing', () => open('rays')],
+    ['RT60', 'Reverb Time', () => open('reverb')],
+    null,
+    ['Calc', 'Acoustic X Calculator', () => open('calc')],
+    ['Guide', 'Fast Guide', () => open('guide')],
+    ['?', 'Help on the window in front (F1)', () => openHelp(HELP_FOR[frontWin?.name])],
+  ];
+  toolbar.append(...TOOLS.map((t) => (t ? h('button', { title: t[1], onclick: t[2] }, t[0]) : h('span', { class: 'tsep' }))));
+  const MENUS = [
+    ['File', [['New — from the room', () => (pullFromRoom(), refreshAll())], ['Print Report…', () => open('reports')], null, ['Close Acoustic X', () => closeFrame()]]],
+    ['Edit', [['General Parameters…', () => open('general')]]],
+    ['View', [['Toolbar', () => (toolbar.hidden = !toolbar.hidden), () => !toolbar.hidden], ['Status Bar', () => (statusbar.hidden = !statusbar.hidden), () => !statusbar.hidden]]],
+    ['Run', [['Start', runFront]]],
+    ['Display', [['Room View', () => paneFront('room')], ['Chart View', () => paneFront('chart')], ['Data View', () => paneFront('data')]]],
+    ['Module', [['Main (Start Screen)', () => open('start')], ...MODULES.map(([n, l]) => [l, () => open(n)]), ['Calculator', () => open('calc')]]],
+    ['Window', [['Cascade', () => arrange('cascade')], ['Tile Horizontal', () => arrange('horizontal')], ['Tile Vertical', () => arrange('vertical')], null, ['Floating windows (leave this layout)', () => setLegacy(false)]]],
+    ['Help', [['Contents\tF1', () => openHelp('acoustic-x/README.md')], ['Help on this window', () => openHelp(HELP_FOR[frontWin?.name])], ['Fast Guide', () => open('guide')], null, ['About Acoustic X…', () => open('about')]]],
+  ];
+  let openMenu = null;
+  const menubar = h('div', { class: 'acx-menubar' });
+  for (const [label, items] of MENUS) {
+    const drop = h('div', { class: 'acx-menu', hidden: true });
+    const fill = () =>
+      drop.replaceChildren(
+        ...items.map((it) => {
+          if (!it) return h('div', { class: 'sep' });
+          const [l, act, checked] = it;
+          const [text, key] = l.split('\t');
+          return h('div', { class: 'item', onclick: (e) => (e.stopPropagation(), shut(), act()) }, h('span', { class: 'chk' }, checked?.() ? '✓' : ''), text, key ? h('span', { class: 'key' }, key) : null);
+        }),
+      );
+    const mi = h('div', { class: 'mi' }, label, drop);
+    const show = () => {
+      shut();
+      fill();
+      drop.hidden = false;
+      mi.classList.add('on');
+      openMenu = mi;
+    };
+    mi.addEventListener('click', (e) => (e.stopPropagation(), openMenu === mi ? shut() : show()));
+    mi.addEventListener('mouseenter', () => openMenu && openMenu !== mi && show());
+    menubar.append(mi);
+  }
+  function shut() {
+    for (const m of menubar.children) {
+      m.classList.remove('on');
+      m.querySelector('.acx-menu').hidden = true;
+    }
+    openMenu = null;
+  }
+  document.addEventListener('pointerdown', (e) => !menubar.contains(e.target) && shut());
+  const frameTitle = h('span', { class: 'txt' }, 'Acoustic X');
+  const frame = h(
+    'div',
+    { class: 'acx acx-frame', hidden: true },
+    h('div', { class: 'acx-title' }, icon(), frameTitle, h('button', { title: 'Help (F1)', onclick: () => openHelp() }, '?'), h('button', { class: 'x', title: 'Close Acoustic X', onclick: () => closeFrame() }, '×')),
+    menubar,
+    toolbar,
+    client,
+    statusbar,
+  );
+  // the status bar says what the mouse is over, as the original's did
+  frame.addEventListener('mouseover', (e) => {
+    const t = e.target.closest?.('[title]')?.getAttribute('title');
+    hint.textContent = t || 'Ready';
+  });
+  document.body.append(frame);
+  function setLegacy(on) {
+    legacy = on;
+    try {
+      localStorage.setItem(LEGACY_KEY, on ? '1' : '0');
+    } catch {
+      /* remembered for this visit only */
+    }
+    if (on) {
+      client.append(desk);
+      frame.hidden = false;
+      if (!visibleWins().length) open('start');
+    } else {
+      document.body.append(desk);
+      frame.hidden = true;
+    }
+    for (const w of visibleWins()) requestAnimationFrame(() => w.render());
+  }
+  function closeFrame() {
+    for (const w of Object.values(wins)) w.el.hidden = true;
+    frame.hidden = true;
+  }
+  const syncFrameTitle = () => (frameTitle.textContent = `Acoustic X${M.project.description ? ` — ${M.project.description}` : ''}`);
+
   // ── the launcher ──
   const MENU = [
     ['start', 'Start Screen'],
@@ -2436,9 +2697,11 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     ['general', 'General Parameters…'],
     ['guide', 'Fast Guide'],
     ['reports', 'Report Print Manager…'],
+    ['help', 'Help…   F1'],
   ];
-  const menu = h('div', { class: 'acx-menu', hidden: true }, h('div', { class: 'note small' }, ACX_LABEL), h('div', { class: 'sep' }), MENU.map((m) => (m ? h('div', { class: 'item', onclick: () => (open(m[0]), (menu.hidden = true)) }, m[1]) : h('div', { class: 'sep' }))), h('div', { class: 'sep' }), h('div', { class: 'item', onclick: () => (open('about'), (menu.hidden = true)) }, 'About…'));
-  const launchB = h('button', { title: ACX_LABEL, onclick: (e) => (e.stopPropagation(), (menu.hidden = !menu.hidden)) }, 'Acoustic X ▾');
+  const legacyItem = h('div', { class: 'item', title: 'One program window with its menu bar, tool bar and status bar, the modules inside it — as the 1997 program looked', onclick: () => ((menu.hidden = true), setLegacy(!legacy)) });
+  const menu = h('div', { class: 'acx-menu', hidden: true }, h('div', { class: 'note small' }, ACX_LABEL), h('div', { class: 'sep' }), MENU.map((m) => (m ? h('div', { class: 'item', onclick: () => ((menu.hidden = true), m[0] === 'help' ? openHelp() : open(m[0])) }, m[1]) : h('div', { class: 'sep' }))), h('div', { class: 'sep' }), legacyItem, h('div', { class: 'item', onclick: () => (open('about'), (menu.hidden = true)) }, 'About…'));
+  const launchB = h('button', { title: ACX_LABEL, onclick: (e) => (e.stopPropagation(), (legacyItem.textContent = `${legacy ? '✓ ' : ''}Legacy layout — one program window`), (menu.hidden = !menu.hidden)) }, 'Acoustic X ▾');
   const launch = h('span', { class: 'acx acx-launch' }, launchB, menu);
   document.addEventListener('pointerdown', (e) => !launch.contains(e.target) && (menu.hidden = true));
   mount?.append(launch);
@@ -2446,6 +2709,8 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
   function open(name) {
     const w = wins[name];
     if (!w) return;
+    if (legacy && frame.hidden) setLegacy(true);
+    syncFrameTitle();
     if (M.linked) pullFromRoom();
     w.el.hidden = false;
     w.el.classList.remove('min');

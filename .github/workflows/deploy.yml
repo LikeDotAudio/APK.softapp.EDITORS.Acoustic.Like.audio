@@ -50,6 +50,8 @@ jobs:
         run: |
           mkdir -p _site
           cp -r acoustic/index.html acoustic/css acoustic/js acoustic/LICENSE _site/
+          # the help file Acoustic X opens (Documentation/acoustic-x and /acoustics)
+          cp -r acoustic/Documentation _site/
           cp -r cad/dist _site/cad
           sed -i 's|src="\.\./EDITORS\.CAD\.Like\.audio/dist/index\.html|src="cad/index.html|' _site/index.html
           grep -q 'src="cad/index.html' _site/index.html

@@ -200,3 +200,51 @@
 .acx .acx-sys { top: 18px; left: 0; min-width: 150px; color: var(--ink); font-weight: normal; }
 .acx .acx-sys .item.off { color: var(--shade); text-shadow: 1px 1px var(--hi); }
 .acx .acx-sys .item.off:hover { background: none; color: var(--shade); }
+
+/* ── Help: contents on the left, the chapter on white ────────────── */
+.acx .help-toc { width: 220px; flex: none; padding: 2px; }
+.acx .help-toc .item { padding: 3px 6px; cursor: default; }
+.acx .help-toc .item:hover { background: var(--lite); }
+.acx .help-toc .item.on { background: var(--navy); color: var(--hi); }
+.acx .help-scroll { flex: 1; min-height: 0; padding: 0; }
+.acx .help-page { padding: 10px 16px 24px; font: 13px/1.5 Arial, Helvetica, sans-serif; color: #000; -webkit-font-smoothing: auto; max-width: 860px; }
+.acx .help-page h1 { font-size: 20px; margin: 4px 0 10px; color: var(--navy); }
+.acx .help-page h2 { font-size: 16px; margin: 18px 0 6px; color: var(--navy); border-bottom: 1px solid var(--shade); }
+.acx .help-page h3 { font-size: 14px; margin: 14px 0 4px; }
+.acx .help-page h4 { font-size: 13px; margin: 10px 0 4px; }
+.acx .help-page p { margin: 6px 0; }
+.acx .help-page ul, .acx .help-page ol { margin: 6px 0 6px 22px; padding: 0; }
+.acx .help-page li { margin: 3px 0; }
+.acx .help-page table { border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.acx .help-page th, .acx .help-page td { border: 1px solid #a0a0a0; padding: 3px 7px; text-align: left; vertical-align: top; }
+.acx .help-page th { background: #e8e8e8; }
+.acx .help-page code { font: 12px/1.3 Consolas, "Courier New", monospace; background: #f0f0f0; padding: 0 3px; }
+.acx .help-page pre { background: #f0f0f0; padding: 6px 8px; overflow: auto; }
+.acx .help-page a { color: #0000c0; }
+.acx .help-page .math.display { display: block; margin: 10px 0; text-align: center; overflow-x: auto; }
+/* KaTeX could not be fetched: the math reads as its TeX */
+.acx .help-page.tex .math { font: 12px Consolas, "Courier New", monospace; color: #303060; white-space: pre-wrap; }
+
+/* ── the legacy layout: one program window ───────────────────────── */
+.acx.acx-frame {
+  position: fixed; inset: 44px 10px 10px 10px; z-index: 1990; display: flex; flex-direction: column; background: var(--face); padding: 3px;
+  box-shadow: inset -1px -1px var(--dark), inset 1px 1px var(--lite), inset -2px -2px var(--shade), inset 2px 2px var(--hi), 2px 2px 10px rgba(0, 0, 0, 0.5);
+}
+.acx.acx-frame[hidden] { display: none; }
+.acx .acx-menubar { display: flex; gap: 0; padding: 1px 2px; flex: none; }
+.acx .acx-menubar .mi { position: relative; padding: 2px 8px; cursor: default; }
+.acx .acx-menubar .mi.on, .acx .acx-menubar .mi:hover { background: var(--navy); color: var(--hi); }
+.acx .acx-menubar .mi > .acx-menu { color: var(--ink); min-width: 220px; }
+.acx .acx-menubar .acx-menu .item { display: flex; gap: 4px; padding-left: 4px; }
+.acx .acx-menubar .acx-menu .chk { width: 16px; }
+.acx .acx-menubar .acx-menu .key { margin-left: auto; padding-left: 20px; }
+.acx .acx-toolbar { display: flex; gap: 2px; align-items: center; padding: 2px; flex: none; border-top: 1px solid var(--hi); border-bottom: 1px solid var(--shade); }
+.acx .acx-toolbar[hidden], .acx .acx-statusbar[hidden] { display: none; }
+.acx .acx-toolbar button { padding: 2px 7px; min-height: 22px; }
+.acx .acx-toolbar .tsep { width: 6px; }
+.acx .acx-client { flex: 1; position: relative; min-height: 0; background: #808080; box-shadow: inset 1px 1px var(--shade), inset -1px -1px var(--hi); overflow: hidden; margin: 2px 0; }
+.acx-frame .acx.acx-desk { position: absolute; inset: 0; z-index: auto; }
+.acx .acx-statusbar { display: flex; gap: 3px; flex: none; }
+.acx .acx-statusbar .clock { flex: none; width: 150px; text-align: right; }
+/* inside the program window the tool bar picks the view */
+.acx-frame .acx .acx-views { display: none; }
