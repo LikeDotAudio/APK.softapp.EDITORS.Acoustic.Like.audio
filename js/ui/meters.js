@@ -25,12 +25,16 @@ const A_WEIGHT = [-16.1, -8.6, -3.2, 0, 1.2, 1.0];
 const GRID = '#263042';
 const TEXT = '#9aa4b2';
 const FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
+/** The current frequency's colour everywhere: the toolbar slider, this chart's line, the scale bar. */
+export const FREQ_COLOUR = '#fde047';
+/** The whole room's curve: every seat, power-averaged. */
+const ROOM_COLOUR = '#a3e635';
 
 export function createMeters({ root, store, engine, onListen }) {
   root.innerHTML = `
     <div class="meter m-spl" data-kind="spl"><h4>SPL <span class="sub spl-mic"></span></h4><canvas></canvas></div>
     <div class="meter m-rta" data-kind="rta"><h4>Octave RTA <span class="sub">direct + diffuse</span></h4><canvas></canvas></div>
-    <div class="meter m-fr wide" data-kind="response"><h4>Frequency response <span class="sub">wave · modal · <b style="color:#38bdf8">nulls</b> · click to tune</span></h4><canvas></canvas></div>
+    <div class="meter m-fr wide" data-kind="response"><h4>Frequency response <span class="sub">mix · room · modal · <b style="color:#38bdf8">nulls</b> · click to set the current frequency</span></h4><canvas></canvas></div>
     <div class="meter m-echo wide" data-kind="echogram"><h4>Echogram <span class="sub">arrivals · tail · Schroeder</span></h4><canvas></canvas></div>
     <div class="meter m-iso" data-kind="iso3382"><h4>ISO 3382 <button class="listen" title="Hear the estimated impulse response at this mic">▶ Listen</button></h4><div class="tiles"></div></div>
     <div class="meter m-rt" data-kind="rt60"><h4>RT60 <span class="sub">Sabine · Eyring · EBU</span></h4><canvas></canvas></div>
@@ -114,7 +118,7 @@ export function meterRows(kind, out, state) {
     if (!r) return [['no response — place a speaker and a mic']];
     const nulls = findNulls(r.freqs, r.wave);
     const inNull = (f) => nulls.find((n) => f >= n.lo && f <= n.hi);
-    return [['Hz', 'wave dB', 'modal dB', 'null'], ...r.freqs.map((f, i) => [f, r.wave[i], r.modal[i], inNull(f) ? `${hz(inNull(f).f)} −${inNull(f).depth.toFixed(1)} dB` : ''])];
+    return [['Hz', 'wave dB', 'room dB', 'modal dB', 'null'], ...r.freqs.map((f, i) => [f, r.wave[i], r.room?.[i] ?? '', r.modal[i], inNull(f) ? `${hz(inNull(f).f)} −${inNull(f).depth.toFixed(1)} dB` : ''])];
   }
   if (kind === 'rt60') {
     const room = out.room;
@@ -227,7 +231,7 @@ function drawResponse(canvas, out, settings, hover = null) {
   const r = out.response;
   if (!r || !out.room) return noData(ctx, w, h);
   const x = (f) => 30 + (Math.log(f / F_MIN) / Math.log(F_MAX / F_MIN)) * (w - 40);
-  const all = [...r.wave, ...r.modal].filter(Number.isFinite);
+  const all = [...r.wave, ...r.modal, ...(r.room ?? [])].filter(Number.isFinite);
   const top = Math.ceil(Math.max(...all) / 6) * 6 + 3;
   const range = 42;
   const y = (db) => 6 + ((top - Math.max(top - range, Math.min(top, db))) / range) * (h - 30);
@@ -299,6 +303,7 @@ function drawResponse(canvas, out, settings, hover = null) {
     }
   }
   trace(r.modal, '#22d3ee', 1.2);
+  if (r.room) trace(r.room, ROOM_COLOUR, 1.6);
   trace(r.wave, '#f43f5e', 1.8);
   // The sweep's frames: a faint tick for each one still to paint, a dot on the curve for each one ready.
   const { ready = [], ladder = [] } = out.frames ?? {};
@@ -314,15 +319,41 @@ function drawResponse(canvas, out, settings, hover = null) {
     ctx.arc(x(f), y(db), 2, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.strokeStyle = '#fde047';
-  ctx.beginPath();
-  ctx.moveTo(x(settings.freq), 6);
-  ctx.lineTo(x(settings.freq), h - 24);
-  ctx.stroke();
-  ctx.fillStyle = '#f43f5e';
-  ctx.fillText('wave', w - 74, 16);
-  ctx.fillStyle = '#22d3ee';
-  ctx.fillText('modal', w - 40, 16);
+  // the current frequency — the toolbar slider's — as a line with its readings on it
+  if (settings.method !== 'energy') {
+    const fx = x(settings.freq);
+    ctx.strokeStyle = FREQ_COLOUR;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(fx, 6);
+    ctx.lineTo(fx, h - 24);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    const at = (vals) => valueAt(r.freqs, vals, settings.freq);
+    const mixDb = at(r.wave);
+    const roomDb = r.room ? at(r.room) : NaN;
+    for (const [db, colour] of [[mixDb, '#f43f5e'], [roomDb, ROOM_COLOUR]]) {
+      if (!Number.isFinite(db)) continue;
+      ctx.fillStyle = colour;
+      ctx.beginPath();
+      ctx.arc(fx, y(db), 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const label = `current ${hz(settings.freq)} Hz${Number.isFinite(mixDb) ? ` · mix ${mixDb.toFixed(1)}` : ''}${Number.isFinite(roomDb) ? ` · room ${roomDb.toFixed(1)}` : ''} dB`;
+    const tw = ctx.measureText(label).width + 8;
+    const lx = Math.max(30, Math.min(w - tw - 2, fx - tw / 2));
+    ctx.fillStyle = 'rgba(11,13,18,.9)';
+    ctx.fillRect(lx, h - 40, tw, 14);
+    ctx.fillStyle = FREQ_COLOUR;
+    ctx.fillText(label, lx + 4, h - 30);
+  }
+  const legend = [['wave', '#f43f5e'], ...(r.room ? [[`room ·${r.seats}`, ROOM_COLOUR]] : []), ['modal', '#22d3ee']];
+  let lx = w - 4;
+  for (const [text, colour] of legend.reverse()) {
+    lx -= ctx.measureText(text).width + 8;
+    ctx.fillStyle = colour;
+    ctx.fillText(text, lx, 16);
+  }
   if (hover && hover >= F_MIN && hover <= F_MAX) {
     // the nearest computed point to the pointer
     let i = 0;
@@ -335,7 +366,7 @@ function drawResponse(canvas, out, settings, hover = null) {
     ctx.lineTo(x(f), h - 24);
     ctx.stroke();
     ctx.setLineDash([]);
-    const label = `${f.toFixed(f < 100 ? 1 : 0)} Hz · wave ${Number.isFinite(r.wave[i]) ? r.wave[i].toFixed(1) : '—'} dB${Number.isFinite(r.modal[i]) ? ` · modal ${r.modal[i].toFixed(1)}` : ''}`;
+    const label = `${f.toFixed(f < 100 ? 1 : 0)} Hz · wave ${Number.isFinite(r.wave[i]) ? r.wave[i].toFixed(1) : '—'} dB${Number.isFinite(r.room?.[i]) ? ` · room ${r.room[i].toFixed(1)}` : ''}${Number.isFinite(r.modal[i]) ? ` · modal ${r.modal[i].toFixed(1)}` : ''}`;
     const tw = ctx.measureText(label).width + 8;
     const lx = Math.min(w - tw - 2, x(f) + 6);
     ctx.fillStyle = 'rgba(11,13,18,.9)';
@@ -346,12 +377,15 @@ function drawResponse(canvas, out, settings, hover = null) {
 }
 
 /** The wave curve at `f`, read off between its computed points on a log axis. */
-function waveAt(r, f) {
-  const i = r.freqs.findIndex((g) => g >= f);
+const waveAt = (r, f) => valueAt(r.freqs, r.wave, f);
+
+/** Any curve at `f`, read off between its computed points on a log axis. */
+function valueAt(freqs, vals, f) {
+  const i = freqs.findIndex((g) => g >= f);
   if (i < 0) return NaN;
-  if (i === 0 || r.freqs[i] === f) return r.wave[i];
-  const t = Math.log(f / r.freqs[i - 1]) / Math.log(r.freqs[i] / r.freqs[i - 1]);
-  return r.wave[i - 1] + t * (r.wave[i] - r.wave[i - 1]);
+  if (i === 0 || freqs[i] === f) return vals[i];
+  const t = Math.log(f / freqs[i - 1]) / Math.log(freqs[i] / freqs[i - 1]);
+  return vals[i - 1] + t * (vals[i] - vals[i - 1]);
 }
 
 /** 63, 1.2k, 17k — short enough for an axis. */

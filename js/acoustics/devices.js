@@ -30,17 +30,38 @@
  * shows its SBIR notch there and a flush one does not.
  */
 
-// Typical datasheet figures for each class of box; the watts are chosen so each
-// starts at the operating level it always had (94, 118, 120, 100 dB at 1 m).
+// The library. First the real boxes, by maker and model — `litres` is the
+// cabinet's internal volume, which sets the size it is drawn (boxSize), and
+// `driver` how it is built; a figure not read off the maker's datasheet is
+// flagged `typical`. Then the generic classes, typical datasheet figures each,
+// the watts chosen so each starts at the operating level it always had (94,
+// 118, 120, 100 dB at 1 m). The first entry is what ＋ Speaker places.
 export const SPEAKER_PRESETS = {
-  monitor: { label: 'Studio monitor', pattern: 'cardioid', hCov: 90, vCov: 60, sensitivity: 87, watts: 5, maxSpl: 112, fLow: 45, fHigh: 22000, omniBelow: 300, lowpass: 0, color: '#5aa9ff' },
-  'horn-90x50': { label: 'Projection 90×50 horn', pattern: 'horn', hCov: 90, vCov: 50, sensitivity: 104, watts: 25, maxSpl: 133, fLow: 60, fHigh: 18000, omniBelow: 500, lowpass: 0, color: '#ffb347' },
-  'horn-60x40': { label: 'Projection 60×40 horn', pattern: 'horn', hCov: 60, vCov: 40, sensitivity: 107, watts: 20, maxSpl: 135, fLow: 65, fHigh: 18000, omniBelow: 600, lowpass: 0, color: '#ff8c42' },
-  sub: { label: 'Subwoofer', pattern: 'omni', hCov: 360, vCov: 360, sensitivity: 100, watts: 1, maxSpl: 128, fLow: 30, fHigh: 0, omniBelow: 0, lowpass: 100, color: '#b388ff' },
+  // Tannoy DMT 12 (discontinued): 12" Dual Concentric — the tweeter fires through the woofer's throat, one point source — in a 44 L cabinet.
+  // Its datasheet is not to hand: coverage, sensitivity, max SPL and range are a Tannoy 12" Dual Concentric's typical figures.
+  dmt12: { label: 'Tannoy DMT 12 · 12" coaxial · 44 L', maker: 'Tannoy', driver: 'coaxial 12"', litres: 44, typical: true, pattern: 'horn', hCov: 90, vCov: 90, sensitivity: 93, watts: 4, maxSpl: 116, fLow: 45, fHigh: 20000, omniBelow: 300, lowpass: 0, color: '#e0b04a' },
+  // Tannoy DMT 8: its 8" Dual Concentric sibling in a 22 L cabinet — the surrounds and heights round a pair of DMT 12s. Typical figures as above.
+  dmt8: { label: 'Tannoy DMT 8 · 8" coaxial · 22 L', maker: 'Tannoy', driver: 'coaxial 8"', litres: 22, typical: true, pattern: 'horn', hCov: 90, vCov: 90, sensitivity: 90, watts: 4, maxSpl: 110, fLow: 55, fHigh: 20000, omniBelow: 400, lowpass: 0, color: '#d4a03c' },
+  monitor: { label: 'Studio monitor', litres: 12, pattern: 'cardioid', hCov: 90, vCov: 60, sensitivity: 87, watts: 5, maxSpl: 112, fLow: 45, fHigh: 22000, omniBelow: 300, lowpass: 0, color: '#5aa9ff' },
+  'horn-90x50': { label: 'Projection 90×50 horn', litres: 45, pattern: 'horn', hCov: 90, vCov: 50, sensitivity: 104, watts: 25, maxSpl: 133, fLow: 60, fHigh: 18000, omniBelow: 500, lowpass: 0, color: '#ffb347' },
+  'horn-60x40': { label: 'Projection 60×40 horn', litres: 35, pattern: 'horn', hCov: 60, vCov: 40, sensitivity: 107, watts: 20, maxSpl: 135, fLow: 65, fHigh: 18000, omniBelow: 600, lowpass: 0, color: '#ff8c42' },
+  sub: { label: 'Subwoofer', litres: 60, pattern: 'omni', hCov: 360, vCov: 360, sensitivity: 100, watts: 1, maxSpl: 128, fLow: 30, fHigh: 0, omniBelow: 0, lowpass: 100, color: '#b388ff' },
 };
 
+/**
+ * A box's outside size from its litres, metres { w, h, d }: a monitor stands
+ * 1.6 tall to 1 wide to 1.2 deep, a sub is near a cube. Litres are inside
+ * volume, so this is the size it is drawn, not a cut list.
+ */
+export function boxSize(spk) {
+  const litres = spk.litres ?? SPEAKER_PRESETS[spk.kind]?.litres ?? 12;
+  const [h, w, d] = spk.kind === 'sub' ? [1, 1.15, 1.1] : [1.6, 1, 1.2];
+  const k = Math.cbrt(litres / 1000 / (h * w * d));
+  return { w: w * k, h: h * k, d: d * k };
+}
+
 /** The fields a preset sets on a speaker — what choosing a preset copies. */
-export const SPEAKER_SPEC = ['pattern', 'hCov', 'vCov', 'sensitivity', 'watts', 'maxSpl', 'fLow', 'fHigh', 'omniBelow', 'lowpass', 'color'];
+export const SPEAKER_SPEC = ['litres', 'driver', 'pattern', 'hCov', 'vCov', 'sensitivity', 'watts', 'maxSpl', 'fLow', 'fHigh', 'omniBelow', 'lowpass', 'color'];
 
 /**
  * Mics are mostly PEOPLE: the listening spots of the room, in tiers. The mixer

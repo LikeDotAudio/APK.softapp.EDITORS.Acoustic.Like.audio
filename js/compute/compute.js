@@ -2,6 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS } from '../acoustics/bands.js';
 import { energyAt, modalDb, prepare, prepareModal, waveDb } from '../acoustics/field.js';
+import { isListener } from '../acoustics/devices.js';
 import { micReport } from '../acoustics/analysis.js';
 import { schroeder } from '../acoustics/room.js';
 import { gridPoints } from './grids.js';
@@ -57,12 +58,35 @@ export function runJob({ room, speakers, mics, settings, grids, monitorId }) {
   const monitor = mics.find((m) => m.id === monitorId);
   if (monitor && speakers.length) {
     const fModalMax = Math.min(MODAL_MAX, Math.max(200, schroeder(room) * 1.5));
+    const seats = roomSeats(mics);
+    const modals = RESPONSE_FREQS.map((f) => (f <= fModalMax ? prepareModal(room, speakers, f) : null));
     response = {
       freqs: RESPONSE_FREQS,
       wave: RESPONSE_FREQS.map((f) => waveDb(prep, monitor, f, monitor)),
-      modal: RESPONSE_FREQS.map((f) => (f <= fModalMax ? modalDb(room, prepareModal(room, speakers, f), monitor) : NaN)),
+      modal: modals.map((m) => (m ? modalDb(room, m, monitor) : NaN)),
       energy: BANDS.map((_, b) => energyAt(room, prep, monitor, b, monitor)),
+      // the whole room: every seat's wave response, power-averaged by tier — one seat alone is not the room
+      room: seats.length > 1 ? RESPONSE_FREQS.map((f) => powerMean(seats.map((m) => waveDb(prep, m, f, m)), seats.map(seatWeight))) : null,
+      seats: seats.length,
     };
   }
   return { values, reports, response };
+}
+
+/** The seats that make up "the room": the listeners, or every mic when none is a listener. */
+export const roomSeats = (mics) => (mics.some(isListener) ? mics.filter(isListener) : mics);
+
+/** How much a seat counts in the room's average: its tier's weight, the mix seat never under 2 (as the sub designer weighs them). */
+export const seatWeight = (m) => Math.max(m.weight ?? 1, m.mix ? 2 : 1);
+
+/** dB levels averaged as power, optionally weighted: two seats at 100 and 80 dB average 97, not 90. */
+export function powerMean(dbs, weights = dbs.map(() => 1)) {
+  let sum = 0;
+  let total = 0;
+  dbs.forEach((d, i) => {
+    if (!Number.isFinite(d)) return;
+    sum += weights[i] * 10 ** (d / 10);
+    total += weights[i];
+  });
+  return total ? 10 * Math.log10(sum / total) : NaN;
 }

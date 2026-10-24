@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildRoom } from '../js/acoustics/room.js';
 import { energyAt, prepare } from '../js/acoustics/field.js';
-import { SPEAKER_PRESETS, makeSpeaker, responseGain, sourceDb, speakerLevel, wattsFor } from '../js/acoustics/devices.js';
+import { SPEAKER_PRESETS, boxSize, makeSpeaker, responseGain, sourceDb, speakerLevel, wattsFor } from '../js/acoustics/devices.js';
 import { advise } from '../js/acoustics/advisor.js';
 
 const settings = { roomHeight: 3, frontDeg: 90, band: 2, faceMaterials: {} };
@@ -19,7 +19,7 @@ test('power drive: sensitivity + 10·log10 W, doubling the watts is +3 dB', () =
 });
 
 test('the presets start at the levels they always had', () => {
-  const want = { monitor: 94, 'horn-90x50': 118, 'horn-60x40': 120, sub: 100 };
+  const want = { dmt12: 99, dmt8: 96, monitor: 94, 'horn-90x50': 118, 'horn-60x40': 120, sub: 100 };
   for (const k of Object.keys(SPEAKER_PRESETS)) near(speakerLevel(makeSpeaker(k, { x: 0, y: 0 })).level, want[k], 0.1);
 });
 
@@ -59,4 +59,14 @@ test('the advisor flags a box driven past its max SPL', () => {
   const loud = makeSpeaker('monitor', { x: 4, y: 1 }, { watts: 400 });
   assert.ok(advise(room, [loud], [], settings, null).some((n) => n.title.endsWith('past max SPL') && n.level === 'warn'));
   assert.ok(!advise(room, [makeSpeaker('monitor', { x: 4, y: 1 })], [], settings, null).some((n) => n.title.endsWith('past max SPL')));
+});
+
+test('a box is drawn at the size its litres make, a 44 L DMT 12 bigger than a 12 L monitor', () => {
+  const dmt = boxSize(makeSpeaker('dmt12', { x: 0, y: 0 }));
+  near(dmt.w * dmt.h * dmt.d * 1000, 44, 1e-6);
+  near(dmt.h / dmt.w, 1.6, 1e-9);
+  const mon = boxSize(makeSpeaker('monitor', { x: 0, y: 0 }));
+  assert.ok(dmt.w > mon.w && dmt.h > mon.h);
+  // a speaker saved before litres takes its preset's
+  near(boxSize({ kind: 'monitor' }).w, mon.w, 1e-9);
 });

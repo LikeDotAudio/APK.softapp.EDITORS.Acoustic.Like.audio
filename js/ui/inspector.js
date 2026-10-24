@@ -4,7 +4,8 @@ import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
 import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
-import { LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
+import { arrayFront, isMain, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
+import { LOW_END } from '../acoustics/widthFinder.js';
 import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
 import { MIC_PATTERNS, SPEAKER_PATTERNS } from '../acoustics/patterns.js';
 import { allModes, fromFrame, inFrame, schroeder } from '../acoustics/room.js';
@@ -62,7 +63,7 @@ const surfaceKey = (piece) => (piece.surface === 'wall' ? `wall:${piece.wall}` :
 /** Which CAD sheet shows a treatment: a wall's elevation, else the plan. */
 const sheetOf = (face) => (['front', 'back', 'left', 'right', 'ceiling'].includes(face) ? face : 'plan');
 
-export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, onSubs = () => {} }) {
+export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, onSubs = () => {}, moveArray = () => {}, findWidth = () => {} }) {
   let tab = 'Inspect';
   let pending = false;
 
@@ -189,6 +190,8 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
         const p = SPEAKER_PRESETS[v];
         up({ kind: v, drive: 'power', ...Object.fromEntries(SPEAKER_SPEC.map((k) => [k, p[k]])) });
       })),
+      row('Cabinet', num(d.litres ?? SPEAKER_PRESETS[d.kind]?.litres ?? 12, (v) => up({ litres: Math.max(0.5, v) }), { step: 1, min: 0.5, unit: `L${d.driver ? ` · ${d.driver}` : ''}` })),
+      SPEAKER_PRESETS[d.kind]?.typical ? h('p', { class: 'hint' }, 'Coverage, sensitivity, max SPL and range are typical figures for this driver, not read off its datasheet — check them against yours.') : '',
       ...relativeRows(d, mix, up),
       h('h4', {}, 'Position'),
       row('X', num(d.x, (v) => up({ x: v }), { unit: 'm' })),
@@ -510,6 +513,16 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const mix = S().mics.find((m) => m.mix);
     const room = out.room;
     const mirror = S().cad.mirror;
+    // the best width found for this arrangement (main.js findWidth), if any
+    const fit = S().widthFit?.preset === settings.layout.preset ? S().widthFit : null;
+    const best = fit?.running ? null : fit?.best;
+    // where the array sits if not on the seat: the toolbar's ↔ ↕ ⇡, said in words
+    const off = settings.layout.offset ?? {};
+    const offAxis = [['right', 'right', 'left'], ['front', 'forward', 'back'], ['up', 'up', 'down']]
+      .filter(([k]) => off[k])
+      .map(([k, plus, minus]) => `${Math.abs(off[k])} mm ${off[k] > 0 ? plus : minus}`)
+      .join(', ');
+    const boxes = Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub').map(([value, p]) => ({ value, label: p.label }));
     const parts = [
       h('h3', {}, 'Symmetry — the CAD mirror'),
       h('p', { class: 'stat' }, mirror ? `Virtual Mirror ${mirror.enabled ? 'ON' : 'off'} at x = ${fmt(mirror.xMetres)} m${mirror.axes?.length > 1 ? ` (${mirror.axes.length} axes)` : ''}` : 'CAD has not reported a mirror yet.'),
@@ -527,8 +540,14 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       ),
       h('h3', {}, 'Immersive layout'),
       row('Preset', select(settings.layout.preset, Object.entries(LAYOUTS).map(([value, l]) => ({ value, label: l.label })), (v) => set({ layout: { ...settings.layout, preset: v } }))),
-      row('Radius', num(settings.layout.radius, (v) => set({ layout: { ...settings.layout, radius: v } }), { unit: 'm', min: 0.8, step: 0.1 })),
-      row('Box', select(S().placeKind.speaker, Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub').map(([value, p]) => ({ value, label: p.label })), (v) => store.setPlaceKind('speaker', v))),
+      // the width carries the placed speakers with it, so they stay round the listener
+      row('Width', widthSlider(settings.layout.radius, best), num(settings.layout.radius, (v) => moveArray('radius', Math.max(0.8, v) * 1000), { unit: 'm radius', min: 0.8, step: 0.1 })),
+      ...widthFitRows(fit, best, settings.layout.radius),
+      offAxis ? row('Centre', h('span', { class: 'stat' }, `${offAxis} off the ${mix?.name || 'mix seat'}`), button('On the listener', () => ['right', 'front', 'up'].forEach((k) => moveArray(k, 0)))) : '',
+      // turning carries the placed speakers round the centre, each still aimed at the listener
+      row('Rotate', slider(settings.layout.rotate ?? 0, -180, 180, 1, (v) => moveArray('rotate', v, true), (v) => moveArray('rotate', v)), num(settings.layout.rotate ?? 0, (v) => moveArray('rotate', v), { unit: '°', step: 1, min: -180, max: 180 })),
+      row('Mains · L C R', select(settings.layout.mains ?? 'dmt12', boxes, (v) => set({ layout: { ...settings.layout, mains: v } }))),
+      row('Surrounds & tops', select(settings.layout.surround ?? 'dmt8', boxes, (v) => set({ layout: { ...settings.layout, surround: v } }))),
       h(
         'div',
         { class: 'actions' },
@@ -561,6 +580,27 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     return parts;
   }
 
+  /** The Width slider: drag spreads the placed speakers live, release commits; the best width is a tick on it. */
+  function widthSlider(r, best) {
+    const input = slider(r, 0.8, 6, 0.05, (v) => moveArray('radius', v * 1000, true), (v) => moveArray('radius', v * 1000));
+    if (!best) return input;
+    const id = 'bestWidthPane';
+    input.setAttribute('list', id);
+    return h('span', { class: 'widthSlider' }, input, h('datalist', { id }, h('option', { value: best.r })));
+  }
+
+  /** The best-width finder's line: run it, watch it, snap to what it found. */
+  function widthFitRows(fit, best, r) {
+    if (fit?.running) return [h('p', { class: 'stat' }, `Finding the best width… ${fit.done} of ${fit.total}`)];
+    const find = button(fit ? '⌖ Find again' : '⌖ Find best width', () => findWidth());
+    if (!best) return [h('div', { class: 'actions' }, find, fit ? h('span', { class: 'hint' }, 'No width fits: every radius tried puts a speaker outside the room.') : '')];
+    const here = fit.tried.reduce((a, t) => (Math.abs(t.r - r) < Math.abs(a.r - r) ? t : a), fit.tried[0]);
+    return [
+      h('p', { class: 'stat' }, `Flattest low end at r ${fmt(best.r)} m: ±${fmt(best.spread, 1)} dB over the room’s seats, ${LOW_END.lo}–${LOW_END.hi} Hz (now ±${fmt(here.spread, 1)} dB at ${fmt(here.r)} m)`),
+      h('div', { class: 'actions' }, Math.abs(best.r - r) > 0.01 ? button(`Snap to ${fmt(best.r)} m`, () => moveArray('radius', best.r * 1000)) : h('span', { class: 'hint' }, 'At the best width.'), find),
+    ];
+  }
+
   /** The toolbar's ⤓: place the current preset around the mix seat. False when there is no mix seat or room. */
   function placeCurrentLayout() {
     const mix = S().mics.find((m) => m.mix);
@@ -571,15 +611,21 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
   }
 
   function placeLayout(mix, room) {
+    // the arrangement faces the way the mixer faces: its Rotate is the mixer's turn off the room's front
+    if (mix.aim != null) {
+      const rotate = ((((mix.aim - S().settings.frontDeg + 180) % 360) + 360) % 360) - 180;
+      if (Math.abs(rotate - (S().settings.layout.rotate ?? 0)) > 0.05) store.setSettings({ layout: { ...S().settings.layout, rotate: +rotate.toFixed(1) } }, true);
+    }
     const { settings } = S();
     const ax = store.axis();
-    const kind = S().placeKind.speaker === 'sub' ? 'monitor' : S().placeKind.speaker;
+    // the mains one box, the surrounds and heights another: DMT 12s at the front, DMT 8s round the rest
+    const box = (role) => (isMain(role) ? settings.layout.mains ?? 'dmt12' : settings.layout.surround ?? 'dmt8');
     const keep = S().speakers.filter((s) => !s.role);
-    const centre = layoutCentre(mix, settings.frontDeg, settings.layout.offset);
-    const placed = layoutPositions(settings.layout.preset, centre, settings.frontDeg, settings.layout.radius, room.H);
+    const centre = layoutCentre(mix, arrayFront(settings), settings.layout.offset);
+    const placed = layoutPositions(settings.layout.preset, centre, arrayFront(settings), settings.layout.radius, room.H);
     const pairs = new Map();
     const speakers = placed.map((p) => {
-      const s = makeSpeaker(p.sub ? 'sub' : kind, p, { name: p.role, role: p.role, side: p.side, aim: +p.aim.toFixed(1), tilt: +p.tilt.toFixed(1) });
+      const s = makeSpeaker(p.sub ? 'sub' : box(p.role), p, { name: p.role, role: p.role, side: p.side, aim: +p.aim.toFixed(1), tilt: +p.tilt.toFixed(1) });
       const base = p.role.slice(1);
       if (settings.symmetric && ax != null && Math.abs(centre.x - ax) < 0.02 && (p.side === 'L' || p.side === 'R')) {
         if (!pairs.has(base)) pairs.set(base, newId('p'));

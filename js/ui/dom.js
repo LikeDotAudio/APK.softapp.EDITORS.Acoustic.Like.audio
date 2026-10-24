@@ -52,9 +52,11 @@ export function check(value, onChange, label = '') {
   return label ? h('label', { class: 'check' }, input, label) : input;
 }
 
-export function slider(value, min, max, step, onInput) {
+/** A range input. With `onChange`, `onInput` is the drag and `onChange` the release. */
+export function slider(value, min, max, step, onInput, onChange) {
   const input = h('input', { type: 'range', min, max, step, value });
   input.addEventListener('input', () => onInput(parseFloat(input.value)));
+  if (onChange) input.addEventListener('change', () => onChange(parseFloat(input.value)));
   return input;
 }
 

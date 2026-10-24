@@ -3,7 +3,9 @@
 import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
 import { buildRoom } from './acoustics/room.js';
-import { arrangedSpeakers, LAYOUTS, layoutCentre } from './acoustics/layouts.js';
+import { arrayFront, carryArray, LAYOUTS } from './acoustics/layouts.js';
+import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
+import { widthSweep } from './acoustics/widthFinder.js';
 import { paletteItems } from './acoustics/materials.js';
 import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
 import { makeMic } from './acoustics/devices.js';
@@ -102,7 +104,7 @@ const meters = createMeters({
     if (rep) listen(rep.echogram);
   },
 });
-const inspector = createInspector({ root: document.getElementById('inspector'), store, engine, cad, jumpTo, drawRoom: (id) => drawRoom(roomById(id)), onSubs: () => plan.render() });
+const inspector = createInspector({ root: document.getElementById('inspector'), store, engine, cad, jumpTo, drawRoom: (id) => drawRoom(roomById(id)), onSubs: () => plan.render(), moveArray, findWidth });
 document.getElementById('toPlan').addEventListener('click', () => jumpTo('plan'));
 document.getElementById('popCad').addEventListener('click', () => {
   if (cad.link.popped) cad.link.dockIn();
@@ -169,6 +171,9 @@ store.subscribe((state, what) => {
   else if (what === 'selection') {
     engine.update();
     renderAll();
+  } else if (what === 'fit') {
+    syncWidthTicks();
+    inspector.render();
   } else if (what === 'mode') {
     plan.render();
     syncToolbar();
@@ -200,7 +205,27 @@ function syncFieldScale() {
   scaleBar.hidden = !(settings.show.field && scale && speakers.length);
   if (scaleBar.hidden) return;
   scaleBar.querySelector('.lo').textContent = `${scale.top - scale.range} dB`;
-  scaleBar.querySelector('.hi').textContent = `${scale.top} dB · ${planLabel(settings)}`;
+  const hi = scaleBar.querySelector('.hi');
+  hi.replaceChildren(`${scale.top} dB · `, Object.assign(document.createElement('span'), { className: 'freqNow', textContent: settings.method === 'energy' ? planLabel(settings) : `${settings.method} · current frequency ${hz(settings.freq)} Hz` }));
+  // markers: what the mix seat and the whole room read on this scale, at the current frequency
+  const ramp = scaleBar.querySelector('.ramp');
+  ramp.replaceChildren();
+  const { reports } = engine.out;
+  const read = (rep) => (!rep ? NaN : settings.method === 'energy' ? rep.energy?.[settings.band]?.total : settings.method === 'modal' ? rep.modal : rep.wave);
+  const mix = store.state.mics.find((m) => m.mix);
+  const seats = roomSeats(store.state.mics);
+  const marks = [['MIX', read(reports?.[mix?.id]), '#f43f5e']];
+  if (seats.length > 1) marks.push([`room ·${seats.length}`, powerMean(seats.map((m) => read(reports?.[m.id])), seats.map(seatWeight)), '#a3e635']);
+  for (const [name, db, colour] of marks) {
+    if (!Number.isFinite(db)) continue;
+    const t = Math.max(0, Math.min(1, (db - (scale.top - scale.range)) / scale.range));
+    const mark = Object.assign(document.createElement('i'), { className: 'mark', title: `${name}: ${db.toFixed(1)} dB at the current frequency` });
+    mark.style.left = `${t * 100}%`;
+    mark.style.background = colour;
+    mark.append(Object.assign(document.createElement('span'), { textContent: `${name} ${db.toFixed(1)} dB` }));
+    mark.firstChild.style.color = colour;
+    ramp.append(mark);
+  }
 }
 
 function syncToolbar() {
@@ -219,13 +244,14 @@ function syncToolbar() {
   if (popped) document.getElementById('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
   for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
-  document.getElementById('freqOut').textContent = settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${hz(settings.freq)} Hz`;
+  const freqOut = document.getElementById('freqOut');
+  freqOut.replaceChildren(Object.assign(document.createElement('small'), { textContent: settings.method === 'energy' ? 'current band' : 'current frequency' }), settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${hz(settings.freq)} Hz`);
   freq.disabled = settings.method === 'energy';
   for (const b of document.querySelectorAll('#arrangement button[data-preset]')) b.classList.toggle('on', b.dataset.preset === settings.layout.preset);
   for (const input of document.querySelectorAll('.arrayFields input')) {
     if (document.activeElement === input) continue;
     const key = input.dataset.array;
-    input.value = Math.round(key === 'radius' ? (settings.layout.radius ?? 2) * 1000 : settings.layout.offset?.[key] ?? 0);
+    input.value = Math.round(key === 'radius' ? (settings.layout.radius ?? 2) * 1000 : key === 'rotate' ? settings.layout.rotate ?? 0 : settings.layout.offset?.[key] ?? 0);
   }
 }
 
@@ -285,7 +311,7 @@ new ResizeObserver(() => renderGeometry()).observe(views);
 
   // the array's centre off the mix seat, and its radius, in mm — moving either carries the placed speakers with it
   const field = (key, glyph, title) => {
-    const input = Object.assign(document.createElement('input'), { type: 'number', step: 10, title });
+    const input = Object.assign(document.createElement('input'), { type: 'number', step: key === 'rotate' ? 1 : 10, title });
     input.dataset.array = key;
     input.addEventListener('change', () => {
       const v = parseFloat(input.value);
@@ -304,26 +330,74 @@ new ResizeObserver(() => renderGeometry()).observe(views);
     field('front', '↕', 'Array centre: mm toward the front from the mix seat'),
     field('up', '⇡', 'Array centre: mm above the mix seat’s ears'),
     field('radius', 'r', 'Array radius, mm — the placed speakers scale with it'),
+    field('rotate', '⟲', 'Array rotation, degrees counter-clockwise — the placed speakers turn round the listener with it'),
   );
+  // the array's width as a slider: drag it and the placed speakers spread out or close in round the listener
+  const width = Object.assign(document.createElement('input'), { type: 'range', min: 800, max: 6000, step: 50, title: 'Array width: its radius round the listener — the placed speakers follow' });
+  width.dataset.array = 'radius';
+  width.addEventListener('input', () => moveArray('radius', parseFloat(width.value), true));
+  width.addEventListener('change', () => moveArray('radius', parseFloat(width.value)));
+  // the best width, once found, is a tick on the slider (and on the Layout tab's)
+  width.setAttribute('list', 'bestWidth');
+  const ticks = Object.assign(document.createElement('datalist'), { id: 'bestWidth' });
+  const find = Object.assign(document.createElement('button'), { textContent: '⌖', title: 'Find the width with the flattest low end over the room’s seats' });
+  find.onclick = () => findWidth();
+  fields.append(width, ticks, find);
   bar.after(fields);
 }
 
-/** Change the array's centre offset or radius (mm), carrying the speakers placed in it along. */
-function moveArray(key, mm) {
+/**
+ * Sweep the array's width for the flattest low end over the room's seats
+ * (acoustics/widthFinder.js), a few radii a frame so the page keeps drawing.
+ * The answer goes in state.widthFit (not saved) and shows as a tick on both
+ * Width sliders; the Layout tab offers to snap to it.
+ */
+function findWidth() {
+  const room = engine.out.room;
+  const { speakers, mics, settings } = store.state;
+  if (!room || !mics.some((m) => m.mix)) {
+    status.textContent = '⚠ place a mix-position mic first';
+    return;
+  }
+  const sweep = widthSweep(room, speakers, mics, settings, { to: Math.min(6, Math.max(1, Math.hypot(room.L, room.W) / 2)) });
+  let done = 0;
+  const tick = () => {
+    const t0 = performance.now();
+    let more = true;
+    while (more && performance.now() - t0 < 30) {
+      more = sweep.step();
+      done++;
+    }
+    store.state.widthFit = { ...sweep.result, running: more, done, total: sweep.total };
+    store.emit('fit');
+    if (more) requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+/** The best width as a tick on every Width slider. */
+function syncWidthTicks() {
+  const fit = store.state.widthFit;
+  const best = fit?.preset === store.state.settings.layout.preset ? fit.best : null;
+  const list = document.getElementById('bestWidth');
+  if (list) list.replaceChildren(...(best ? [Object.assign(document.createElement('option'), { value: Math.round(best.r * 1000) })] : []));
+}
+
+/** Change the array's centre offset or radius (mm), or its rotation (degrees), carrying the speakers placed in it along. */
+function moveArray(key, mm, live = false) {
   const { settings, speakers, mics } = store.state;
   const layout = settings.layout;
-  const next = key === 'radius' ? { ...layout, radius: Math.max(0.3, mm / 1000) } : { ...layout, offset: { ...layout.offset, [key]: mm } };
+  const next =
+    key === 'radius' ? { ...layout, radius: Math.max(0.3, mm / 1000) }
+    : key === 'rotate' ? { ...layout, rotate: ((((mm + 180) % 360) + 360) % 360) - 180 }
+    : { ...layout, offset: { ...layout.offset, [key]: mm } };
   const mix = mics.find((m) => m.mix);
-  const moved = new Set(arrangedSpeakers(speakers, settings).filter((s) => s.role));
-  if (mix && moved.size) {
-    const a = layoutCentre(mix, settings.frontDeg, layout.offset);
-    const b = layoutCentre(mix, settings.frontDeg, next.offset);
-    const k = next.radius / (layout.radius ?? 2);
-    // around the old centre by the radius ratio, then over to the new one; a sub stays on the floor
-    const carry = (s) => ({ ...s, x: b.x + (s.x - a.x) * k, y: b.y + (s.y - a.y) * k, z: s.kind === 'sub' ? s.z : Math.max(0.1, b.z + (s.z - a.z) * k) });
-    store.replaceSpeakers(speakers.map((s) => (moved.has(s) ? carry(s) : s)));
-  }
-  store.setSettings({ layout: next });
+  const moved = carryArray(speakers, settings, mix, next, engine.out.room?.H);
+  // mid-drag: the quick recompute (field, response, meters) on every step; the release saves and runs it in full
+  if (moved.length) store.updateMany('speaker', moved, true);
+  // turning the array turns the mixer with it: the listener always faces the array's front
+  if (key === 'rotate' && mix) store.updateMany('mic', [{ id: mix.id, aim: +arrayFront({ ...settings, layout: next }).toFixed(1) }], true);
+  store.setSettings({ layout: next }, live);
 }
 
 // ------------------------------------------------------------------ furniture: the CAD draws it, at true size

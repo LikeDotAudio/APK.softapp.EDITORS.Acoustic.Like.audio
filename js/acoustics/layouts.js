@@ -105,6 +105,27 @@ export function arrangedSpeakers(speakers, settings) {
 }
 
 /**
+ * The speakers that SOUND: the highlighted arrangement's, plus any box placed
+ * by hand (no role). The field, the meters and the response all hear these,
+ * so picking 2.0 out of a placed 7.1.4 shows what L and R alone do.
+ */
+export function soundingSpeakers(speakers, settings) {
+  const arranged = new Set(arrangedSpeakers(speakers, settings));
+  return speakers.filter((s) => arranged.has(s) || !s.role);
+}
+
+/**
+ * Where the arrangement faces: the room's front turned by the layout's
+ * `rotate` (degrees, CCW seen from above). The whole array — its centre
+ * offset, its references, its check — turns with it, so it can be swung to
+ * suit a desk that does not face the room's front wall square.
+ */
+export const arrayFront = (settings) => settings.frontDeg + (settings.layout?.rotate ?? 0);
+
+/** The mains, L C R; every other speaker of an arrangement is a surround or a height. */
+export const isMain = (role) => role === 'L' || role === 'C' || role === 'R';
+
+/**
  * The arrangement's centre: the mix seat moved by `offset` — millimetres to
  * the listener's right, toward the front and up ({ right, front, up }). Every
  * arrangement is placed around, drawn from and checked against this point, so
@@ -145,6 +166,36 @@ export function layoutPositions(layout, mix, frontDeg, radius, ceiling) {
     out.push({ role: sub.name, side: 'C', x: mix.x + r * Math.cos(bearing * DEG), y: mix.y + r * Math.sin(bearing * DEG), z: 0.3, aim: bearing + 180, tilt: 0, sub: true });
   }
   return out;
+}
+
+/**
+ * The array moved to `next` (a new radius, centre offset or rotation), the
+ * speakers placed in it carried along: they scale about the old centre by the
+ * radius ratio, turn by the change in rotation, then cross to the new centre,
+ * so each keeps its bearing from the listener and keeps aiming at them. A sub
+ * stays on the floor, a height speaker under the ceiling.
+ * Returns [{ id, x, y, z, aim }] for the speakers that move; none without a seat.
+ */
+export function carryArray(speakers, settings, mix, next, ceiling = Infinity) {
+  if (!mix) return [];
+  const layout = settings.layout;
+  const turn = (next.rotate ?? 0) - (layout.rotate ?? 0);
+  const a = layoutCentre(mix, arrayFront(settings), layout.offset);
+  const b = layoutCentre(mix, settings.frontDeg + (next.rotate ?? 0), next.offset);
+  const k = (next.radius ?? 2) / (layout.radius ?? 2);
+  const [cos, sin] = [Math.cos(turn * DEG), Math.sin(turn * DEG)];
+  return arrangedSpeakers(speakers, settings)
+    .filter((s) => s.role)
+    .map((s) => {
+      const [dx, dy] = [(s.x - a.x) * k, (s.y - a.y) * k];
+      return {
+        id: s.id,
+        x: b.x + dx * cos - dy * sin,
+        y: b.y + dx * sin + dy * cos,
+        z: s.kind === 'sub' ? s.z : Math.max(0.1, Math.min(b.z + (s.z - a.z) * k, ceiling - 0.15)),
+        ...(turn && s.aim != null ? { aim: +(((s.aim + turn) % 360 + 360) % 360).toFixed(1) } : {}),
+      };
+    });
 }
 
 /** Each layout speaker's actual angles, distance, and the delay/trim that would align it. */

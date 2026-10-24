@@ -3,10 +3,10 @@
 import { BANDS, C } from '../acoustics/bands.js';
 import { criticalDistance } from '../acoustics/analysis.js';
 import { DEG, mirrorPoint, segmentCross } from '../acoustics/geometry.js';
-import { arrangedSpeakers, LAYOUTS, layoutCentre } from '../acoustics/layouts.js';
+import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre } from '../acoustics/layouts.js';
 import { fromFrame } from '../acoustics/room.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
-import { MIC_PRESETS, isListener } from '../acoustics/devices.js';
+import { boxSize, MIC_PRESETS, isListener } from '../acoustics/devices.js';
 import { mirrorName } from '../acoustics/symmetry.js';
 import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, drawPerson, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
@@ -335,7 +335,8 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       }
       for (const s of first(state.speakers)) {
         const p = toScreen(s.x, s.y);
-        drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy) });
+        // at true size: the glyph is 2·size across the front, never smaller than it always was
+        drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: Math.max(11, (boxSize(s).w * pxPerMetre()) / 2) });
       }
     }
     if (orbit) drawOrbit(ctx, orbit, toScreen, pxPerMetre());
@@ -400,11 +401,11 @@ function drawPlanGuides(ctx, room, show, toScreen) {
 function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
   const layout = LAYOUTS[settings.layout?.preset];
   if (!layout) return;
-  const seat = layoutCentre(mix ?? fromFrame(room, 0.38 * room.L, 0.5 * room.W), settings.frontDeg, settings.layout.offset);
+  const seat = layoutCentre(mix ?? fromFrame(room, 0.38 * room.L, 0.5 * room.W), arrayFront(settings), settings.layout.offset);
   const r = settings.layout.radius ?? 2;
   const c = toScreen(seat.x, seat.y);
   const at = (az, k = 1) => {
-    const b = (settings.frontDeg + az) * DEG;
+    const b = (arrayFront(settings) + az) * DEG;
     return toScreen(seat.x + r * k * Math.cos(b), seat.y + r * k * Math.sin(b));
   };
   ctx.save();

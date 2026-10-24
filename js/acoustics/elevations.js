@@ -227,22 +227,23 @@ function simplifyChain(pts) {
 
 /**
  * Where on the sheet a face's elevation is drawn when the CAD has none yet: a
- * row under the plan, front · back · left · right, a gap between each.
+ * column under the plan, front · back · left · right top to bottom, each at
+ * the plan's left edge — in line with the blow-up's column above the plan.
  * Returns the outline in sheet metres.
  */
 export function seedOutline(room, face) {
   const xs = room.poly.map((p) => p.x);
   const ys = room.poly.map((p) => p.y);
-  const gap = Math.max(1, 0.25 * Math.max(room.L, room.W));
-  let x = Math.min(...xs);
-  const top = Math.min(...ys) - gap;
+  const gap = Math.max(0.8, 0.1 * Math.max(room.L, room.W));
+  const x = Math.min(...xs);
+  let top = Math.min(...ys) - gap;
   for (const g of ELEVATION_FACES) {
     const loop = silhouetteLoop(silhouette(room, g, 16));
     const u0 = Math.min(...loop.map((p) => p.u));
-    const u1 = Math.max(...loop.map((p) => p.u));
+    const z0 = Math.min(...loop.map((p) => p.z));
     const z1 = Math.max(...loop.map((p) => p.z));
     if (g === face) return loop.map((p) => ({ x: x + p.u - u0, y: top - z1 + p.z }));
-    x += u1 - u0 + gap;
+    top -= z1 - z0 + gap;
   }
   return [];
 }

@@ -3,6 +3,9 @@
 import { makeMic, makeSpeaker, newId } from '../acoustics/devices.js';
 import { DEFAULT_ISOLATION } from '../acoustics/isolation.js';
 import { mirrorDevice, syncTwin } from '../acoustics/symmetry.js';
+import { carryArray } from '../acoustics/layouts.js';
+
+const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 
 /**
  * ONE STATE, SAVED PER DRAWING
@@ -33,7 +36,7 @@ export const DEFAULT_SETTINGS = {
   aWeight: false,
   view: 'six',
   symmetric: true,
-  layout: { preset: '7.1.4', radius: 2.0 },
+  layout: { preset: '7.1.4', radius: 2.0, rotate: 0, mains: 'dmt12', surround: 'dmt8' },
   isolation: DEFAULT_ISOLATION,
   /** Speakers are placed relative to the listener: moving the mix seat carries them (subs and flush-mounted boxes stay). */
   followListener: true,
@@ -57,7 +60,7 @@ export function createStore() {
     mode: 'cad',
     /** Which drawing the CAD is showing: 'plan', or the elevation's face. Not saved: the CAD decides where it opens. */
     sheet: 'plan',
-    placeKind: { speaker: 'monitor', mic: 'mixer' },
+    placeKind: { speaker: 'dmt12', mic: 'mixer' },
     cad: { geometry: null, view: null, mirror: null, connected: false, popped: false },
     fileName: null,
   };
@@ -180,9 +183,11 @@ export function createStore() {
       state.placeKind[kind] = preset;
       emit('mode');
     },
-    setSettings(patch) {
+    /** `live` (a slider mid-drag): the quick recompute only, no save — the release commits. */
+    setSettings(patch, live = false) {
       state.settings = { ...state.settings, ...patch };
-      changed('settings');
+      if (live) emit('drag');
+      else changed('settings');
     },
     setShow(patch) {
       state.settings = { ...state.settings, show: { ...state.settings.show, ...patch } };
@@ -213,11 +218,22 @@ export function createStore() {
     update(kind, id, patch, live = false) {
       const key = listOf(kind);
       const before = state[key].find((d) => d.id === id);
-      // the speakers belong to the listener: the mix seat moving carries them with it
-      if (kind === 'mic' && before?.mix && state.settings.followListener && ('x' in patch || 'y' in patch)) {
+      // the speakers belong to the listener: the mix seat moving carries them with it, its ears rising
+      // lifts them, and it turning swings the arrangement round it (the array's Rotate follows)
+      if (kind === 'mic' && before?.mix && state.settings.followListener) {
         const dx = (patch.x ?? before.x) - before.x;
         const dy = (patch.y ?? before.y) - before.y;
-        if (dx || dy) state.speakers = state.speakers.map((s) => (carried(s) ? { ...s, x: s.x + dx, y: s.y + dy } : s));
+        const dz = 'z' in patch ? (patch.z ?? before.z) - before.z : 0;
+        if (dx || dy || dz) state.speakers = state.speakers.map((s) => (carried(s) ? { ...s, x: s.x + dx, y: s.y + dy, z: Math.max(0.1, s.z + dz) } : s));
+        const turn = 'aim' in patch && before.aim != null ? wrap180(patch.aim - before.aim) : 0;
+        if (turn) {
+          const layout = state.settings.layout;
+          const nextLayout = { ...layout, rotate: wrap180((layout.rotate ?? 0) + turn) };
+          const seat = { ...before, x: before.x + dx, y: before.y + dy, z: before.z + dz };
+          const by = new Map(carryArray(state.speakers, state.settings, seat, nextLayout).map((m) => [m.id, m]));
+          state.speakers = state.speakers.map((s) => (by.has(s.id) ? { ...s, ...by.get(s.id) } : s));
+          state.settings = { ...state.settings, layout: nextLayout };
+        }
       }
       let next = state[key].map((d) => (d.id === id ? { ...d, ...patch } : d));
       const dev = next.find((d) => d.id === id);

@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { advise } from '../acoustics/advisor.js';
-import { layoutCentre, layoutCheck } from '../acoustics/layouts.js';
+import { arrayFront, layoutCentre, layoutCheck, soundingSpeakers } from '../acoustics/layouts.js';
 import { ELEVATION_FACES, elevationFaceOf } from '../acoustics/elevations.js';
 import { buildRoom } from '../acoustics/room.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
@@ -198,7 +198,7 @@ export function createEngine(store, onResult) {
     out.grids = grids;
     const mirror = state.cad.mirror ? { enabled: state.cad.mirror.enabled, x: state.cad.mirror.xMetres } : null;
     out.advice = advise(room, state.speakers, state.mics, settings, mirror);
-    out.layout = mix ? layoutCheck(state.speakers, layoutCentre(mix, settings.frontDeg, settings.layout.offset), settings.frontDeg, settings.layout.preset) : [];
+    out.layout = mix ? layoutCheck(state.speakers, layoutCentre(mix, arrayFront(settings), settings.layout.offset), arrayFront(settings), settings.layout.preset) : [];
     const monitorId = (state.selected?.kind === 'mic' && state.selected.id) || mix?.id || state.mics[0]?.id;
     // everything the field depends on but the frequency; what only changes how it is shown is left out
     const key = [state.cad.geometry, state.speakers, state.mics];
@@ -210,7 +210,8 @@ export function createEngine(store, onResult) {
       failed.clear();
       syncFrames();
     }
-    const job = { room, speakers: state.speakers, mics: state.mics, settings, grids, monitorId, scene, coarse };
+    // the field hears the highlighted arrangement, as the plan shows it
+    const job = { room, speakers: soundingSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, scene, coarse };
     out.monitorId = monitorId;
     if (!coarse) last = job;
     const hit = !coarse && cache.get(settings.freq);
