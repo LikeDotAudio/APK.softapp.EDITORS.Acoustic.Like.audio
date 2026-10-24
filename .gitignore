@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 *.log
+
+# the 1997 Acoustic-X manual, split by chapter: copyrighted, kept local, never published
+Documentation/acoustic-x/manual-1997/

@@ -114,7 +114,8 @@
 .acx input.ro { background: var(--face); }
 .acx select { height: 20px; padding: 1px 2px; }
 .acx select[size] { height: auto; padding: 1px; }
-.acx .readout { display: inline-block; min-width: 56px; height: 18px; padding: 1px 4px; background: var(--hi); box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade), inset -2px -2px var(--lite), inset 2px 2px var(--dark); white-space: nowrap; overflow: hidden; }
+/* the app's own .readout (a meter's corner number) is absolute: in here a readout sits in its row, clear of the title bar's buttons */
+.acx .readout { position: static; color: inherit; font: inherit; pointer-events: auto; display: inline-block; min-width: 56px; height: 18px; padding: 1px 4px; background: var(--hi); box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade), inset -2px -2px var(--lite), inset 2px 2px var(--dark); white-space: nowrap; overflow: hidden; }
 .acx label.opt { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; white-space: nowrap; }
 .acx input[type=radio], .acx input[type=checkbox] { margin: 0; accent-color: var(--navy); }
 .acx .list { width: 100%; font: inherit; }
