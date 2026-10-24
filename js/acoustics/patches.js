@@ -42,8 +42,12 @@ import { lookup } from './materials.js';
 
 const STEPS = 48;
 
-/** Is this layer the ceiling? Case and spaces don't matter. */
-export const isCeilingLayer = (name) => String(name ?? '').trim().toLowerCase() === 'ceiling';
+/**
+ * Is this layer the ceiling? 'Ceiling' itself, or any layer named for a part
+ * of it — 'Ceiling 2', 'Ceiling – soffit', 'Ceiling clouds' — so a ceiling
+ * built in layers is read as one. Case and spaces don't matter.
+ */
+export const isCeilingLayer = (name) => /^ceiling\b/.test(String(name ?? '').trim().toLowerCase());
 
 /**
  * Lay every patch onto the room. `room` needs poly, walls (with area), frame,
@@ -63,7 +67,7 @@ export function layPatches(room, patches = []) {
     if (!patch.poly || patch.poly.length < 3) continue;
     const layer = patch.layer ?? patch.layerId;
     const face = elevationFaceOf(layer);
-    const base = { id: patch.id, paletteId: patch.paletteId, material: mat };
+    const base = { id: patch.id, paletteId: patch.paletteId, material: mat, layer };
     let got;
     if (face) got = wallPieces(room, face, patch.poly).map((p) => ({ ...base, surface: 'wall', wall: p.wall, face, area: p.area, points3d: p.points3d }));
     else {

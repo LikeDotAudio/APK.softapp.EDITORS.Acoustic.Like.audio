@@ -17,6 +17,8 @@
  * a closed loop on a layer of its own, where it becomes the room.
  */
 
+import { pointInPolygon } from './geometry.js';
+
 const FT = 0.3048;
 
 /** A shoebox w wide, l long. */
@@ -124,4 +126,68 @@ export function planArea(poly) {
     a += x1 * y2 - x2 * y1;
   }
   return a / 2;
+}
+
+/**
+ * WHAT A ROOM COMES WITH
+ *
+ * A studio is not an empty box: a library room is drawn furnished the way such
+ * a room is used, and with its people in it. In the room's own frame (front at
+ * +Y, as the plans are), from what kind of room it is and how big:
+ *
+ *   mix rooms (control, home, ratio, immersive)
+ *        the desk at the mix seat — a producer desk under 4 m wide, a 2.4 m
+ *        console under 6.5 m, a 3.2 m large-format above — the MIXER at 38 %
+ *        of the length from the front, the PRODUCER a metre behind, a CONSOLE
+ *        CLIENT at the desk's end; in a room deep enough, a couch at the back
+ *        with the ENTOURAGE on it, and a rack beside the desk where it fits.
+ *   podcast and radio
+ *        one desk mid-room, the hosts either side of it.
+ *   live rooms and booths
+ *        nobody mixes in them: a single listener where a player would stand.
+ *
+ * Returns { furniture: [{ paletteId, x, y, rotation }], seats: [{ kind, x, y,
+ * z, aim, mix? }] } — products from materials.js, seats as listener tiers
+ * (devices.js MIC_PRESETS). Pure: main.js offsets it to where the room is drawn.
+ */
+export function furnish(room) {
+  const xs = room.poly.map(([x]) => x);
+  const ys = room.poly.map(([, y]) => y);
+  const W = Math.max(...xs) - Math.min(...xs);
+  const y0 = Math.min(...ys);
+  const L = Math.max(...ys) - y0;
+  const cx = (Math.max(...xs) + Math.min(...xs)) / 2;
+  const front = y0 + L;
+  const furniture = [];
+  const seats = [];
+  const ear = 1.2;
+  const face = 90;
+  if (room.group === 'Live rooms') {
+    seats.push({ kind: 'mixer', x: cx, y: y0 + L * 0.5, z: room.id.includes('booth') || room.id.includes('iso') ? 1.6 : ear, aim: face, mix: true });
+    return { furniture, seats };
+  }
+  if (room.id === 'podcast' || room.id === 'radio') {
+    const y = y0 + L * 0.5;
+    furniture.push({ paletteId: 'desk-1800x900', x: cx, y, rotation: 0 });
+    seats.push({ kind: 'mixer', x: cx, y: y - 0.85, z: ear, aim: face, mix: true }, { kind: 'client', x: cx, y: y + 0.85, z: ear, aim: face + 180 });
+    return { furniture, seats };
+  }
+  const mixY = front - 0.38 * L;
+  const desk = W < 4 ? { id: 'desk-1800x900', w: 1.8, d: 0.9 } : W < 6.5 ? { id: 'console-2400x1000', w: 2.4, d: 1.0 } : { id: 'console-3200x1200', w: 3.2, d: 1.2 };
+  const deskY = mixY + 0.35 + desk.d / 2;
+  furniture.push({ paletteId: desk.id, x: cx, y: deskY, rotation: 0 });
+  seats.push({ kind: 'mixer', x: cx, y: mixY, z: ear, aim: face, mix: true });
+  if (mixY - 1.0 > y0 + 0.5) seats.push({ kind: 'producer', x: cx, y: mixY - 1.0, z: ear + 0.1, aim: face });
+  if (W >= 3.6) seats.push({ kind: 'client', x: cx + desk.w / 2 - 0.2, y: mixY + 0.05, z: ear, aim: face });
+  if (W - desk.w >= 1.6) furniture.push({ paletteId: 'rack-600x800', x: cx - desk.w / 2 - 0.5, y: deskY - 0.3, rotation: 0 });
+  // a couch at the back, if there is room behind the producer for it
+  const couch = W < 5 ? { id: 'couch-2000x900', w: 2.0, d: 0.9 } : { id: 'couch-2400x1000', w: 2.4, d: 1.0 };
+  const couchY = y0 + 0.25 + couch.d / 2;
+  if (mixY - 1.0 - couchY > 1.0 && W >= couch.w + 0.6) {
+    furniture.push({ paletteId: couch.id, x: cx, y: couchY, rotation: 0 });
+    for (const dx of [-couch.w / 4, couch.w / 4]) seats.push({ kind: 'entourage', x: cx + dx, y: couchY, z: 1.0, aim: face });
+  }
+  // an odd plan (an L, a fan) can leave a piece outside: it is left out, never the mixer
+  const inside = (p) => pointInPolygon(p.x, p.y, room.poly.map(([x, y]) => ({ x, y })));
+  return { furniture: furniture.filter(inside), seats: seats.filter((s) => s.mix || inside(s)) };
 }

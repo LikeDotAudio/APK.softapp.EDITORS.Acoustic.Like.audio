@@ -35,8 +35,12 @@ export const DEFAULT_SETTINGS = {
   symmetric: true,
   layout: { preset: '7.1.4', radius: 2.0 },
   isolation: DEFAULT_ISOLATION,
+  /** Speakers are placed relative to the listener: moving the mix seat carries them (subs and flush-mounted boxes stay). */
+  followListener: true,
+  /** Ceiling heights of the other plan loops on the sheet (library rooms), by layer id, for their blow-ups. */
+  roomHeights: {},
   /** What this app draws into the CAD itself (cad/marks.js): labels, reflection panels, cut-aways, construction sections. */
-  cadMarks: { labels: true, panels: true, ceilingPanels: true, cutaways: true, sections: true, arrangement: true },
+  cadMarks: { labels: true, panels: true, ceilingPanels: true, cutaways: true, sections: true, arrangement: true, blowup: true },
   autoPanels: { wall: 'panel-1200x600x100', ceiling: 'cloud-1200', w: 0.6, h: 1.2 },
   show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true, arrangement: true },
 };
@@ -53,7 +57,7 @@ export function createStore() {
     mode: 'cad',
     /** Which drawing the CAD is showing: 'plan', or the elevation's face. Not saved: the CAD decides where it opens. */
     sheet: 'plan',
-    placeKind: { speaker: 'monitor', mic: 'omni' },
+    placeKind: { speaker: 'monitor', mic: 'mixer' },
     cad: { geometry: null, view: null, mirror: null, connected: false, popped: false },
     fileName: null,
   };
@@ -91,6 +95,7 @@ export function createStore() {
       isolation: { ...DEFAULT_ISOLATION, ...d.isolation, shared: { ...DEFAULT_ISOLATION.shared, ...d.isolation?.shared } },
       cadMarks: { ...DEFAULT_SETTINGS.cadMarks, ...d.cadMarks },
       autoPanels: { ...DEFAULT_SETTINGS.autoPanels, ...d.autoPanels },
+      roomHeights: { ...d.roomHeights },
     };
     state.speakers = doc.speakers ?? [];
     state.mics = doc.mics ?? [];
@@ -207,6 +212,13 @@ export function createStore() {
     /** Change one device; its mirror twin follows. `live` skips the save while dragging. */
     update(kind, id, patch, live = false) {
       const key = listOf(kind);
+      const before = state[key].find((d) => d.id === id);
+      // the speakers belong to the listener: the mix seat moving carries them with it
+      if (kind === 'mic' && before?.mix && state.settings.followListener && ('x' in patch || 'y' in patch)) {
+        const dx = (patch.x ?? before.x) - before.x;
+        const dy = (patch.y ?? before.y) - before.y;
+        if (dx || dy) state.speakers = state.speakers.map((s) => (carried(s) ? { ...s, x: s.x + dx, y: s.y + dy } : s));
+      }
       let next = state[key].map((d) => (d.id === id ? { ...d, ...patch } : d));
       const dev = next.find((d) => d.id === id);
       if (dev?.pairId) next = syncTwin(next, dev, axis());
@@ -231,6 +243,31 @@ export function createStore() {
       state[key] = state[key].map((d) => (d.pairId === dev.pairId ? { ...d, pairId: undefined } : d));
       changed();
     },
+    /**
+     * Several devices at once, exactly as given — no twin sync: the caller has
+     * already placed both of a pair (the hold-to-orbit drag mirrors across the
+     * LISTENER, not the CAD's axis). [{ id, ...patch }].
+     */
+    updateMany(kind, patches, live = false) {
+      const key = listOf(kind);
+      const by = new Map(patches.map((p) => [p.id, p]));
+      state[key] = state[key].map((d) => (by.has(d.id) ? { ...d, ...by.get(d.id) } : d));
+      if (live) emit('drag');
+      else changed();
+    },
+    /** Replace the mics: the listening tiers a library room comes with. Speakers follow the mixer if it moved. */
+    seat(mics) {
+      const old = state.mics.find((m) => m.mix);
+      const mix = mics.find((m) => m.mix);
+      if (old && mix && state.settings.followListener) {
+        const dx = mix.x - old.x;
+        const dy = mix.y - old.y;
+        state.speakers = state.speakers.map((s) => (carried(s) ? { ...s, x: s.x + dx, y: s.y + dy } : s));
+      }
+      state.mics = mics;
+      state.selected = null;
+      changed();
+    },
     append(kind, devs) {
       const key = listOf(kind);
       state[key] = [...state[key], ...devs];
@@ -252,6 +289,9 @@ export function createStore() {
     },
   };
 }
+
+/** Speakers that travel with the listener: not the subs (they belong to the room's modes) and not boxes built into a wall. */
+const carried = (s) => s.kind !== 'sub' && s.mount !== 'flush' && s.mount !== 'corner';
 
 export function selectedDevice(state) {
   const s = state.selected;

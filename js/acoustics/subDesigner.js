@@ -33,7 +33,8 @@ export function scoreSub(room, at, seats, { maxOrder = 3, freqs = SUB_FREQS } = 
   const sub = makeSpeaker('sub', { x: at.x, y: at.y, z: at.z ?? 0.3 }, { aim: 0, lowpass: 0 });
   const prep = prepare(room, [sub], { maxOrder });
   const curves = seats.map((m) => freqs.map((f) => waveDb(prep, m, f, m)));
-  const weights = seats.map((m) => (m.mix ? 2 : 1));
+  // a listener counts by its tier (mixer 3 … entourage 1); a bare measurement mic 1, the mix seat at least 2
+  const weights = seats.map((m) => Math.max(m.weight ?? 1, m.mix ? 2 : 1));
   const wsum = weights.reduce((a, b) => a + b, 0);
   let flat = 0;
   curves.forEach((c, i) => {

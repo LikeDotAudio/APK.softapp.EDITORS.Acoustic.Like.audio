@@ -62,6 +62,54 @@ export function drawMic(ctx, x, y, ang, { mix = false, selected = false, label =
   if (label) drawLabel(ctx, x, y + size + 12, label, colour);
 }
 
+/**
+ * A listener seen from above: shoulders, head, ears and the nose they face
+ * with. `ppm` sizes them as a real body (0.46 m across the shoulders), never
+ * smaller than a glyph that can be grabbed. `ang` is the screen angle faced.
+ */
+export function drawPerson(ctx, x, y, ang, { ppm = 40, colour = '#ff3b3b', selected = false, label = '', mix = false } = {}) {
+  const s = Math.max(14, 0.46 * ppm) / 2;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+  ctx.strokeStyle = colour;
+  ctx.fillStyle = 'rgba(15,18,26,.85)';
+  ctx.lineWidth = selected ? 2.5 : 1.5;
+  if (selected) {
+    ctx.shadowColor = colour;
+    ctx.shadowBlur = 10;
+  }
+  // shoulders: an ellipse across the facing direction
+  ctx.beginPath();
+  ctx.ellipse(-s * 0.1, 0, s * 0.45, s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  // head, ears, nose
+  const r = s * 0.42;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, -r, r * 0.25, 0, Math.PI * 2);
+  ctx.arc(0, r, r * 0.25, 0, Math.PI * 2);
+  ctx.fillStyle = colour;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(r * 0.9, -r * 0.3);
+  ctx.lineTo(r * 1.5, 0);
+  ctx.lineTo(r * 0.9, r * 0.3);
+  ctx.stroke();
+  if (mix) {
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(0, 0, s * 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+  if (label) drawLabel(ctx, x, y + s + 12, label, colour);
+}
+
 export function drawLabel(ctx, x, y, text, colour = '#ddd') {
   ctx.save();
   ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';

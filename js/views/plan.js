@@ -6,7 +6,9 @@ import { DEG, mirrorPoint, segmentCross } from '../acoustics/geometry.js';
 import { LAYOUTS } from '../acoustics/layouts.js';
 import { fromFrame } from '../acoustics/room.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
-import { FACE_COLOURS, dashedLine, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
+import { MIC_PRESETS, isListener } from '../acoustics/devices.js';
+import { mirrorName } from '../acoustics/symmetry.js';
+import { FACE_COLOURS, dashedLine, dragFrom, drawLabel, drawMic, drawPerson, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
 import { drawColourBar, gridCanvas } from './paint.js';
 
@@ -95,7 +97,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         el.className = 'hit';
         el.dataset.id = d.id;
         el.dataset.kind = kind;
-        el.title = 'Drag to move · Shift-drag to aim';
+        el.title = kind === 'speaker' ? 'Drag to move · Shift-drag to aim · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)' : 'Drag to move · Shift-drag to turn';
         el.addEventListener('pointerdown', (e) => startDrag(e, el));
         hits.appendChild(el);
       }
@@ -105,6 +107,10 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     }
     for (const el of [...hits.children]) if (!seen.has(el.dataset.id)) el.remove();
   }
+
+  /** The hold-to-orbit drag in progress, for render's read-out: { listener, dist, az, toe, id, partner }. */
+  let orbit = null;
+  const HOLD_MS = 380;
 
   function startDrag(e, el) {
     e.preventDefault();
@@ -116,22 +122,78 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     const dev = list.find((d) => d.id === id);
     const start = toWorld(e.clientX, e.clientY);
     const origin = { x: dev.x, y: dev.y };
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const listener = store.state.mics.find((m) => m.mix) ?? store.state.mics.find(isListener);
+    let held = false;
+    let moved = false;
+    // Press and hold a speaker: it swings round the listener instead of sliding.
+    const timer = kind === 'speaker' && listener ? setTimeout(() => {
+      if (moved) return;
+      held = true;
+      el.classList.add('holding');
+      orbit = beginOrbit(dev, listener);
+      render();
+    }, HOLD_MS) : 0;
+    const wheel = (ev) => {
+      if (!held) return;
+      ev.preventDefault();
+      orbit.toe += ev.deltaY < 0 ? 1 : -1;
+      applyOrbit(orbit, orbit.last ?? { x: dev.x, y: dev.y }, ev.shiftKey);
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
     dragFrom(
       e,
       el,
       (ev) => {
+        if (!held && !moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+        moved = true;
         const p = toWorld(ev.clientX, ev.clientY);
-        if (ev.shiftKey) {
+        if (held) applyOrbit(orbit, p, ev.shiftKey);
+        else if (ev.shiftKey) {
           const aim = (Math.atan2(p.y - dev.y, p.x - dev.x) * 180) / Math.PI;
           store.update(kind, id, { aim: Math.round(aim) }, true);
         } else store.update(kind, id, { x: origin.x + p.x - start.x, y: origin.y + p.y - start.y }, true);
         onDrag(true);
       },
       () => {
+        clearTimeout(timer);
+        el.removeEventListener('wheel', wheel);
+        el.classList.remove('holding');
+        orbit = null;
         store.commit();
         onDrag(false);
       },
     );
+  }
+
+  /** The speaker's partner across the listener: its pair, else the speaker whose role is its mirror (L ↔ R). */
+  function beginOrbit(dev, listener) {
+    const others = store.state.speakers.filter((s) => s.id !== dev.id);
+    const partner = (dev.pairId && others.find((s) => s.pairId === dev.pairId)) || (dev.role && mirrorName(dev.role) !== dev.role && others.find((s) => s.role === mirrorName(dev.role))) || null;
+    const facing = listener.aim ?? store.state.settings.frontDeg;
+    const bearing = Math.atan2(dev.y - listener.y, dev.x - listener.x) / DEG;
+    // keep whatever toe-in it has now, relative to pointing straight at the listener
+    const toe = Math.round(((dev.aim - (bearing + 180) + 540) % 360) - 180);
+    return { listener, facing, id: dev.id, z: dev.z, partner: partner?.id ?? null, name: dev.role || dev.name, toe, dist: Math.hypot(dev.x - listener.x, dev.y - listener.y), az: wrap(bearing - facing) };
+  }
+
+  /** Put the held speaker at the pointer's angle and distance from the listener, aimed at the ears; its partner mirrored. */
+  function applyOrbit(o, p, coarse) {
+    const L = o.listener;
+    o.last = p;
+    const step = coarse ? 5 : 1;
+    o.az = Math.round(wrap(Math.atan2(p.y - L.y, p.x - L.x) / DEG - o.facing) / step) * step;
+    o.dist = Math.max(0.3, Math.round(Math.hypot(p.x - L.x, p.y - L.y) / 0.05) * 0.05);
+    const place = (az, toe) => {
+      const b = (o.facing + az) * DEG;
+      const x = L.x + o.dist * Math.cos(b);
+      const y = L.y + o.dist * Math.sin(b);
+      return { x: +x.toFixed(3), y: +y.toFixed(3), aim: +wrap(o.facing + az + 180 + toe).toFixed(1), tilt: +(Math.atan2(L.z - o.z, o.dist) / DEG).toFixed(1) };
+    };
+    const patches = [{ id: o.id, ...place(o.az, o.toe) }];
+    if (o.partner) patches.push({ id: o.partner, ...place(-o.az, -o.toe) });
+    store.updateMany('speaker', patches, true);
   }
 
   function render() {
@@ -262,9 +324,13 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       }
       for (const m of state.mics) {
         const p = toScreen(m.x, m.y);
-        drawMic(ctx, p.x, p.y, (-m.aim * Math.PI) / 180, { mix: m.mix, selected: state.selected?.id === m.id, label: m.mix ? `MIX · ${m.name}` : m.name });
+        const ang = (-m.aim * Math.PI) / 180;
+        const label = m.mix ? `MIX · ${m.name}` : m.name;
+        if (isListener(m)) drawPerson(ctx, p.x, p.y, ang, { ppm: pxPerMetre(), colour: MIC_PRESETS[m.kind].colour, mix: m.mix, selected: state.selected?.id === m.id, label });
+        else drawMic(ctx, p.x, p.y, ang, { mix: m.mix, selected: state.selected?.id === m.id, label });
       }
     }
+    if (orbit) drawOrbit(ctx, orbit, toScreen, pxPerMetre());
     ctx.restore();
 
     if (show.field && out.scale && state.speakers.length) {
@@ -275,6 +341,8 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
 
   return { render, toScreen };
 }
+
+const wrap = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 
 export function planLabel(settings) {
   if (settings.method === 'energy') return `energy ${BANDS[settings.band] >= 1000 ? `${BANDS[settings.band] / 1000}k` : BANDS[settings.band]} Hz`;
@@ -380,6 +448,41 @@ function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
   ctx.stroke();
   ctx.restore();
   drawLabel(ctx, c.x, c.y + r * ppm + 14, `${layout.label} · r ${r.toFixed(1)} m${mix ? '' : ' · no mix mic: seat at 38 %'}`, '#fde047');
+}
+
+/** The hold-to-orbit read-out: the circle the speaker rides, its spoke and its partner's, angle, distance and toe. */
+function drawOrbit(ctx, o, toScreen, ppm) {
+  const c = toScreen(o.listener.x, o.listener.y);
+  const at = (az) => {
+    const b = (o.facing + az) * DEG;
+    return toScreen(o.listener.x + o.dist * Math.cos(b), o.listener.y + o.dist * Math.sin(b));
+  };
+  ctx.save();
+  ctx.strokeStyle = '#22d3ee';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, o.dist * ppm, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // the line the listener faces, which the partner mirrors across
+  const f = at(0);
+  dashedLine(ctx, c, f, '#94a3b8', [2, 4], 1);
+  const p = at(o.az);
+  ctx.beginPath();
+  ctx.moveTo(c.x, c.y);
+  ctx.lineTo(p.x, p.y);
+  ctx.stroke();
+  if (o.partner) {
+    const q = at(-o.az);
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y);
+    ctx.lineTo(q.x, q.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+  drawLabel(ctx, p.x, p.y - 22, `${o.name} · ${Math.abs(o.az)}° ${o.az > 0 ? 'left' : o.az < 0 ? 'right' : 'centre'} · ${o.dist.toFixed(2)} m · toe ${o.toe > 0 ? '+' : ''}${o.toe}°${o.partner ? ' · partner mirrored' : ''}`, '#22d3ee');
 }
 
 /** The sub crawl's map: every tried position as a square, green good → red bad, the best five numbered. */

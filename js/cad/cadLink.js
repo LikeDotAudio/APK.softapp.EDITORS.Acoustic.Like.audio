@@ -94,6 +94,8 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
       send('palette', palette);
     },
     marks: (key, hash, items) => send('marks', { key, hash, items }),
+    /** Products onto the sheet as the user's own blocks (the furniture a library room comes with). */
+    place: (layer, items) => send('place', { layer, items }),
     arm: (paletteId) => {
       send('arm', { paletteId });
       popup?.focus();

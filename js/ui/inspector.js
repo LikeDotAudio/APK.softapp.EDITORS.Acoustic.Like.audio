@@ -152,6 +152,31 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     return rows;
   }
 
+  /**
+   * Where a speaker is, said the way a listener says it: so many degrees left
+   * or right of where they face, so far away, so high. Editing either moves
+   * the box round the listener and keeps it aimed at their ears.
+   */
+  function relativeRows(d, listener, up) {
+    if (!listener) return [];
+    const facing = listener.aim ?? S().settings.frontDeg;
+    const dist = Math.hypot(d.x - listener.x, d.y - listener.y);
+    const az = ((((Math.atan2(d.y - listener.y, d.x - listener.x) * 180) / Math.PI - facing + 180) % 360) + 360) % 360 - 180;
+    const el = (Math.atan2(d.z - listener.z, dist) * 180) / Math.PI;
+    const move = (azDeg, r) => {
+      const b = ((facing + azDeg) * Math.PI) / 180;
+      const x = listener.x + r * Math.cos(b);
+      const y = listener.y + r * Math.sin(b);
+      up({ x: +x.toFixed(3), y: +y.toFixed(3), aim: +(facing + azDeg + 180).toFixed(1), tilt: +((Math.atan2(listener.z - d.z, r) * 180) / Math.PI).toFixed(1) });
+    };
+    return [
+      h('h4', {}, `From the ${listener.name || 'listener'}`),
+      row('Angle', num(+az.toFixed(1), (v) => move(v, dist), { step: 1, unit: '° (+ left, − right)' })),
+      row('Distance', num(+dist.toFixed(2), (v) => move(az, Math.max(0.2, v)), { step: 0.05, unit: 'm' })),
+      h('p', { class: 'stat' }, `elevation ${el.toFixed(1)}° · press and hold it on the plan to swing it round the ${listener.name || 'listener'}`),
+    ];
+  }
+
   function speakerForm(d) {
     const up = (patch) => store.update('speaker', d.id, patch);
     const mix = S().mics.find((m) => m.mix);
@@ -164,6 +189,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
         const p = SPEAKER_PRESETS[v];
         up({ kind: v, drive: 'power', ...Object.fromEntries(SPEAKER_SPEC.map((k) => [k, p[k]])) });
       })),
+      ...relativeRows(d, mix, up),
       h('h4', {}, 'Position'),
       row('X', num(d.x, (v) => up({ x: v }), { unit: 'm' })),
       row('Y', num(d.y, (v) => up({ y: v }), { unit: 'm' })),
@@ -202,6 +228,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     return [
       h('h3', {}, `Microphone · ${d.name}`),
       row('Name', text(d.name, (v) => up({ name: v }))),
+      row('Who', select(d.kind, Object.entries(MIC_PRESETS).map(([value, p]) => ({ value, label: p.tier ? `${p.label} — tier ${p.tier}` : p.label })), (v) => up({ kind: v, name: MIC_PRESETS[v].label, ...(MIC_PRESETS[v].tier ? { tier: MIC_PRESETS[v].tier, weight: MIC_PRESETS[v].weight } : { tier: undefined, weight: undefined }) }))),
       row('Mix position', check(d.mix, (v) => up({ mix: v }))),
       row('Pattern', select(d.pattern, MIC_PATTERNS.map((x) => ({ value: x, label: x })), (v) => up({ pattern: v }))),
       h('h4', {}, 'Position'),
@@ -487,6 +514,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       h('h3', {}, 'Symmetry — the CAD mirror'),
       h('p', { class: 'stat' }, mirror ? `Virtual Mirror ${mirror.enabled ? 'ON' : 'off'} at x = ${fmt(mirror.xMetres)} m${mirror.axes?.length > 1 ? ` (${mirror.axes.length} axes)` : ''}` : 'CAD has not reported a mirror yet.'),
       row('Place in mirrored pairs', check(settings.symmetric, (v) => set({ symmetric: v }))),
+      row('Speakers follow the mixer', check(settings.followListener, (v) => set({ followListener: v }))),
       h(
         'div',
         { class: 'actions' },

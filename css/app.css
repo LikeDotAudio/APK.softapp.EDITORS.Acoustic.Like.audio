@@ -185,3 +185,4 @@ main.inspector-out { grid-template-columns: 1fr; }
 .checks { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
 td.bad { color: var(--bad); }
 td.ok { color: #4ade80; }
+.stage .hit.holding { outline: 2px solid #22d3ee; outline-offset: 4px; box-shadow: 0 0 14px #22d3ee; }

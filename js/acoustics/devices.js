@@ -42,7 +42,21 @@ export const SPEAKER_PRESETS = {
 /** The fields a preset sets on a speaker — what choosing a preset copies. */
 export const SPEAKER_SPEC = ['pattern', 'hCov', 'vCov', 'sensitivity', 'watts', 'maxSpl', 'fLow', 'fHigh', 'omniBelow', 'lowpass', 'color'];
 
+/**
+ * Mics are mostly PEOPLE: the listening spots of the room, in tiers. The mixer
+ * sits at the mix position and is what the room is tuned for; the producer
+ * behind, the console client beside, the entourage on the couch at the back.
+ * A tier's `weight` is how much that seat counts when the room is judged
+ * across seats (the sub designer); each is an omni at ear height. The plain
+ * measurement patterns are still here for measuring.
+ */
+export const LISTENER_TIERS = ['mixer', 'producer', 'client', 'entourage'];
+
 export const MIC_PRESETS = {
+  mixer: { label: 'Mixer', pattern: 'omni', tier: 1, weight: 3, colour: '#ff3b3b' },
+  producer: { label: 'Producer', pattern: 'omni', tier: 2, weight: 2, colour: '#f59e0b' },
+  client: { label: 'Console client', pattern: 'omni', tier: 3, weight: 1.5, colour: '#38bdf8' },
+  entourage: { label: 'Entourage', pattern: 'omni', tier: 4, weight: 1, colour: '#a78bfa' },
   omni: { label: 'Measurement mic (omni)', pattern: 'omni' },
   cardioid: { label: 'Cardioid', pattern: 'cardioid' },
   supercardioid: { label: 'Supercardioid', pattern: 'supercardioid' },
@@ -136,9 +150,13 @@ export function makeMic(kind, at, extra = {}) {
     tilt: 0,
     pattern: p.pattern,
     mix: false,
+    ...(p.tier ? { tier: p.tier, weight: p.weight } : {}),
     ...extra,
   };
 }
+
+/** Is this mic a person (a listening tier) rather than a measurement mic? */
+export const isListener = (m) => Boolean(MIC_PRESETS[m.kind]?.tier);
 
 /** 4th-order low-pass magnitude (a sub's crossover), linear. */
 export function lowpassGain(freq, fc) {

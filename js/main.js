@@ -1,17 +1,19 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { listen } from './audio/auralize.js';
-import { ELEVATION_LAYER, seedOutline } from './acoustics/elevations.js';
+import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
+import { buildRoom } from './acoustics/room.js';
 import { LAYOUTS } from './acoustics/layouts.js';
 import { paletteItems } from './acoustics/materials.js';
-import { grabBag, roomById } from './acoustics/roomLibrary.js';
+import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
+import { makeMic } from './acoustics/devices.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
 import { buildMarks, hashOf, MARK_KEYS } from './cad/marks.js';
 import { F_MAX, F_MIN } from './compute/compute.js';
 import { createAcousticX } from './acoustx/acoustx.js';
 import { makePoppable } from './ui/popout.js';
 import { hz } from './ui/meters.js';
-import { createEngine } from './compute/engine.js';
+import { createEngine, patchesFromCad } from './compute/engine.js';
 import { createStore } from './model/store.js';
 import { createInspector } from './ui/inspector.js';
 import { createMeters } from './ui/meters.js';
@@ -278,11 +280,13 @@ function drawRoom(entry) {
   const k = METRES_PER_UNIT[g?.units ?? store.state.cad.view?.units ?? 'm'] ?? 1;
   const xs = (g?.walls ?? []).flatMap((w) => [w.a[0], w.b[0]]).map((x) => x * k);
   const ys = (g?.walls ?? []).flatMap((w) => [w.a[1], w.b[1]]).map((y) => y * k);
-  const ox = xs.length ? Math.max(...xs) + 3 - Math.min(...entry.poly.map(([x]) => x)) : 0;
+  // far enough from the last room that its blow-up (ceiling, floor and walls drawn above it) has room
+  const gap = Math.max(4, 2 * (entry.h ?? 3) + 2);
+  const ox = xs.length ? Math.max(...xs) + gap - Math.min(...entry.poly.map(([x]) => x)) : 0;
   const oy = ys.length ? Math.min(...ys) : 0;
   const layer = `Room · ${entry.name}`;
   const seed = entry.poly.map(([x, y]) => [+((x + ox) / k).toFixed(4), +((y + oy) / k).toFixed(4)]);
-  pendingRoom = { layer, h: entry.h, id: entry.id };
+  pendingRoom = { layer, h: entry.h, id: entry.id, entry, ox, oy, k };
   store.setSheet('plan');
   cad.link.sheet(layer, { color: '#e5e7eb', seed });
   status.textContent = `drawing “${entry.name}” into the CAD…`;
@@ -293,9 +297,16 @@ function pickDrawnRoom() {
   if (!pendingRoom) return;
   const loop = engine.out.rooms?.find((r) => r.layerId === pendingRoom.layer);
   if (!loop) return;
-  const { h, id } = pendingRoom;
+  const { h, id, entry, ox, oy, k } = pendingRoom;
   pendingRoom = null;
-  store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90 });
+  const heights = { ...store.state.settings.roomHeights, [loop.layerId]: +h.toFixed(3) };
+  store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90, roomHeights: heights });
+  // furnished, and with its people in it: the console, couch and rack into the CAD as real blocks, the listeners seated
+  if (entry.group) {
+    const { furniture, seats } = furnish(entry);
+    if (furniture.length) cad.link.place('Furniture', furniture.map((f) => ({ paletteId: f.paletteId, at: [+((f.x + ox) / k).toFixed(4), +((f.y + oy) / k).toFixed(4)], rotation: f.rotation })));
+    store.seat(seats.map((s) => makeMic(s.kind, { x: s.x + ox, y: s.y + oy, z: s.z }, { aim: s.aim, mix: Boolean(s.mix) })));
+  }
 }
 
 document.getElementById('grabBag').addEventListener('click', () => drawRoom(grabBag(store.state.settings.lastLibraryRoom)));
@@ -312,7 +323,15 @@ function syncMarks() {
     const ys = (g.walls ?? []).flatMap((w) => [w.a[1], w.b[1]]).map((y) => y * k);
     const sheetBounds = xs.length ? { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) } : null;
     const layers = new Set((g.layers ?? []).map((l) => l.name));
-    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers });
+    // every plan on the sheet gets its blow-up: the one being designed as the engine has it, the rest built here
+    const names = new Map((g.layers ?? []).map((l) => [l.id, l.name]));
+    const patches = patchesFromCad(g).filter((p) => !elevationFaceOf(p.layer));
+    const settings = store.state.settings;
+    const rooms = (engine.out.rooms ?? []).map((loop) => ({
+      name: String(names.get(loop.layerId) ?? loop.layerId).replace(/^Room · /, ''),
+      room: loop.layerId === engine.out.planLayer && !engine.out.virtual ? engine.out.room : buildRoom(loop.poly, { ...settings, roomHeight: settings.roomHeights?.[loop.layerId] ?? settings.roomHeight }, [], patches),
+    }));
+    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms });
     const onSheet = g.marks ?? {};
     for (const key of MARK_KEYS) {
       const items = sets[key];
@@ -445,7 +464,7 @@ createAcousticX({
   engine,
   mount: document.getElementById('acx'),
   // the Modal Response optimiser's "Use these": a shoebox of those dimensions, drawn like any library room
-  onDrawRoom: ({ L, W, H }) => drawRoom({ id: null, name: `Optimised ${W.toFixed(2)} × ${L.toFixed(2)} × ${H.toFixed(2)} m`, h: H, poly: [[-W / 2, 0], [W / 2, 0], [W / 2, L], [-W / 2, L]] }),
+  onDrawRoom: ({ L, W, H }) => drawRoom({ id: 'optimised', group: 'Control rooms', name: `Optimised ${W.toFixed(2)} × ${L.toFixed(2)} × ${H.toFixed(2)} m`, h: H, poly: [[-W / 2, 0], [W / 2, 0], [W / 2, L], [-W / 2, L]] }),
 });
 
 // `?debug` hands the console the store and engine; nothing reads them otherwise.
