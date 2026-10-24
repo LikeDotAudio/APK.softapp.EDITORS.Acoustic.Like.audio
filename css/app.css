@@ -166,6 +166,10 @@ table.treat.pick tr.name, table.treat.pick tr.vals { cursor: pointer; }
 table.surfaces td, table.surfaces th { white-space: nowrap; vertical-align: top; }
 .hint.warn { color: var(--warn); }
 
+/* the array wider than the room: the room it would need (acoustics/roomFit.js) */
+.roomGrow { align-self: center; font-size: 11px; color: var(--warn); border: 1px dashed var(--warn); border-radius: 4px; padding: 1px 6px; white-space: nowrap; cursor: help; }
+.hint.grow { color: var(--warn); }
+
 /* ---------------------------------------------------------------- pop-outs (ui/popout.js) */
 /* the CAD tile too narrow to work in: Pop out asks to be pressed */
 #popCad.ask { border-color: var(--accent); color: var(--accent); animation: ask-pop 1.2s ease-in-out infinite; }

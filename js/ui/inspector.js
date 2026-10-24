@@ -4,7 +4,8 @@ import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
 import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
-import { arrayFront, isMain, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
+import { arrangedSpeakers, arrayFront, isMain, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
+import { CLEAR_M, growthDetail, growthText, roomGrowth } from '../acoustics/roomFit.js';
 import { LOW_END } from '../acoustics/widthFinder.js';
 import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
 import { MIC_PATTERNS, SPEAKER_PATTERNS } from '../acoustics/patterns.js';
@@ -582,6 +583,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       // the width carries the placed speakers with it, so they stay round the listener
       row('Width', widthSlider(settings.layout.radius, best), num(settings.layout.radius, (v) => moveArray('radius', Math.max(0.8, v) * 1000), { unit: 'm radius', min: 0.8, step: 0.1 })),
       ...widthFitRows(fit, best, settings.layout.radius),
+      ...growthRows(room, settings),
       offAxis ? row('Centre', h('span', { class: 'stat' }, `${offAxis} off the ${mix?.name || 'mix seat'}`), button('On the listener', () => ['right', 'front', 'up'].forEach((k) => moveArray(k, 0)))) : '',
       // turning carries the placed speakers round the centre, each still aimed at the listener
       row('Rotate', slider(settings.layout.rotate ?? 0, -180, 180, 1, (v) => moveArray('rotate', v, true), (v) => moveArray('rotate', v)), num(settings.layout.rotate ?? 0, (v) => moveArray('rotate', v), { unit: '°', step: 1, min: -180, max: 180 })),
@@ -638,6 +640,13 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       h('p', { class: 'stat' }, `Flattest low end at r ${fmt(best.r)} m: ±${fmt(best.spread, 1)} dB over the room’s seats, ${LOW_END.lo}–${LOW_END.hi} Hz (now ±${fmt(here.spread, 1)} dB at ${fmt(here.r)} m)`),
       h('div', { class: 'actions' }, Math.abs(best.r - r) > 0.01 ? button(`Snap to ${fmt(best.r)} m`, () => moveArray('radius', best.r * 1000)) : h('span', { class: 'hint' }, 'At the best width.'), find),
     ];
+  }
+
+  /** The array wider than the room: the expansion it would need, wall by wall. */
+  function growthRows(room, settings) {
+    const g = roomGrowth(room, arrangedSpeakers(S().speakers, settings));
+    if (!g.any) return [];
+    return [h('p', { class: 'hint grow' }, `⤢ This width needs a bigger room — ${growthText(g)}: ${growthDetail(g)}, keeping every box ${CLEAR_M} m clear. The dashed outline on the plan shows it.`)];
   }
 
   /** The toolbar's ⤓: place the current preset around the mix seat. False when there is no mix seat or room. */

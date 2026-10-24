@@ -5,6 +5,7 @@ import { criticalDistance } from '../acoustics/analysis.js';
 import { DEG, mirrorPoint, segmentCross } from '../acoustics/geometry.js';
 import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, noseMarks, snapNose } from '../acoustics/layouts.js';
 import { fromFrame } from '../acoustics/room.js';
+import { roomGrowth } from '../acoustics/roomFit.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { boxSize, MIC_PRESETS, isListener } from '../acoustics/devices.js';
 import { mirrorName } from '../acoustics/symmetry.js';
@@ -296,6 +297,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
 
     const mix = state.mics.find((m) => m.mix);
     if (show.arrangement !== false) drawArrangement(ctx, room, settings, mix, toScreen, pxPerMetre());
+    drawGrowth(ctx, room, roomGrowth(room, arrangedSpeakers(state.speakers, settings)), toScreen);
     const band = settings.band;
     const soloed = new Set(arrangedSpeakers(state.speakers, settings));
     for (const s of state.speakers) {
@@ -529,6 +531,35 @@ function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
   ctx.stroke();
   ctx.restore();
   drawLabel(ctx, c.x, c.y + r * ppm + 14, `${layout.label} · r ${r.toFixed(1)} m${mix ? '' : ' · no mix mic: seat at 38 %'}`, '#fde047');
+}
+
+const GROW = '#f59e0b';
+
+/**
+ * The room the array would need (acoustics/roomFit.js), dashed: every wall
+ * of a face that must move, set out by that face's growth, joined back to
+ * where it stands now, and the move written on it.
+ */
+function drawGrowth(ctx, room, g, toScreen) {
+  if (!g.any) return;
+  const labelled = new Set();
+  for (const w of room.walls) {
+    const d = g[w.face];
+    if (!d) continue;
+    const out = (p) => ({ x: p.x - w.nIn.x * d, y: p.y - w.nIn.y * d });
+    const b = { x: w.a.x + w.t.x * w.len, y: w.a.y + w.t.y * w.len };
+    const [A, B, A2, B2] = [w.a, b, out(w.a), out(b)].map((p) => toScreen(p.x, p.y));
+    dashedLine(ctx, A2, B2, GROW, [6, 4], 1.5);
+    dashedLine(ctx, A, A2, GROW, [2, 3]);
+    dashedLine(ctx, B, B2, GROW, [2, 3]);
+    if (labelled.has(w.face)) continue;
+    labelled.add(w.face);
+    drawLabel(ctx, (A2.x + B2.x) / 2, (A2.y + B2.y) / 2, `${w.face} wall +${d.toFixed(2)} m`, GROW, { force: true });
+  }
+  if (g.up) {
+    const c = toScreen(room.poly.reduce((t, p) => t + p.x, 0) / room.poly.length, room.poly.reduce((t, p) => t + p.y, 0) / room.poly.length);
+    drawLabel(ctx, c.x, c.y - 24, `ceiling +${g.up.toFixed(2)} m`, GROW, { force: true });
+  }
 }
 
 /** A device's aim as a ray out to the first wall it meets, its bearing written where it lands. */

@@ -4,9 +4,10 @@ import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
 import { buildRoom } from './acoustics/room.js';
 import { elevationOrigin, faceCoords } from './acoustics/patches.js';
-import { arrayFront, carryArray, LAYOUTS } from './acoustics/layouts.js';
+import { arrangedSpeakers, arrayFront, carryArray, LAYOUTS } from './acoustics/layouts.js';
 import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
 import { widthSweep } from './acoustics/widthFinder.js';
+import { CLEAR_M, growthDetail, growthText, roomGrowth } from './acoustics/roomFit.js';
 import { consoleOf, consoleSettled, consoleSpot } from './acoustics/console.js';
 import { paletteItems } from './acoustics/materials.js';
 import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
@@ -254,6 +255,7 @@ function syncToolbar() {
   pop.textContent = popped ? '⇲ Dock' : '⇱ Pop out';
   pop.title = popped ? 'Bring the CAD back into this tile (or just close its window)' : 'Give the CAD a window of its own — the plan stays here';
   askToPop();
+  syncRoomGrowth();
   if (popped) document.getElementById('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
   for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
@@ -355,7 +357,9 @@ new ResizeObserver(() => renderGeometry()).observe(views);
   const ticks = Object.assign(document.createElement('datalist'), { id: 'bestWidth' });
   const find = Object.assign(document.createElement('button'), { textContent: '⌖', title: 'Find the width with the flattest low end over the room’s seats' });
   find.onclick = () => findWidth();
-  fields.append(width, ticks, find);
+  // the array wider than the room allows: how much bigger the room would have to be (acoustics/roomFit.js)
+  const grow = Object.assign(document.createElement('span'), { id: 'roomGrow', className: 'roomGrow', hidden: true });
+  fields.append(width, ticks, find, grow);
   bar.after(fields);
 }
 
@@ -386,6 +390,16 @@ function findWidth() {
     if (more) requestAnimationFrame(tick);
   };
   tick();
+}
+
+/** The arranged speakers through a wall or the ceiling: the room they would need, beside the Width slider. */
+function syncRoomGrowth() {
+  const el = document.getElementById('roomGrow');
+  if (!el) return;
+  const g = roomGrowth(engine.out.room, arrangedSpeakers(store.state.speakers, store.state.settings));
+  el.hidden = !g.any;
+  el.textContent = g.any ? `⤢ room ${growthText(g)}` : '';
+  el.title = g.any ? `This width puts speakers outside the room. To keep them ${CLEAR_M} m clear of the walls: ${growthDetail(g)} — the dashed outline on the plan.` : '';
 }
 
 /** The best width as a tick on every Width slider. */
