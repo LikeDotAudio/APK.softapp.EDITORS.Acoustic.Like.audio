@@ -3,7 +3,7 @@
 import { AIR_DB_PER_M, BANDS, C } from './bands.js';
 import { MOUNTS, sourceDb } from './devices.js';
 import { deviceGain, directivityQ, frame, patternWeight } from './patterns.js';
-import { roomImages } from './images.js';
+import { imageReaches, roomImages } from './images.js';
 
 /**
  * THREE WAYS TO ASK WHAT A POINT HEARS
@@ -68,6 +68,7 @@ export function waveAt(prep, pt, freq, mic = null) {
     // Below its omniBelow the box is a point source: no pattern to evaluate.
     const omni = spk.pattern === 'omni' || patternWeight(freq, spk.omniBelow) === 0;
     for (const img of images) {
+      if ((img.top || img.shadows) && !imageReaches(img, pt)) continue;
       const dx = pt.x - img.x;
       const dy = pt.y - img.y;
       const dz = pt.z - img.z;

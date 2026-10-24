@@ -55,11 +55,13 @@ const HATCH = { Masonry: 'ANSI31', Absorber: 'GRID', Diffuser: 'GRID', Resonator
 
 const clamp = (x, hi) => Math.max(0, Math.min(hi, x));
 
-const m = (id, name, category, alpha, tl, s, shape, color) => ({
+/** `alpha9`, when given, is the 31 Hz … 8 kHz series (bands.js BANDS_9) — for a material whose low end is not simply its 125 Hz figure. */
+const m = (id, name, category, alpha, tl, s, shape, color, alpha9) => ({
   id,
   name,
   category,
   alpha: alpha.map((a) => clamp(a, 0.99)),
+  ...(alpha9 ? { alpha9: alpha9.map((a) => clamp(a, 0.99)) } : {}),
   scatter: SHAPE[shape].map((k) => +clamp(s * k, 0.99).toFixed(3)),
   tl,
   color,
@@ -104,7 +106,12 @@ export const MATERIALS = [
   m('diffuser', 'QRD diffuser, wooden wells', 'Diffuser', [0.45, 0.3, 0.15, 0.2, 0.3, 0.4], 20, 0.9, 'qrd', '#d4a52a'),
   // furniture — the desk is a hard reflector at ear height, the couch a big soft absorber
   m('desk-top', 'Desk / console top, laminate and metal', 'Furniture', [0.05, 0.04, 0.04, 0.04, 0.05, 0.05], 20, 0.25, 'rough', '#6b7280'),
-  m('upholstered', 'Upholstered couch or chair', 'Furniture', [0.35, 0.5, 0.65, 0.75, 0.75, 0.7], 5, 0.6, 'rough', '#7c5a3a'),
+  // FURNITURE AS BASS TRAPS. A couch is a deep porous absorber — foam, batting and fibre behind fabric, a frame
+  // and springs that flex — so it keeps working an octave or two under 125 Hz where a thin panel has stopped; a
+  // heavy table top is a limp mass that flexes, a panel absorber with its hump in the bottom octaves. Both low
+  // ends are estimates in the shape those absorbers have, not a test report.
+  m('upholstered', 'Upholstered couch or chair', 'Furniture', [0.35, 0.5, 0.65, 0.75, 0.75, 0.7], 5, 0.6, 'rough', '#7c5a3a', [0.12, 0.22, 0.35, 0.5, 0.65, 0.75, 0.75, 0.7, 0.65]),
+  m('table-heavy', 'Heavy table, thick hardwood or stone top', 'Furniture', [0.18, 0.1, 0.06, 0.05, 0.05, 0.05], 30, 0.2, 'flat', '#8b5a2b', [0.12, 0.22, 0.18, 0.1, 0.06, 0.05, 0.05, 0.05, 0.05]),
   m('rack', 'Equipment rack, steel and gear', 'Furniture', [0.05, 0.05, 0.06, 0.08, 0.1, 0.1], 20, 0.5, 'rough', '#3f4652'),
   m('drum-kit', 'Drum kit: shells, heads and cymbals', 'Instruments', [0.12, 0.15, 0.12, 0.1, 0.08, 0.08], 5, 0.6, 'rough', '#b91c1c'),
   m('guitar-amp', 'Guitar amp: wooden cabinet, grille cloth', 'Instruments', [0.12, 0.1, 0.08, 0.08, 0.1, 0.12], 15, 0.3, 'rough', '#27272a'),
@@ -123,6 +130,7 @@ export const PRODUCTS = [
   p('producer-desk-1800x600', 'Producer desk 1800×600', 'desk-top', [1.8, 0.6]),
   p('console-2400x1000', 'Mixing console 2400×1000', 'desk-top', [2.4, 1.0]),
   p('console-3200x1200', 'Large-format console 3200×1200', 'desk-top', [3.2, 1.2]),
+  p('table-heavy-2400x1000', 'Heavy table 2400×1000, hardwood', 'table-heavy', [2.4, 1.0]),
   p('couch-2000x900', 'Couch 2000×900', 'upholstered', [2.0, 0.9]),
   p('couch-2400x1000', 'Client couch 2400×1000', 'upholstered', [2.4, 1.0]),
   p('armchair-900', 'Armchair 900×900', 'upholstered', [0.9, 0.9]),
@@ -164,13 +172,28 @@ export function lookup(id) {
   return byId.get(id) ?? byId.get(productById.get(id)?.material) ?? null;
 }
 
-const FURNITURE_HEIGHT = { desk: 0.75, 'producer-desk': 0.8, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3 };
+const FURNITURE_HEIGHT = { table: 0.75, desk: 0.75, 'producer-desk': 0.8, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3 };
 
 /** How tall a thing laid on the floor stands, metres: 0 for a finish (a rug, a floor build), a height for furniture and instruments. */
 export function furnitureHeight(paletteId) {
   const id = String(paletteId ?? '');
   for (const [k, h] of Object.entries(FURNITURE_HEIGHT)) if (id.startsWith(k)) return h;
   return lookup(id)?.category === 'Furniture' ? 0.8 : 0;
+}
+
+/** Tables and desks stand on legs: a top, open underneath. Everything else on the floor is a solid. */
+const ON_LEGS = /^(table|desk|producer-desk)-/;
+
+/**
+ * The surface a piece of furniture shows the room beyond the footprint that
+ * is already mixed into the floor, m²: a solid's sides (perimeter × height),
+ * or a table's underside (its footprint again) — the faces that make it an
+ * object in the room (ISO 354), absorbing in the air rather than lying on it.
+ */
+export function exposedArea(paletteId, footprint, perimeter) {
+  const h = furnitureHeight(paletteId);
+  if (!h) return 0;
+  return ON_LEGS.test(String(paletteId ?? '')) ? footprint : perimeter * h;
 }
 
 /** A material by its id or a product's id, falling back to the default wall so a stale saved id still builds a room. */

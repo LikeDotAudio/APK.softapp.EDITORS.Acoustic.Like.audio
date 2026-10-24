@@ -4,7 +4,7 @@ import { buildAlpha, DEFAULT_ISOLATION } from './isolation.js';
 import { BANDS, BANDS_9, C, airM, airM9, FREQ_3RD, FREQ_OCTAVE } from './bands.js';
 import { DEG, angleDiff, ensureCCW, isConvex, signedArea, simplifyPolygon } from './geometry.js';
 import { measureSection, profileFromLoop } from './elevations.js';
-import { material } from './materials.js';
+import { exposedArea, material } from './materials.js';
 import { layPatches } from './patches.js';
 import { openingsOn, wallKey } from './wallChains.js';
 
@@ -124,7 +124,10 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
     ...walls.map((w) => ({ key: `wall:${w.i}`, face: w.face, area: w.area, material: w.material })),
   ];
 
-  // summed in the same order as ever, so a room with no patches gives the same numbers to the last bit
+  const objects = objectAbsorption(laid.pieces);
+
+  // summed in the same order as ever, so a room with no patches gives the same numbers to the last bit;
+  // the furniture's objects add their sabins outside the surfaces' mean, as Sabine and Eyring take objects
   const perBand = BANDS.map((_, band) => {
     let S = 0;
     let A = 0;
@@ -132,15 +135,18 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
       S += s.area;
       A += s.area * s.material.alpha[band];
     }
+    const Aobj = objects.A[band];
     const abar = Math.min(A / S, 0.99);
+    const all = Math.min((A + Aobj) / S, 0.99);
     const m4V = 4 * airM(band) * V;
     return {
       S,
       A,
-      abar,
-      sabine: (0.161 * V) / (A + m4V),
-      eyring: (0.161 * V) / (-S * Math.log(1 - abar) + m4V),
-      R: (S * abar) / (1 - abar),
+      Aobj,
+      abar: all,
+      sabine: (0.161 * V) / (A + Aobj + m4V),
+      eyring: (0.161 * V) / (-S * Math.log(1 - abar) + Aobj + m4V),
+      R: (S * all) / (1 - all),
     };
   });
 
@@ -155,16 +161,19 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
         : s.material.alpha[band <= 1 ? 0 : band >= 7 ? 5 : band - 2];
       A += s.area * Math.min(0.99, Math.max(0, alphaVal));
     }
+    const Aobj = objects.A9[band];
     const abar = Math.min(A / S, 0.99);
+    const all = Math.min((A + Aobj) / S, 0.99);
     const m4V = 4 * airM9(band) * V;
     return {
       f,
       S,
       A,
-      abar,
-      sabine: (0.161 * V) / (A + m4V),
-      eyring: (0.161 * V) / (-S * Math.log(1 - abar) + m4V),
-      R: (S * abar) / (1 - abar),
+      Aobj,
+      abar: all,
+      sabine: (0.161 * V) / (A + Aobj + m4V),
+      eyring: (0.161 * V) / (-S * Math.log(1 - abar) + Aobj + m4V),
+      R: (S * all) / (1 - all),
     };
   });
 
@@ -184,6 +193,7 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
     surfaces,
     patches: laid.pieces,
     patchWarnings: laid.warnings,
+    objects,
     area,
     V,
     perBand,
@@ -198,6 +208,29 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
     convex: isConvex(poly),
     rect: isRectangle(poly),
   };
+}
+
+/**
+ * The furniture on the floor as objects in the room: its exposed surface
+ * (materials.js exposedArea — a couch's sides, a table's underside) times its
+ * material's α, per band. { count, area, A: [6 bands], A9: [9 bands] }, m².
+ * Its footprint is not counted here: that is already in the floor's mix.
+ */
+function objectAbsorption(pieces) {
+  const out = { count: 0, area: 0, A: BANDS.map(() => 0), A9: BANDS_9.map(() => 0) };
+  for (const p of pieces) {
+    if (p.surface !== 'floor') continue;
+    const pts = p.points3d;
+    const perimeter = pts.reduce((s, q, i) => s + Math.hypot(pts[(i + 1) % pts.length].x - q.x, pts[(i + 1) % pts.length].y - q.y), 0);
+    const exposed = exposedArea(p.paletteId, p.area, perimeter);
+    if (!(exposed > 0)) continue;
+    const mat = p.material;
+    out.count++;
+    out.area += exposed;
+    out.A = out.A.map((a, b) => a + exposed * mat.alpha[b]);
+    out.A9 = out.A9.map((a, b) => a + exposed * (mat.alpha9 ? mat.alpha9[b] : mat.alpha[b <= 1 ? 0 : b >= 7 ? 5 : b - 2]));
+  }
+  return out;
 }
 
 /**

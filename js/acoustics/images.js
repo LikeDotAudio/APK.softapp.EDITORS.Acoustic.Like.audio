@@ -1,7 +1,8 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS } from './bands.js';
-import { mirrorPoint } from './geometry.js';
+import { mirrorPoint, pointInPolygon } from './geometry.js';
+import { furnitureHeight } from './materials.js';
 
 /**
  * IMAGE SOURCES FOR AN EXTRUDED ROOM
@@ -37,6 +38,19 @@ import { mirrorPoint } from './geometry.js';
  * method only sees `amp` = √refl: behind a QRD the comb filtering and the
  * early reflection fade, which is exactly what a diffuser is bought for.
  * With s = 0 everywhere, refl is bit-for-bit the old Π(1 − α).
+ *
+ * THE CONSOLE BOUNCE. A console, desk or rack is not a floor finish: its top
+ * is a hard horizontal mirror at its height, under the boxes and in front of
+ * the ears — the reflection a designer finds with a mirror laid on the desk.
+ * Each top (furnitureTops) adds one first-order image, the box mirrored in
+ * the plane of the top, carrying the top's (1 − α)(1 − s): a loaded console's
+ * knobs and faders scatter the highs (materials.js console-surface), its flat
+ * metal and the low-mids it keeps. Unlike a wall, a top is an island, so the
+ * image only reaches a point whose path to it crosses the top inside its
+ * outline (imageReaches); and what stands on the floor shadows the floor
+ * bounce under it. Only first order: the console's part is the early
+ * reflection — comb filtering at the seat, and the low-mid dip of a boundary
+ * this close to the source — not the tail.
  */
 
 export function planImages(room, src, maxOrder) {
@@ -96,6 +110,7 @@ export function roomImages(room, src, maxOrder) {
   const fSpec = BANDS.map((_, b) => specular(room.floor, b));
   const cSpec = BANDS.map((_, b) => specular(room.ceiling, b));
   const out = [];
+  const tops = furnitureTops(room);
   for (const p of plan) {
     const wallAbs = BANDS.map((_, b) => p.walls.reduce((e, i) => e * (1 - room.walls[i].material.alpha[b]), 1));
     const wallSpec = BANDS.map((_, b) => p.walls.reduce((e, i) => e * specular(room.walls[i].material, b), 1));
@@ -106,11 +121,71 @@ export function roomImages(room, src, maxOrder) {
       );
       const refl = wallSpec.map((e, b) => e * fSpec[b] ** h.floor * cSpec[b] ** h.ceiling);
       const scatterLoss = refl.map((e, b) => (reflAbs[b] > 0 ? Math.max(0, 1 - e / reflAbs[b]) : 0));
-      out.push({ x: p.x, y: p.y, z: h.z, M: p.M, zSign: h.sign, order: p.order + h.order, walls: p.walls, floor: h.floor, ceiling: h.ceiling, refl, reflAbs, scatterLoss, amp: refl.map(Math.sqrt) });
+      const img = { x: p.x, y: p.y, z: h.z, M: p.M, zSign: h.sign, order: p.order + h.order, walls: p.walls, floor: h.floor, ceiling: h.ceiling, refl, reflAbs, scatterLoss, amp: refl.map(Math.sqrt) };
+      // the floor bounce straight to the ears: what stands on the floor there takes it
+      if (tops.length && img.order === 1 && img.floor === 1) img.shadows = { z: room.zFloor ?? 0, tops };
+      out.push(img);
     }
+  }
+  if (maxOrder >= 1) for (const top of tops) {
+    if (src.z <= top.z) continue;
+    const refl = BANDS.map((_, b) => specular(top.material, b));
+    const reflAbs = BANDS.map((_, b) => 1 - top.material.alpha[b]);
+    const scatterLoss = refl.map((e, b) => (reflAbs[b] > 0 ? Math.max(0, 1 - e / reflAbs[b]) : 0));
+    out.push({ x: src.x, y: src.y, z: 2 * top.z - src.z, M: [1, 0, 0, 1], zSign: -1, order: 1, walls: [], floor: 0, ceiling: 0, top, refl, reflAbs, scatterLoss, amp: refl.map(Math.sqrt) });
   }
   return out;
 }
+
+const topsCache = new WeakMap();
+
+/**
+ * The tops of what stands on the floor — a console, a desk, a rack, a couch:
+ * { id, paletteId, z, poly, material } from the room's floor pieces that have
+ * a height (materials.js furnitureHeight), z where the top is.
+ */
+export function furnitureTops(room) {
+  if (!room?.patches) return [];
+  if (topsCache.has(room)) return topsCache.get(room);
+  const tops = room.patches
+    .filter((p) => p.surface === 'floor' && p.material && furnitureHeight(p.paletteId) > 0)
+    .map((p) => ({
+      id: p.id,
+      paletteId: p.paletteId,
+      z: p.points3d.reduce((t, q) => t + (q.z ?? 0), 0) / p.points3d.length + furnitureHeight(p.paletteId),
+      poly: p.points3d.map((q) => ({ x: q.x, y: q.y })),
+      material: p.material,
+    }));
+  topsCache.set(room, tops);
+  return tops;
+}
+
+/** Where the line from `pt` to an image crosses height z, in plan. */
+function crossing(img, pt, z) {
+  const u = (pt.z - z) / (pt.z - img.z);
+  return { x: pt.x + (img.x - pt.x) * u, y: pt.y + (img.y - pt.y) * u, z };
+}
+
+/**
+ * Whether an image is heard at `pt`: false for a top's image whose path misses
+ * the top (or a point below it), and for the floor bounce when it lands under
+ * something standing on the floor. Every other image always is.
+ */
+export function imageReaches(img, pt) {
+  if (img.top) {
+    if (pt.z <= img.top.z) return false;
+    const at = crossing(img, pt, img.top.z);
+    return pointInPolygon(at.x, at.y, img.top.poly);
+  }
+  if (img.shadows) {
+    const at = crossing(img, pt, img.shadows.z);
+    return !img.shadows.tops.some((t) => pointInPolygon(at.x, at.y, t.poly));
+  }
+  return true;
+}
+
+/** The bounce point of a top's image on its way to `pt`. */
+export const topHit = (img, pt) => crossing(img, pt, img.top.z);
 
 /** Plan images grow as walls^order; a tessellated curve has many walls, so it gets fewer orders. */
 export function planOrderCap(room) {

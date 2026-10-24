@@ -3,6 +3,7 @@
 import { AIR_DB_PER_M, BANDS, C } from './bands.js';
 import { sourceDb } from './devices.js';
 import { deviceGain } from './patterns.js';
+import { imageReaches } from './images.js';
 import { cachedQ, energyAt, modalDb, mountGainDb, waveDb } from './field.js';
 
 /**
@@ -65,6 +66,7 @@ export function echogram(room, prep, mic, band) {
     const L0 = sourceDb(spk, freq);
     const delay = (spk.delayMs || 0) / 1000;
     for (const img of images) {
+      if ((img.top || img.shadows) && !imageReaches(img, mic)) continue;
       const dx = mic.x - img.x;
       const dy = mic.y - img.y;
       const dz = mic.z - img.z;

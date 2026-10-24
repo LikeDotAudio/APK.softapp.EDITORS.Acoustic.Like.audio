@@ -3,7 +3,7 @@
 import { C } from './bands.js';
 import { nearestBand } from './field.js';
 import { segmentCross } from './geometry.js';
-import { roomImages } from './images.js';
+import { imageReaches, roomImages, topHit } from './images.js';
 import { deviceGain } from './patterns.js';
 
 /**
@@ -39,7 +39,9 @@ export function rayPaths(room, speakers, mix, freq, maxOrder = 3) {
     if (direct < 1e-6) continue;
     const toSeat = deviceGain(s, [mix.x - s.x, mix.y - s.y, mix.z - s.z], freq);
     for (const img of roomImages(room, s, maxOrder)) {
-      const pts = unfold(room, s, img, mix, z0, z1);
+      if ((img.top || img.shadows) && !imageReaches(img, mix)) continue;
+      // off a console's top: box, the spot on the top, ears
+      const pts = img.top ? [{ x: s.x, y: s.y, z: s.z }, topHit(img, mix), { x: mix.x, y: mix.y, z: mix.z }] : unfold(room, s, img, mix, z0, z1);
       if (!pts) continue;
       const path = Math.hypot(img.x - mix.x, img.y - mix.y, img.z - mix.z);
       const first = pts[1];

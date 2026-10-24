@@ -388,7 +388,9 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
         h('tr', {}, h('td', {}, 'Sabine s'), ...room.perBand.map((p) => h('td', {}, fmt(p.sabine)))),
         h('tr', {}, h('td', {}, 'Eyring s'), ...room.perBand.map((p) => h('td', {}, fmt(p.eyring)))),
         h('tr', {}, h('td', {}, 'R m²'), ...room.perBand.map((p) => h('td', {}, fmt(p.R, 1)))),
+        room.objects?.count ? h('tr', { title: 'Sabins the furniture adds as objects in the room — a couch’s sides, a table’s underside — over the footprint already in the floor' }, h('td', {}, '+furn m²'), ...room.perBand.map((p) => h('td', {}, fmt(p.Aobj, 2)))) : '',
       ),
+      room.objects?.count ? h('p', { class: 'hint' }, `${room.objects.count} piece${room.objects.count === 1 ? '' : 's'} of furniture standing in the room show ${fmt(room.objects.area, 1)} m² beyond their footprints, and absorb there too: a couch is a deep porous trap that keeps working below 125 Hz, a heavy table a panel that flexes in the bottom octaves.`) : '',
       h('p', { class: 'stat' }, `Schroeder frequency ${fmt(schroeder(room), 0)} Hz — below it, read the modal method.`),
       h('h4', {}, 'Modes to 200 Hz'),
       h(
