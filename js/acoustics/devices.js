@@ -9,8 +9,18 @@
  * energy: constant-directivity horn, high sensitivity, listeners far beyond
  * critical distance, the pattern doing the work of keeping sound off the walls.
  *
- * `level` is on-axis SPL at 1 m at the operating level — not sensitivity per
- * watt: what this app needs is what arrives, and that is what a designer sets.
+ * A box is specified the way a datasheet (and EASE) specifies it: SENSITIVITY,
+ * dB SPL on axis at 1 m for 1 W; the AMPLIFIER power driving it; the MAX SPL
+ * it can make before it limits; and its FREQUENCY RANGE, the −10 dB points at
+ * each end. Driven by power, its level at 1 m is sensitivity + 10·log10(W),
+ * held at max SPL — speakerLevel(). Or set `drive: 'spl'` and give `level`,
+ * the on-axis SPL at 1 m, directly, as a designer setting a target does (and
+ * as every speaker saved before power existed is read).
+ *
+ * The range shapes every method's band: a 4th-order high-pass at the bottom
+ * (a vented box) and 2nd-order low-pass at the top, each corner placed so the
+ * response is −10 dB exactly at the quoted frequency — responseGain(). 0 at
+ * either end is unlimited. A sub's `lowpass` is its crossover, on top.
  *
  * MOUNTING is the solid angle the box radiates into. Free-standing is 4π.
  * Flush in a wall is 2π, a two-wall corner π, a trihedral corner π/2 — each a
@@ -20,12 +30,17 @@
  * shows its SBIR notch there and a flush one does not.
  */
 
+// Typical datasheet figures for each class of box; the watts are chosen so each
+// starts at the operating level it always had (94, 118, 120, 100 dB at 1 m).
 export const SPEAKER_PRESETS = {
-  monitor: { label: 'Studio monitor', pattern: 'cardioid', hCov: 90, vCov: 60, level: 94, omniBelow: 300, lowpass: 0, color: '#5aa9ff' },
-  'horn-90x50': { label: 'Projection 90×50 horn', pattern: 'horn', hCov: 90, vCov: 50, level: 118, omniBelow: 500, lowpass: 0, color: '#ffb347' },
-  'horn-60x40': { label: 'Projection 60×40 horn', pattern: 'horn', hCov: 60, vCov: 40, level: 120, omniBelow: 600, lowpass: 0, color: '#ff8c42' },
-  sub: { label: 'Subwoofer', pattern: 'omni', hCov: 360, vCov: 360, level: 100, omniBelow: 0, lowpass: 100, color: '#b388ff' },
+  monitor: { label: 'Studio monitor', pattern: 'cardioid', hCov: 90, vCov: 60, sensitivity: 87, watts: 5, maxSpl: 112, fLow: 45, fHigh: 22000, omniBelow: 300, lowpass: 0, color: '#5aa9ff' },
+  'horn-90x50': { label: 'Projection 90×50 horn', pattern: 'horn', hCov: 90, vCov: 50, sensitivity: 104, watts: 25, maxSpl: 133, fLow: 60, fHigh: 18000, omniBelow: 500, lowpass: 0, color: '#ffb347' },
+  'horn-60x40': { label: 'Projection 60×40 horn', pattern: 'horn', hCov: 60, vCov: 40, sensitivity: 107, watts: 20, maxSpl: 135, fLow: 65, fHigh: 18000, omniBelow: 600, lowpass: 0, color: '#ff8c42' },
+  sub: { label: 'Subwoofer', pattern: 'omni', hCov: 360, vCov: 360, sensitivity: 100, watts: 1, maxSpl: 128, fLow: 30, fHigh: 0, omniBelow: 0, lowpass: 100, color: '#b388ff' },
 };
+
+/** The fields a preset sets on a speaker — what choosing a preset copies. */
+export const SPEAKER_SPEC = ['pattern', 'hCov', 'vCov', 'sensitivity', 'watts', 'maxSpl', 'fLow', 'fHigh', 'omniBelow', 'lowpass', 'color'];
 
 export const MIC_PRESETS = {
   omni: { label: 'Measurement mic (omni)', pattern: 'omni' },
@@ -48,6 +63,7 @@ export function newId(prefix) {
 
 export function makeSpeaker(kind, at, extra = {}) {
   const p = SPEAKER_PRESETS[kind] ?? SPEAKER_PRESETS.monitor;
+  const spec = Object.fromEntries(SPEAKER_SPEC.map((k) => [k, p[k]]));
   return {
     id: newId('s'),
     name: extra.name ?? p.label,
@@ -59,15 +75,52 @@ export function makeSpeaker(kind, at, extra = {}) {
     tilt: 0,
     mount: 'free',
     delayMs: 0,
-    pattern: p.pattern,
-    hCov: p.hCov,
-    vCov: p.vCov,
-    level: p.level,
-    omniBelow: p.omniBelow,
-    lowpass: p.lowpass,
-    color: p.color,
+    ...spec,
+    // A level given outright means SPL drive, unless the caller says otherwise.
+    drive: 'level' in extra ? 'spl' : 'power',
+    level: speakerLevel({ ...spec, drive: 'power' }).demand,
     ...extra,
   };
+}
+
+const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * On-axis SPL at 1 m: { level, demand, limited, headroom, drive }. `demand` is
+ * what was asked for (sensitivity + 10·log10 W, or the SPL set), `level` what
+ * the box makes — demand held at max SPL — and headroom how far below max SPL
+ * it runs (negative when it limits). A speaker with no sensitivity, as every
+ * one saved before power existed, is SPL-driven at its `level`.
+ */
+export function speakerLevel(spk) {
+  const power = spk.drive !== 'spl' && finite(spk.sensitivity) && finite(spk.watts);
+  const demand = power ? spk.sensitivity + 10 * Math.log10(Math.max(spk.watts, 1e-3)) : spk.level;
+  const max = finite(spk.maxSpl) && spk.maxSpl > 0 ? spk.maxSpl : Infinity;
+  return { level: Math.min(demand, max), demand, limited: demand > max, headroom: max - demand, drive: power ? 'power' : 'spl' };
+}
+
+/** Watts that drive the box to `spl` at 1 m (its sensitivity known). */
+export function wattsFor(spk, spl) {
+  return 10 ** ((spl - spk.sensitivity) / 10);
+}
+
+// Butterworth corners that sit −10 dB at the quoted frequency: |H|² = 1/(1 + x^2n) = 1/10 at x = 9^(1/2n).
+const HP_ORDER = 4;
+const LP_ORDER = 2;
+const HP_K = 9 ** (1 / (2 * HP_ORDER));
+const LP_K = 9 ** (1 / (2 * LP_ORDER));
+
+/** The box's own band-pass at `freq` — its frequency range and any crossover — linear. */
+export function responseGain(freq, spk) {
+  let g = lowpassGain(freq, spk.lowpass);
+  if (spk.fLow > 0) g /= Math.sqrt(1 + ((spk.fLow * HP_K) / freq) ** (2 * HP_ORDER));
+  if (spk.fHigh > 0) g /= Math.sqrt(1 + (freq / (spk.fHigh / LP_K)) ** (2 * LP_ORDER));
+  return g;
+}
+
+/** What the box radiates on axis at 1 m at `freq`, dB SPL: level shaped by its response. */
+export function sourceDb(spk, freq) {
+  return speakerLevel(spk).level + 20 * Math.log10(Math.max(responseGain(freq, spk), 1e-12));
 }
 
 export function makeMic(kind, at, extra = {}) {

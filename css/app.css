@@ -155,3 +155,4 @@ table.grid.treat tr[class~=on] td { background: #3a3a3d; }
 table.grid.treat tr.on td:first-child { color: var(--accent); }
 table.treat.pick tr.name, table.treat.pick tr.vals { cursor: pointer; }
 table.surfaces td, table.surfaces th { white-space: nowrap; vertical-align: top; }
+.hint.warn { color: var(--warn); }

@@ -2,6 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, C } from './bands.js';
 import { heightsAtXY } from './elevations.js';
+import { responseGain, speakerLevel } from './devices.js';
 import { distToSegment } from './geometry.js';
 import { criticalDistance, flutterRisk } from './analysis.js';
 import { axialModes, inFrame, nullFractions, schroeder } from './room.js';
@@ -72,6 +73,11 @@ export function advise(room, speakers, mics, settings, mirror) {
 
   for (const s of speakers) {
     const tag = s.role || s.name;
+    const lv = speakerLevel(s);
+    if (lv.limited) add('warn', `${tag}: past max SPL`, `${s.watts} W asks ${lv.demand.toFixed(1)} dB at 1 m; the box limits at ${s.maxSpl} dB, ${(-lv.headroom).toFixed(1)} dB short — lower the amplifier or pick a louder box.`);
+    else if (lv.headroom < 3) add('info', `${tag}: little headroom`, `${lv.level.toFixed(1)} dB at 1 m, ${lv.headroom.toFixed(1)} dB under max SPL — peaks above the average will limit.`);
+    const rg = 20 * Math.log10(Math.max(responseGain(BANDS[band], { ...s, lowpass: 0 }), 1e-12));
+    if (rg < -10) add('info', `${tag}: outside its range`, `${BANDS[band]} Hz is ${(-rg).toFixed(0)} dB down on this box (range ${s.fLow || '—'}–${s.fHigh || '—'} Hz).`);
     if (mix) {
       const fr = frame(s.aim, s.tilt);
       const d = [mix.x - s.x, mix.y - s.y, mix.z - s.z];

@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
-import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, makeSpeaker, newId } from '../acoustics/devices.js';
+import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { LAYOUTS, layoutPositions } from '../acoustics/layouts.js';
 import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
@@ -123,6 +123,28 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
     return parts;
   }
 
+  // Power drive is the datasheet's way — sensitivity × watts, held at max SPL;
+  // SPL drive sets the level at 1 m outright. Switching keeps the level heard.
+  function driveRows(d, up) {
+    const lv = speakerLevel(d);
+    const preset = SPEAKER_PRESETS[d.kind] ?? SPEAKER_PRESETS.monitor;
+    const toPower = () => {
+      const sensitivity = Number.isFinite(d.sensitivity) ? d.sensitivity : preset.sensitivity;
+      up({ drive: 'power', sensitivity, watts: +wattsFor({ sensitivity }, lv.level).toPrecision(3) });
+    };
+    const rows = [row('Drive', select(lv.drive, [{ value: 'power', label: 'Amplifier power' }, { value: 'spl', label: 'SPL at 1 m' }], (v) => (v === 'spl' ? up({ drive: 'spl', level: lv.level }) : toPower())))];
+    if (lv.drive === 'power')
+      rows.push(
+        row('Sensitivity (1 W / 1 m)', num(d.sensitivity, (v) => up({ sensitivity: v }), { step: 0.5, unit: 'dB SPL' })),
+        row('Amplifier', num(d.watts, (v) => up({ watts: v }), { step: 1, unit: 'W', min: 0.001 })),
+      );
+    else rows.push(row('Level @ 1 m', num(d.level, (v) => up({ level: v }), { step: 0.5, unit: 'dB SPL' })));
+    rows.push(row('Max SPL @ 1 m', num(d.maxSpl ?? 0, (v) => up({ maxSpl: v || undefined }), { step: 0.5, unit: 'dB SPL (0 = none)', min: 0 })));
+    const head = Number.isFinite(lv.headroom) ? (lv.limited ? ` — LIMITING: asks ${lv.demand.toFixed(1)}, ${(-lv.headroom).toFixed(1)} dB over max` : ` · ${lv.headroom.toFixed(1)} dB headroom`) : '';
+    rows.push(h('p', { class: lv.limited ? 'hint warn' : 'hint' }, `Makes ${lv.level.toFixed(1)} dB SPL on axis at 1 m${head}.`));
+    return rows;
+  }
+
   function speakerForm(d) {
     const up = (patch) => store.update('speaker', d.id, patch);
     const mix = S().mics.find((m) => m.mix);
@@ -133,7 +155,7 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
       row('Role', text(d.role ?? '', (v) => up({ role: v || undefined }))),
       row('Preset', select(d.kind, Object.entries(SPEAKER_PRESETS).map(([value, p]) => ({ value, label: p.label })), (v) => {
         const p = SPEAKER_PRESETS[v];
-        up({ kind: v, pattern: p.pattern, hCov: p.hCov, vCov: p.vCov, level: p.level, omniBelow: p.omniBelow, lowpass: p.lowpass, color: p.color });
+        up({ kind: v, drive: 'power', ...Object.fromEntries(SPEAKER_SPEC.map((k) => [k, p[k]])) });
       })),
       h('h4', {}, 'Position'),
       row('X', num(d.x, (v) => up({ x: v }), { unit: 'm' })),
@@ -142,7 +164,9 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
       row('Aim', num(d.aim, (v) => up({ aim: v }), { step: 1, unit: '°' })),
       row('Tilt', num(d.tilt, (v) => up({ tilt: v }), { step: 1, unit: '°', min: -90, max: 90 })),
       h('h4', {}, 'Acoustics'),
-      row('Level @ 1 m', num(d.level, (v) => up({ level: v }), { step: 0.5, unit: 'dB SPL' })),
+      ...driveRows(d, up),
+      row('Range low (−10 dB)', num(d.fLow ?? 0, (v) => up({ fLow: v }), { step: 1, unit: 'Hz (0 = none)', min: 0 })),
+      row('Range high (−10 dB)', num(d.fHigh ?? 0, (v) => up({ fHigh: v }), { step: 100, unit: 'Hz (0 = none)', min: 0 })),
       row('Pattern', select(d.pattern, SPEAKER_PATTERNS.map((p) => ({ value: p, label: p })), (v) => up({ pattern: v }))),
       row('H coverage', num(d.hCov, (v) => up({ hCov: v }), { step: 5, unit: '°', min: 10, max: 360 })),
       row('V coverage', num(d.vCov, (v) => up({ vCov: v }), { step: 5, unit: '°', min: 10, max: 360 })),

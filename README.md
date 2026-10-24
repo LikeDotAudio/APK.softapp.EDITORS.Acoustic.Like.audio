@@ -11,6 +11,7 @@
 - **Six drawings or a 3-D room.** The plan is extruded to a ceiling height, with a front direction you choose. That gives the plan (a slice at ear height) plus the reflected ceiling and the front, back, left and right elevations. The 3-D view is a cut-away. Every surface is painted with its sound field.
 - **Sources and receivers.**
   - Speakers come as studio monitors, 90×50 and 60×40 projection horns, or subs. Each can be free-standing, flush/soffit, in a corner or in a trihedral corner.
+  - A speaker is specified like a datasheet: sensitivity (1 W / 1 m), amplifier watts, max SPL and frequency range (−10 dB points). Its level at 1 m is sensitivity + 10·log10 W, held at max SPL; the range rolls off every method's low and high bands. Switch Drive to *SPL at 1 m* to set the level directly. The advisor warns when a box is driven past its max SPL or the band being viewed is outside its range.
   - Mics range from omni to figure-8, and one of them is the mix position.
   - Place them on the plan and set their height by dragging in an elevation.
 - **Symmetry is the CAD's mirror.** L/R pairs stay reflected across the CAD's Virtual Mirror. Moving one moves its twin. The app keeps no centre line of its own.

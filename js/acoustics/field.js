@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { AIR_DB_PER_M, BANDS, C } from './bands.js';
-import { lowpassGain, MOUNTS } from './devices.js';
+import { MOUNTS, sourceDb } from './devices.js';
 import { deviceGain, directivityQ, frame, patternWeight } from './patterns.js';
 import { roomImages } from './images.js';
 
@@ -21,7 +21,8 @@ import { roomImages } from './images.js';
  *             working-space box). Truest below the Schroeder frequency, where
  *             the other two are least so.
  *
- * Every level is dB SPL. A speaker's `level` is its on-axis SPL at 1 m.
+ * Every level is dB SPL. A speaker radiates sourceDb() on axis at 1 m: its
+ * level (set, or from sensitivity and watts) through its frequency range.
  *
  * SCATTERING (images.js) reaches the three differently. The wave sum reads
  * img.amp, the SPECULAR part (1 − α)(1 − s) per bounce, so a diffuser takes
@@ -60,7 +61,7 @@ export function waveAt(prep, pt, freq, mic = null) {
   let re = 0;
   let im = 0;
   for (const { spk, images } of prep) {
-    const A = 10 ** (spk.level / 20) * lowpassGain(freq, spk.lowpass);
+    const A = 10 ** (sourceDb(spk, freq) / 20);
     if (A < 1e-6) continue;
     const tau = (spk.delayMs || 0) / 1000;
     // Below its omniBelow the box is a point source: no pattern to evaluate.
@@ -99,8 +100,7 @@ export function energyAt(room, prep, pt, band, mic = null) {
   let eD = 0;
   let eR = 0;
   for (const { spk } of prep) {
-    const lp = 20 * Math.log10(lowpassGain(freq, spk.lowpass));
-    const base = spk.level + mountGainDb(spk, freq) + lp;
+    const base = sourceDb(spk, freq) + mountGainDb(spk, freq);
     const dir = [pt.x - spk.x, pt.y - spk.y, pt.z - spk.z];
     const r = Math.max(Math.hypot(...dir), 0.05);
     let g = deviceGain(spk, dir, freq);
@@ -154,7 +154,7 @@ export function prepareModal(room, speakers, freq) {
         for (const s of speakers) {
           const q = toBox(room, s);
           const psi = Math.cos((nx * Math.PI * q.u) / L) * Math.cos((ny * Math.PI * q.v) / W) * Math.cos((nz * Math.PI * s.z) / H);
-          const A = 10 ** (s.level / 20) * lowpassGain(freq, s.lowpass);
+          const A = 10 ** (sourceDb(s, freq) / 20);
           const ph = -w * ((s.delayMs || 0) / 1000);
           sr += A * psi * Math.cos(ph);
           si += A * psi * Math.sin(ph);

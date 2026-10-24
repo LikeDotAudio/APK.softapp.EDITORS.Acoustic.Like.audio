@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { AIR_DB_PER_M, BANDS, C } from './bands.js';
-import { lowpassGain } from './devices.js';
+import { sourceDb } from './devices.js';
 import { deviceGain } from './patterns.js';
 import { cachedQ, energyAt, modalDb, waveDb } from './field.js';
 
@@ -55,7 +55,7 @@ export function echogram(room, prep, mic, band) {
   let eScat = 0;
   const qMic = cachedQ(mic, freq);
   for (const { spk, images } of prep) {
-    const lp = 20 * Math.log10(lowpassGain(freq, spk.lowpass));
+    const L0 = sourceDb(spk, freq);
     const delay = (spk.delayMs || 0) / 1000;
     for (const img of images) {
       const dx = mic.x - img.x;
@@ -64,7 +64,7 @@ export function echogram(room, prep, mic, band) {
       const r = Math.max(Math.hypot(dx, dy, dz), 0.05);
       const [a, b, c, d] = img.M;
       const g = deviceGain(spk, [a * dx + c * dy, b * dx + d * dy, dz * img.zSign], freq) + deviceGain(mic, [-dx, -dy, -dz], freq);
-      const L = spk.level + lp + g - 20 * Math.log10(r) - airDb * r + 10 * Math.log10(img.refl[band]);
+      const L = L0 + g - 20 * Math.log10(r) - airDb * r + 10 * Math.log10(img.refl[band]);
       const energy = 10 ** (L / 10);
       // E_mirror · scatterLoss, written from E_spec so a 0 dB arrival stays exact: E_mirror = E_spec / (1 − scatterLoss)
       const sl = img.scatterLoss?.[band] ?? 0;
@@ -74,7 +74,7 @@ export function echogram(room, prep, mic, band) {
       arrivals.push({ t: r / C + delay, level: L, energy, scattered, order: img.order, speaker: spk.id, img });
     }
     const Q = cachedQ(spk, freq);
-    eRev += 10 ** ((spk.level + lp - 10 * Math.log10(Q / (4 * Math.PI)) + 10 * Math.log10(4 / room.perBand[band].R)) / 10) / qMic;
+    eRev += 10 ** ((L0 - 10 * Math.log10(Q / (4 * Math.PI)) + 10 * Math.log10(4 / room.perBand[band].R)) / 10) / qMic;
   }
   arrivals.sort((p, q) => p.t - q.t);
   const T = room.perBand[band].eyring;
