@@ -191,6 +191,8 @@ table.surfaces td, table.surfaces th { white-space: nowrap; vertical-align: top;
 .poppable { position: relative; }
 .popbtn { position: absolute; top: 2px; right: 2px; z-index: 5; padding: 0 5px; font-size: 11px; line-height: 16px; opacity: .55; }
 .poppable:hover > .popbtn { opacity: 1; }
+/* the plan pops out only while the CAD is in a window of its own (main.js) */
+.tile.plan:not(.cad-out) > .popbtn { display: none; }
 .meter h4 { cursor: zoom-in; }
 body.popout { display: flex; flex-direction: column; height: 100vh; margin: 0; overflow: hidden; }
 body.popout .popbar { display: flex; gap: 6px; align-items: center; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }

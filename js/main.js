@@ -47,6 +47,9 @@ const CEILING_LAYER = 'Ceiling';
 
 const store = createStore();
 const iframe = document.getElementById('cad');
+// the plan tile can be in a window of its own (⇱), where the page's getElementById no longer finds what is in it
+const planTile = document.querySelector('.tile.plan');
+const inPlan = (id) => planTile.querySelector(`#${id}`);
 const views = document.getElementById('views');
 const status = document.getElementById('status');
 
@@ -125,7 +128,7 @@ document.getElementById('popCad').addEventListener('click', () => {
 
 /** Under 300 px the CAD's menus no longer fit: ⇱ Pop out pulses, asking to give it a window of its own. */
 function askToPop() {
-  const pop = document.getElementById('popCad');
+  const pop = inPlan('popCad');
   pop.classList.toggle('ask', !store.state.cad.popped && iframe.getBoundingClientRect().width < 300);
 }
 new ResizeObserver(askToPop).observe(iframe);
@@ -281,15 +284,15 @@ function syncToolbar() {
   for (const b of document.querySelectorAll('#furniture button[data-arm]')) b.classList.toggle('on', mode === 'place-furniture' && b.dataset.arm === placeKind?.furniture);
   views.className = settings.view === '3d' || settings.view === 'rays' ? 'three' : 'six';
   const { sheet } = store.state;
-  document.getElementById('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
-  document.getElementById('toPlan').hidden = sheet === 'plan';
+  inPlan('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
+  inPlan('toPlan').hidden = sheet === 'plan';
   const popped = store.state.cad.popped;
-  const pop = document.getElementById('popCad');
-  pop.textContent = popped ? '⇲ Dock' : '⇱ Pop out';
+  const pop = inPlan('popCad');
+  pop.textContent = popped ? '⇲ Dock CAD' : '⇱ Pop out';
   pop.title = popped ? 'Bring the CAD back into this tile (or just close its window)' : 'Give the CAD a window of its own — the plan stays here';
   askToPop();
   syncRoomGrowth();
-  if (popped) document.getElementById('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
+  if (popped) inPlan('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
   for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
   const freqOut = document.getElementById('freqOut');
@@ -735,6 +738,16 @@ document.getElementById('openSession').addEventListener('change', (e) => {
 for (const tile of document.querySelectorAll('.tile.face, .tile.t3d')) {
   const face = tile.dataset.face;
   makePoppable(tile, { title: face === '3d' ? '3-D room' : `${face[0].toUpperCase()}${face.slice(1)}`, onChange: () => renderGeometry() });
+}
+// The plan too, once the CAD has a window of its own: with the CAD still in the tile, moving the tile would
+// reload the CAD, so ⇱ shows only while it is out — and docking the CAD brings the plan back first.
+{
+  const planPop = makePoppable(planTile, { title: 'Plan', onChange: () => renderGeometry() });
+  store.subscribe((state, what) => {
+    if (what !== 'view') return;
+    planTile.classList.toggle('cad-out', Boolean(state.cad.popped));
+    if (!state.cad.popped && planPop.window) planPop.dock();
+  });
 }
 makePoppable(document.getElementById('inspector'), {
   title: 'Inspector',
