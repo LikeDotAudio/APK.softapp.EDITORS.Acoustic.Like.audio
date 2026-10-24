@@ -73,6 +73,8 @@ main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
 .stage .hit:active { cursor: grabbing; }
 .stage .capture { position: absolute; inset: 0; display: none; cursor: crosshair; background: rgba(244,144,44,.04); outline: 2px dashed rgba(244,144,44,.5); outline-offset: -3px; }
 .stage .capture.on { display: block; }
+/* a speaker turning after Ctrl-click: this sheet takes the pointer from the CAD's iframe until a click sets it */
+.stage .spin { position: absolute; inset: 0; z-index: 6; cursor: crosshair; }
 
 #inspector { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
 .tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px; border-bottom: 1px solid var(--line); }

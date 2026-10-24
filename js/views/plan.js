@@ -104,7 +104,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         el.className = 'hit';
         el.dataset.id = d.id;
         el.dataset.kind = kind;
-        el.title = kind === 'speaker' ? 'Drag to move · Shift-drag to aim · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)' : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)';
+        el.title = kind === 'speaker' ? 'Drag to move · Shift-drag to aim · Ctrl-click to turn it (click to set, Esc to cancel) · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)' : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)';
         el.addEventListener('pointerdown', (e) => startDrag(e, el));
         hits.appendChild(el);
       }
@@ -120,12 +120,62 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
   /** A listener being turned (Shift-drag): { id, mark } — the room mark its nose is locked to, for the read-out. */
   let turning = null;
   const HOLD_MS = 380;
+  /** A speaker being turned after Ctrl-click: { id, before } — its aim follows the pointer until a click sets it. */
+  let spinning = null;
+
+  /**
+   * Ctrl-click (⌘ on a Mac) a speaker: it turns to face the pointer, no
+   * button held, until a click sets it; Esc puts the old aim back. The plan
+   * sits over the CAD's iframe, which would swallow the pointer, so a sheet
+   * over the tile takes it while the speaker turns.
+   */
+  function startSpin(el) {
+    const id = el.dataset.id;
+    const dev = store.state.speakers.find((d) => d.id === id);
+    if (!dev) return;
+    store.select({ kind: 'speaker', id });
+    spinning = { id, before: dev.aim };
+    const sheet = document.createElement('div');
+    sheet.className = 'spin';
+    sheet.title = 'Turning the speaker: click to set · Esc to cancel';
+    hits.parentElement.appendChild(sheet);
+    const end = (keep) => {
+      sheet.remove();
+      window.removeEventListener('keydown', key, true);
+      if (!keep) store.update('speaker', id, { aim: spinning.before }, true);
+      spinning = null;
+      store.commit();
+      onDrag(false);
+      render();
+    };
+    const key = (ev) => {
+      if (ev.key !== 'Escape') return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      end(false);
+    };
+    sheet.addEventListener('pointermove', (ev) => {
+      const s = store.state.speakers.find((d) => d.id === id);
+      const p = toWorld(ev.clientX, ev.clientY);
+      if (!s || Math.hypot(p.x - s.x, p.y - s.y) < 1e-3) return;
+      store.update('speaker', id, { aim: Math.round((Math.atan2(p.y - s.y, p.x - s.x) * 180) / Math.PI) }, true);
+      onDrag(true);
+    });
+    sheet.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      end(true);
+    });
+    window.addEventListener('keydown', key, true);
+    render();
+  }
 
   function startDrag(e, el) {
     e.preventDefault();
     e.stopPropagation();
     const kind = el.dataset.kind;
     const id = el.dataset.id;
+    if (kind === 'speaker' && (e.ctrlKey || e.metaKey) && !spinning) return startSpin(el);
     store.select({ kind, id });
     const list = kind === 'speaker' ? store.state.speakers : store.state.mics;
     const dev = list.find((d) => d.id === id);
@@ -360,6 +410,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     }
     if (orbit) drawOrbit(ctx, orbit, toScreen, pxPerMetre());
     if (turning) drawTurning(ctx, turning, state.mics.find((m) => m.id === turning.id), toScreen, pxPerMetre());
+    if (spinning) drawTurning(ctx, { mark: null }, state.speakers.find((s) => s.id === spinning.id), toScreen, pxPerMetre());
     ctx.restore();
 
     syncHits();
