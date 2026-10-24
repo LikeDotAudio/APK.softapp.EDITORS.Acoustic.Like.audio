@@ -167,6 +167,10 @@ table.surfaces td, table.surfaces th { white-space: nowrap; vertical-align: top;
 .hint.warn { color: var(--warn); }
 
 /* ---------------------------------------------------------------- pop-outs (ui/popout.js) */
+/* the CAD tile too narrow to work in: Pop out asks to be pressed */
+#popCad.ask { border-color: var(--accent); color: var(--accent); animation: ask-pop 1.2s ease-in-out infinite; }
+@keyframes ask-pop { 50% { background: var(--accent); color: #111; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent); } }
+@media (prefers-reduced-motion: reduce) { #popCad.ask { animation: none; background: var(--accent); color: #111; } }
 .poppable { position: relative; }
 .popbtn { position: absolute; top: 2px; right: 2px; z-index: 5; padding: 0 5px; font-size: 11px; line-height: 16px; opacity: .55; }
 .poppable:hover > .popbtn { opacity: 1; }

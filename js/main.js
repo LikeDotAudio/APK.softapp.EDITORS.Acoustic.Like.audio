@@ -114,6 +114,13 @@ document.getElementById('popCad').addEventListener('click', () => {
   else if (!cad.link.popOut()) status.textContent = '⚠ the browser blocked the CAD window — allow pop-ups here';
 });
 
+/** Under 300 px the CAD's menus no longer fit: ⇱ Pop out pulses, asking to give it a window of its own. */
+function askToPop() {
+  const pop = document.getElementById('popCad');
+  pop.classList.toggle('ask', !store.state.cad.popped && iframe.getBoundingClientRect().width < 300);
+}
+new ResizeObserver(askToPop).observe(iframe);
+
 let frame = 0;
 function renderGeometry() {
   plan.render();
@@ -246,6 +253,7 @@ function syncToolbar() {
   const pop = document.getElementById('popCad');
   pop.textContent = popped ? '⇲ Dock' : '⇱ Pop out';
   pop.title = popped ? 'Bring the CAD back into this tile (or just close its window)' : 'Give the CAD a window of its own — the plan stays here';
+  askToPop();
   if (popped) document.getElementById('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
   for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
