@@ -90,6 +90,18 @@ The 4 × 5 × 2.7 m room of chapter 2. A monitor at (1.2, 4.3, 1.2) aimed at
 The front-wall reflection is quiet because it leaves the back of a cardioid.
 (Node.)
 
+### The console bounce
+
+Each furniture top (chapter 7.4a) is mirrored like the floor, at its own
+height $z_t$. The hit $\mathbf h$ is found the same way, with $a = z_s - z_t$
+and $b = z_m - z_t$, and it counts only inside the top's outline. Such a
+reflection comes back with `surface: 'console'` and the top's material. A floor
+hit that lands under a top is dropped.
+
+The advisor's mirror test (chapter 15) reports each console bounce. Its delay
+$\Delta t$ puts comb notches at $(2k-1)/(2\Delta t)$. It warns when the
+bounce is $-10$ dB or louder.
+
 ## 11.3 `reflectionPanels(room, speakers, mix, { w = 0.6, h = 1.2, cw = 1.2, ch = 1.2, ceiling = true })`
 
 The construction is the same as in § 11.1, with two differences:

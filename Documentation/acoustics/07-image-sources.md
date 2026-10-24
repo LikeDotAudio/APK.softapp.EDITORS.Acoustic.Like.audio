@@ -120,6 +120,33 @@ The scattered energy $(1-\alpha)s$ is not lost; only absorption removes
 energy. The wave sum ignores it because it has no coherent phase. The
 echogram returns it to the room as a delayed diffuse tail (chapter 9).
 
+## 7.4a Furniture tops: the console bounce
+
+A console, desk, rack or couch is not a floor finish. Its top is a horizontal
+mirror at height $z_t$ = floor + `furnitureHeight` (`furnitureTops`). For a
+source above it, each top adds one first-order image
+
+$$
+\mathbf x'_s = (x_s,\ y_s,\ 2z_t - z_s),\qquad \text{refl}_b = (1-\alpha_b)(1-s_b)
+$$
+
+A top is an island, unlike a wall that runs the room's length. So the image
+is heard at a point $\mathbf p$ only if $p_z > z_t$ and the line from
+$\mathbf p$ to the image crosses $z_t$ inside the top's outline
+(`imageReaches`). The first-order floor image is cut wherever its floor hit
+lies under a top, because the furniture takes that bounce. The wave sum, the
+echogram and the ray paths all apply the test.
+
+Only first order. What the console contributes is the early reflection: comb
+filtering at the seat, and a dip in the low mids from a boundary this close to
+the source. It does not shape the tail.
+
+A console's surface (`console-surface`) is hard: $\alpha < 0.07$ in every
+band. Its scatter follows the `gear` shape, $s = 0.05 \to 0.5$ from 125 Hz to
+4 kHz. Knobs, faders and buttons are millimetres to centimetres across, so
+the top is a mirror below 1 kHz and a scatterer above. A plain desk
+(`desk-top`) is flat laminate, a mirror at every band.
+
 ## 7.5 Worked example
 
 A 4 × 5 × 2.7 m box, a source at (2, 4, 1.2), wood floor, gypsum walls and

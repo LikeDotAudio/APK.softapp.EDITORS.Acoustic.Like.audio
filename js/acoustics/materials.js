@@ -48,6 +48,8 @@ const SHAPE = {
   flat: [1, 1, 1, 1, 1, 1],
   rough: [0.5, 0.6, 0.8, 1, 1.1, 1.2],
   qrd: [0.15, 0.45, 1, 1, 1, 1],
+  // knobs, faders, buttons and patch fields: millimetres to centimetres, so a mirror below 1 kHz and a scatterer above
+  gear: [0.1, 0.15, 0.3, 0.6, 0.85, 1],
 };
 
 /** How a category draws in the CAD: a hatch tells a finish apart at a glance even in monochrome. */
@@ -105,7 +107,9 @@ export const MATERIALS = [
   // diffusers — golds
   m('diffuser', 'QRD diffuser, wooden wells', 'Diffuser', [0.45, 0.3, 0.15, 0.2, 0.3, 0.4], 20, 0.9, 'qrd', '#d4a52a'),
   // furniture — the desk is a hard reflector at ear height, the couch a big soft absorber
-  m('desk-top', 'Desk / console top, laminate and metal', 'Furniture', [0.05, 0.04, 0.04, 0.04, 0.05, 0.05], 20, 0.25, 'rough', '#6b7280'),
+  m('desk-top', 'Desk top, laminate', 'Furniture', [0.05, 0.04, 0.04, 0.04, 0.05, 0.05], 20, 0.1, 'flat', '#6b7280'),
+  // a console reflects, it does not absorb: a hard specular top under the boxes (the console bounce, images.js), its controls scattering the highs
+  m('console-surface', 'Console surface: metal frame, faders, knobs, meter bridge', 'Furniture', [0.04, 0.04, 0.04, 0.05, 0.06, 0.06], 25, 0.5, 'gear', '#4b5563'),
   // FURNITURE AS BASS TRAPS. A couch is a deep porous absorber — foam, batting and fibre behind fabric, a frame
   // and springs that flex — so it keeps working an octave or two under 125 Hz where a thin panel has stopped; a
   // heavy table top is a limp mass that flexes, a panel absorber with its hump in the bottom octaves. Both low
@@ -128,8 +132,8 @@ const p = (id, name, mat, size) => ({ id, name, material: mat, size });
 export const PRODUCTS = [
   p('desk-1800x900', 'Desk 1800×900', 'desk-top', [1.8, 0.9]),
   p('producer-desk-1800x600', 'Producer desk 1800×600', 'desk-top', [1.8, 0.6]),
-  p('console-2400x1000', 'Mixing console 2400×1000', 'desk-top', [2.4, 1.0]),
-  p('console-3200x1200', 'Large-format console 3200×1200', 'desk-top', [3.2, 1.2]),
+  p('console-2400x1000', 'Mixing console 2400×1000', 'console-surface', [2.4, 1.0]),
+  p('console-3200x1200', 'Large-format console 3200×1200', 'console-surface', [3.2, 1.2]),
   p('table-heavy-2400x1000', 'Heavy table 2400×1000, hardwood', 'table-heavy', [2.4, 1.0]),
   p('couch-2000x900', 'Couch 2000×900', 'upholstered', [2.0, 0.9]),
   p('couch-2400x1000', 'Client couch 2400×1000', 'upholstered', [2.4, 1.0]),

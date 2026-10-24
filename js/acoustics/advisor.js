@@ -7,6 +7,7 @@ import { distToSegment } from './geometry.js';
 import { criticalDistance, flutterRisk } from './analysis.js';
 import { axialModes, inFrame, nullFractions, schroeder } from './room.js';
 import { frame } from './patterns.js';
+import { firstReflections } from './reflectionPanels.js';
 
 /**
  * THE ADVISOR
@@ -26,6 +27,11 @@ import { frame } from './patterns.js';
  *                  projection box's audience may be far beyond it.
  *   SBIR           a free-standing box d from the wall behind it notches at
  *                  c / 4d; flush mounting removes it.
+ *   console bounce the mirror laid on the desk: where a box's tweeter is seen
+ *                  in the top of a console or desk from the ears, its bounce
+ *                  arrives Δt late and combs the response — notches at
+ *                  (2k − 1) / 2Δt, the first in the low mids when the top is
+ *                  this close (the desk effect). Warned at −10 dB or louder.
  *   spacing        AcousticRooms' sampling rules: sources ≥ 0.5 m from any
  *                  surface, ≥ 1 m apart, ≥ 0.5 m from a receiver.
  *   flutter        parallel facing surfaces that keep most of a specular
@@ -111,6 +117,16 @@ export function advise(room, speakers, mics, settings, mirror) {
       if (near < 0.5) add('warn', `${tag}: near a surface`, `${near.toFixed(2)} m from a boundary (AcousticRooms keeps sources ≥ 0.5 m).`);
     }
   }
+  if (mix)
+    for (const r of firstReflections(room, speakers, mix, band)) {
+      if (r.surface !== 'console') continue;
+      const notch = 1000 / (2 * r.delayMs);
+      add(
+        r.db > -10 ? 'warn' : 'info',
+        `${r.name}: console bounce`,
+        `The box is seen in the ${r.hit.z.toFixed(2)} m top ${r.delayMs.toFixed(2)} ms late at ${r.db.toFixed(1)} dB @ ${BANDS[band]} Hz → comb notches at ${notch.toFixed(0)} Hz and every ${(2 * notch).toFixed(0)} Hz above${notch < 400 ? ' (the desk dip in the low mids)' : ''}. Raise or tilt the box so the spot falls past the desk's front edge, slope the meter bridge away, or pad the spot.`,
+      );
+    }
   for (let i = 0; i < speakers.length; i++)
     for (let j = i + 1; j < speakers.length; j++) {
       const a = speakers[i];

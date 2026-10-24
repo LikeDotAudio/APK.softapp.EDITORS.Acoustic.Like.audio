@@ -2,10 +2,11 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, C } from './bands.js';
 import { mirrorPoint, pointInPolygon, segmentCross } from './geometry.js';
-import { specular } from './images.js';
+import { furnitureTops, specular } from './images.js';
 import { deviceGain } from './patterns.js';
 import { elevationOrigin, faceCoords } from './patches.js';
 import { heightsAtXY } from './elevations.js';
+import { furnitureHeight } from './materials.js';
 
 /**
  * WHERE THE PANELS GO
@@ -147,15 +148,27 @@ export function firstReflections(room, speakers, mix, band = 2) {
     }
     // ceiling and floor as flat at their height over the seat — the mirror is horizontal
     const { floor, ceiling } = heightsAtXY(room, mix.x, mix.y);
-    for (const [surface, level, mat] of [['ceiling', ceiling, room.ceiling], ['floor', floor, room.floor]]) {
+    const tops = furnitureTops(room);
+    const mirrorAt = (level) => {
       const a = Math.abs(level - s.z);
       const b = Math.abs(level - mix.z);
-      if (a + b < 1e-6 || (s.z - level) * (mix.z - level) <= 0) continue;
+      if (a + b < 1e-6 || (s.z - level) * (mix.z - level) <= 0) return null;
       const q = a / (a + b);
-      const hit = { x: s.x + (mix.x - s.x) * q, y: s.y + (mix.y - s.y) * q, z: level };
-      if (!pointInPolygon(hit.x, hit.y, room.poly)) continue;
-      const patch = (room.patches ?? []).find((p) => p.surface === surface && pointInPolygon(hit.x, hit.y, p.points3d));
+      return { x: s.x + (mix.x - s.x) * q, y: s.y + (mix.y - s.y) * q, z: level };
+    };
+    for (const [surface, level, mat] of [['ceiling', ceiling, room.ceiling], ['floor', floor, room.floor]]) {
+      const hit = mirrorAt(level);
+      if (!hit || !pointInPolygon(hit.x, hit.y, room.poly)) continue;
+      // the floor under a console never hears the box: the console's top takes that bounce, below
+      if (surface === 'floor' && tops.some((t) => pointInPolygon(hit.x, hit.y, t.poly))) continue;
+      const patch = (room.patches ?? []).find((p) => p.surface === surface && !(surface === 'floor' && furnitureHeight(p.paletteId)) && pointInPolygon(hit.x, hit.y, p.points3d));
       add(surface, null, surface, hit, mat, patch);
+    }
+    // the console bounce: the mirror laid on the desk — a top under both the box and the ears, the spot inside its outline
+    for (const t of tops) {
+      const hit = mirrorAt(t.z);
+      if (!hit || s.z <= t.z || !pointInPolygon(hit.x, hit.y, t.poly)) continue;
+      add('console', null, 'console', hit, t.material, null);
     }
   }
   return out;
