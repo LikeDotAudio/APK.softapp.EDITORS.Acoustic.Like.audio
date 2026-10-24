@@ -3,40 +3,91 @@
 import { BANDS, BAND_LABELS, C, dbSum } from '../acoustics/bands.js';
 import { MATERIALS, material } from '../acoustics/materials.js';
 import { buildRoom, fromFrame, inFrame } from '../acoustics/room.js';
-import { roomImages } from '../acoustics/images.js';
-import { FAVOURABLE_RATIOS, bonello, dimensionGrid, ituBs1116, keepBest, modeList, scoreDimensions, steps } from '../acoustics/modalDistribution.js';
-import { ABS_DEV_MAX_HZ, sbirDeviation, sbirFreqs, searchPositions } from '../acoustics/sbir.js';
-import { FORMULAS, RT_TARGETS, absorberAreaFor, applyAbsorber, rtFormulas, rtTarget } from '../acoustics/reverbTargets.js';
+import { SPEAKER_PRESETS, boxSize } from '../acoustics/devices.js';
+import { FAVOURABLE_RATIOS, bonello, dimensionGrid, ituBs1116, keepBest, modeList, scoreDimensions, steps, thirdOctaveBands } from '../acoustics/modalDistribution.js';
+import { sbirDeviation, sbirFreqs } from '../acoustics/sbir.js';
+import { FORMULAS, RT_TARGETS, rtFormulas, rtTarget } from '../acoustics/reverbTargets.js';
+import {
+  MODE_WEIGHTS,
+  UNITS,
+  addLevels,
+  airDbPerM,
+  combNulls,
+  convert,
+  crossoverCheck,
+  equalAreaDirections,
+  idealCounts,
+  inverseSquare,
+  listenerGeometry,
+  modeFreq,
+  modeShape,
+  modeType,
+  optimiseAreas,
+  polarEnergy,
+  pressureField,
+  raysToward,
+  roomFigures,
+  rtFromMeasured,
+  sbirScore,
+  specularAbsorbers,
+  speedOfSound,
+  surroundPositions,
+  traceRays,
+} from './classic.js';
+import { DEFAULT_USER, VIEWS, boxPath, drawBox, fit, nudgeUser, project } from './roomView.js';
 
 /**
  * ACOUSTIC X (CLASSIC)
  *
- * In the style of Pilchner-Schoustal's 1998 Windows 95 room-acoustics program
- * (reviewed in Sound On Sound, December 1998) — not their software, none of
- * their code or artwork: the same four questions it asked, laid out the way
- * its windows laid them out, answered by this app's own acoustics.
+ * In the style of Pilchner-Schoustal's 1997 room-acoustics program (its
+ * manual: Acoustic-X Release 1.0; reviewed in Sound On Sound, December 1998)
+ * — not their software, none of their code or artwork: the same questions it
+ * asked, laid out the way its windows laid them out, answered by this app's
+ * own acoustics (classic.js holds the arithmetic, roomView.js the wire-frame).
  *
- *   MODAL RESPONSE   how the box's modes spread (modalDistribution.js), the
- *                    Bonello check and a dimension optimiser.
- *   SBIR             a speaker's boundary interference at the listener
- *                    (sbir.js) and a search for the placement that has least.
- *   RAY TRACING      the early reflections by surface and by time. Done with
- *                    image sources, exact for a box; the ray angles are kept
- *                    for the classic layout and only feed the Total Traces readout.
- *   REVERB TIME      six surfaces, four formulas, a target by room type, and
- *                    the area of absorber that hits it (reverbTargets.js).
- *   CALCULATOR       the bench sums: inverse square, dB addition, wavelength,
- *                    comb-filter notches.
+ *   START SCREEN     the modules, and the project (description, client,
+ *                    location) every report carries.
+ *   MODAL RESPONSE   how the box's modes spread against the count a room of
+ *                    that volume should have (Bolt), the Bonello check, the
+ *                    dimension optimiser, and the pressure of one mode or a
+ *                    band of them, on a plane or through the room.
+ *   SBIR             a speaker's boundary interference at the listener above
+ *                    its LF cut-off, the crossover check, an absolute or
+ *                    negative-only placement search, the modes the position
+ *                    excites, the listening window and the specular absorbers
+ *                    that keep it clean, and the centre and rears.
+ *   RAY TRACING      equal-area rays from each speaker, followed for up to
+ *                    fourteen bounces and caught at the listener: energy by
+ *                    surface and by time, the 10 dB window, the polar energy,
+ *                    the room's figures and the comb nulls by surface.
+ *   REVERB TIME      materials laid on each surface by area, four formulas
+ *                    or a measured empty room, criteria by room type or your
+ *                    own, and the optimiser that tries every combination of
+ *                    up to five material areas.
+ *   CALCULATOR       units, spreading, level addition, frequency /
+ *                    wavelength / period, comb filters.
+ *   GENERAL          temperature (the speed of sound) and humidity (the air's
+ *   PARAMETERS       absorption), the Display Axis, the modal weights, the
+ *                    SBIR search limits and surround options.
+ *   FAST GUIDE       five steps for the module in front.
+ *   REPORTS          every module's Data View, previewed, printed, or saved as
+ *                    CSV, HTML, tab-separated or plain text.
+ *
+ * Each module window shows its results three ways, as the original did: the
+ * ROOM VIEW (the box as a wire-frame — plan, side, end, 3-D, or a user view
+ * turned and moved with the Set panel), the CHART VIEW, and the DATA VIEW
+ * (the lists and the report).
  *
  * THE CLASSIC MODEL. Like the original, these windows think in a plain box:
  * L front-to-back, W left-to-right, H high, six surfaces with one material
- * each. Positions are CLASSIC coordinates — X from the left wall, Y from the
- * front wall, Z above the floor. Every window opens on the room being
- * designed (engine.out.room: its working-space L × W × H, its face
- * materials, the speaker pair and the mix mic, mapped through the room's
- * front frame), and stays LINKED to it — redrawn as the room changes — until
- * an input is edited for a what-if. "↻ From room" links it again. Patches
- * painted in the CAD are not part of the classic model.
+ * each (and, in Reverb Time, materials laid on them by area). Positions are
+ * CLASSIC coordinates — X from the left wall, Y from the front wall, Z above
+ * the floor. Every window opens on the room being designed (engine.out.room:
+ * its working-space L × W × H, its face materials, the speaker pair and the
+ * mix mic, mapped through the room's front frame), and stays LINKED to it —
+ * redrawn as the room changes — until an input is edited for a what-if.
+ * "↻ From room" links it again. Patches painted in the CAD are not part of
+ * the classic model.
  *
  * All the windows share that one model, so a dimension typed into one is the
  * dimension every other one shows. Metres inside; feet or metres on screen.
@@ -66,7 +117,8 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 const group = (legend, ...kids) => h('fieldset', {}, h('legend', {}, legend), ...kids);
-const readout = (title) => h('span', { class: 'readout', title });
+/** A sunken read-only value. Its own class: the app's .readout is absolutely placed, and must never reach in here. */
+const readout = (title) => h('span', { class: 'acx-ro', title });
 const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -185,8 +237,23 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     spk1: { X: 1.5, Y: 1, Z: 1.2 },
     lis: { X: 2.5, Y: 2.7, Z: 1.2 },
     ids: [null, null],
-    extra: null,
     linked: true,
+    /** General Parameters: temperature (c), humidity (air), Display Axis, modal weights, SBIR search and surround options. */
+    gen: { tempC: 20, rh: 50, axis: true, weights: { ...MODE_WEIGHTS }, sbir: { custom: false, frontMin: 0.3, frontMax: 2, sideMin: 0.3, sideMax: 2, minSpk: 1.2, centre: false, rear: false, rearRise: 0 } },
+    /** The Start Screen's project lines, on every report. */
+    project: { description: '', client: '', location: '' },
+    /** The speaker: its cabinet, woofer height above its bottom, LF cut-off and crossover (SBIR). */
+    spkModel: 'dmt12',
+    spkSize: { w: 0.4, d: 0.38, h: 0.6 },
+    woofer: 0.2,
+    lfCut: 45,
+    xover: 80,
+    /** Reverb Time: materials laid on each surface by area, { face: [{ id, area }] }; the base material covers the rest. */
+    layers: {},
+    /** A measured empty-room RT60 per octave, or null. */
+    measured: null,
+    /** The specular absorbers the SBIR window last placed, for Ray Tracing. */
+    absorbers: null,
   };
   const toU = (m) => (M.units === 'ft' ? m * FT : m);
   const fromU = (v) => (M.units === 'ft' ? v / FT : v);
@@ -208,7 +275,8 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
   function pickSpeakers(st) {
     const spk = st.speakers ?? [];
     const sel = st.selected?.kind === 'speaker' ? spk.find((s) => s.id === st.selected.id) : null;
-    const s1 = sel ?? spk.find((s) => s.pairId && s.side === 'L') ?? spk.find((s) => s.pairId) ?? spk[0] ?? null;
+    // the left main: the selected speaker, or the arrangement's L, or the left of a mirrored pair
+    const s1 = sel ?? spk.find((s) => s.role === 'L') ?? spk.find((s) => s.pairId && s.side === 'L') ?? spk.find((s) => s.pairId) ?? spk[0] ?? null;
     const s2 = s1?.pairId ? (spk.find((s) => s.pairId === s1.pairId && s.id !== s1.id) ?? null) : null;
     return { s1, s2 };
   }
@@ -237,7 +305,6 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     M.spk1 = s1 && room ? toClassic(room, s1) : { X: M.W * 0.3, Y: Math.min(1, M.L * 0.15), Z: 1.2 };
     const mic = (st.mics ?? []).find((m) => m.mix) ?? st.mics?.[0];
     M.lis = mic && room ? toClassic(room, mic) : { X: M.W / 2, Y: M.L * 0.38, Z: 1.2 };
-    M.extra = null;
     M.linked = true;
   }
 
@@ -259,11 +326,18 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
   function boxAreas() {
     return { floor: M.L * M.W, ceiling: M.L * M.W, front: M.W * M.H, back: M.W * M.H, left: M.L * M.H, right: M.L * M.H };
   }
-  function classicRoom(withExtra = true) {
+  /** The six surfaces, each its base material over what the laid materials leave, and the laid ones as surfaces of their own on the same face. */
+  function classicRoom() {
     const b = boxAreas();
-    let room = { V: M.V ?? M.L * M.W * M.H, surfaces: FACES6.map((f) => ({ face: f, key: f, area: M.areas?.[f] ?? b[f], material: material(M.mats[f]) })) };
-    if (withExtra && M.extra) room = applyAbsorber(room, M.extra.id, M.extra.area, { face: M.extra.face || null });
-    return room;
+    const surfaces = [];
+    for (const f of FACES6) {
+      const area = M.areas?.[f] ?? b[f];
+      const layers = M.layers[f] ?? [];
+      const used = Math.min(area, layers.reduce((s, l) => s + l.area, 0));
+      surfaces.push({ face: f, key: f, area: Math.max(0, area - used), material: material(M.mats[f]) });
+      layers.forEach((l, i) => surfaces.push({ face: f, key: `${f}+${i}`, area: Math.min(l.area, area), material: material(l.id) }));
+    }
+    return { V: M.V ?? M.L * M.W * M.H, surfaces };
   }
 
   /** A dimension changed: volume and areas follow the box again. */
@@ -289,6 +363,11 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
   function front(win) {
     win.el.style.zIndex = String(++zTop);
     for (const w of Object.values(wins)) w.el.classList.toggle('front', w === win);
+    // the Fast Guide follows the module in front
+    if (GUIDE[win.name] && guideFor !== win.name) {
+      guideFor = win.name;
+      if (!wins.guide?.el.hidden) wins.guide.refresh();
+    }
   }
 
   function makeWindow(name, title, size, build) {
@@ -298,7 +377,28 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     const minB = h('button', { title: 'Minimise', onclick: () => el.classList.toggle('min') }, '_');
     const maxB = h('button', { title: 'Maximise', onclick: () => toggleMax() }, '□');
     const xB = h('button', { class: 'x', title: 'Close', onclick: () => close(name) }, '×');
-    const bar = h('div', { class: 'acx-title', ondblclick: () => toggleMax() }, icon(), h('span', { class: 'txt' }, title), minB, maxB, xB);
+    // the control menu behind the title-bar icon, as Windows 95 had it: a click opens it, a double-click closes the window
+    const item = (label, act, enabled = () => true) => {
+      const it = h('div', { class: 'item', onclick: (e) => (e.stopPropagation(), (sys.hidden = true), enabled() && act()) }, label);
+      it.dataset.label = label;
+      return [it, enabled];
+    };
+    const sysItems = [
+      item('Restore', () => (el.classList.contains('max') ? toggleMax() : el.classList.remove('min')), () => el.classList.contains('max') || el.classList.contains('min')),
+      item('Minimize', () => el.classList.add('min'), () => !el.classList.contains('min')),
+      item('Maximize', () => toggleMax(), () => !el.classList.contains('max')),
+    ];
+    const closeItem = item('Close', () => close(name));
+    const sys = h('div', { class: 'acx-menu acx-sys', hidden: true }, sysItems.map(([it]) => it), h('div', { class: 'sep' }), closeItem[0]);
+    const ico = icon();
+    ico.addEventListener('click', (e) => {
+      e.stopPropagation();
+      for (const [it, en] of sysItems) it.classList.toggle('off', !en());
+      sys.hidden = !sys.hidden;
+    });
+    ico.addEventListener('dblclick', (e) => (e.stopPropagation(), close(name)));
+    document.addEventListener('pointerdown', (e) => !sys.contains(e.target) && e.target !== ico && !ico.contains(e.target) && (sys.hidden = true));
+    const bar = h('div', { class: 'acx-title', ondblclick: () => toggleMax() }, ico, h('span', { class: 'txt' }, title), minB, maxB, xB, sys);
     function toggleMax() {
       el.classList.remove('min');
       el.classList.toggle('max');
@@ -306,7 +406,8 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       requestAnimationFrame(() => win.render());
     }
     bar.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button') || el.classList.contains('max')) return;
+      // the buttons, the icon and its menu take their own clicks: only the bare title bar drags
+      if (e.target.closest('button, .ico, .acx-sys') || el.classList.contains('max')) return;
       const sx = e.clientX;
       const sy = e.clientY;
       const ox = el.offsetLeft;
@@ -481,15 +582,194 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     return { box: h('div', { class: 'acx-chart', style }, cv), cv };
   };
 
+  /** The speed of sound the General Parameters' temperature gives. */
+  const cNow = () => speedOfSound(M.gen.tempC);
+  /** Dimensions scaled so the 343 m/s mode tables give this temperature's frequencies (f ∝ c / size). */
+  const dimsAtC = () => {
+    const k = C / cNow();
+    return { L: M.L * k, W: M.W * k, H: M.H * k };
+  };
+
+  // ── the three views every module window has ──
+
+  /**
+   * Room View · Chart View · Data View, as the original's tool bar offered:
+   * `panes` { room, chart, data } are the three containers; the strip of
+   * buttons shows one at a time.
+   */
+  function viewStrip(win, panes, initial = 'chart') {
+    const btns = {};
+    const strip = h(
+      'div',
+      { class: 'btns acx-views' },
+      [
+        ['room', 'Room View', 'The room as a wire-frame, with what this module computes drawn in it'],
+        ['chart', 'Chart View', 'The results as charts'],
+        ['data', 'Data View', 'The lists and the report'],
+      ].map(([k, l, t]) => (btns[k] = h('button', { title: t, onclick: () => show(k) }, l))),
+    );
+    function show(k) {
+      win.pane = k;
+      for (const [n, el] of Object.entries(panes)) el.hidden = n !== k;
+      for (const [n, b] of Object.entries(btns)) b.classList.toggle('down', n === k);
+      requestAnimationFrame(() => win.render());
+    }
+    win.pane = initial;
+    for (const [n, el] of Object.entries(panes)) el.hidden = n !== initial;
+    btns[initial].classList.add('down');
+    win.showPane = show;
+    return strip;
+  }
+
+  /**
+   * The Room View Manager: Plan View, Side and End Elevation, 3-Dimensional,
+   * User View — and Set, which swaps in the arrows that turn (R) or move (M)
+   * the user view, with zoom and a reset between them. `RV` is the window's
+   * { view, user, mode }. Dragging on a user view turns it too.
+   */
+  function roomManager(win, RV, cv) {
+    const vb = (v) => {
+      const b = h('button', { onclick: () => ((RV.view = v), sync(), win.render()) }, VIEWS.find((x) => x[0] === v)[1]);
+      b.dataset.v = v;
+      return b;
+    };
+    const setB = h('button', { title: 'Turn and move the user view', onclick: () => ((main.hidden = true), (pad.hidden = false), (RV.view = 'user'), sync(), win.render()) }, 'Set');
+    const main = h('div', { class: 'rvm' }, vb('plan'), h('div', { class: 'pair' }, vb('side'), vb('end')), vb('3d'), h('div', { class: 'pair' }, vb('user'), setB));
+    const rB = h('button', { title: 'The arrows turn the view', onclick: () => ((RV.mode = 'R'), sync()) }, 'R');
+    const mB = h('button', { title: 'The arrows move the view', onclick: () => ((RV.mode = 'M'), sync()) }, 'M');
+    const go = (dir) => () => ((RV.user = nudgeUser(RV.user, RV.mode, dir)), (RV.view = 'user'), sync(), win.render());
+    const zoom = (k) => () => ((RV.user = { ...RV.user, zoom: clamp(RV.user.zoom * k, 0.3, 6) }), win.render());
+    const pad = h(
+      'div',
+      { class: 'rvm', hidden: true },
+      h('div', { class: 'pad' }, h('span'), h('button', { onclick: go('up') }, '▲'), h('span'), h('button', { onclick: go('left') }, '◄'), h('button', { title: 'Back to the preset', onclick: () => ((RV.user = { ...DEFAULT_USER }), win.render()) }, '◎'), h('button', { onclick: go('right') }, '►'), h('span'), h('button', { onclick: go('down') }, '▼'), h('span')),
+      h('div', { class: 'pair' }, rB, mB, h('button', { title: 'Zoom in', onclick: zoom(1.2) }, '+'), h('button', { title: 'Zoom out', onclick: zoom(1 / 1.2) }, '−')),
+      h('button', { onclick: () => ((pad.hidden = true), (main.hidden = false)) }, 'Back to Room View Manager'),
+    );
+    function sync() {
+      for (const b of main.querySelectorAll('button[data-v]')) b.classList.toggle('down', b.dataset.v === RV.view);
+      rB.classList.toggle('down', RV.mode === 'R');
+      mB.classList.toggle('down', RV.mode === 'M');
+    }
+    win.syncers.push(sync);
+    if (cv) {
+      cv.addEventListener('pointerdown', (e) => {
+        if (RV.view !== 'user' || RV.onPick) return;
+        const sx = e.clientX;
+        const sy = e.clientY;
+        const u0 = { ...RV.user };
+        cv.setPointerCapture(e.pointerId);
+        const move = (ev) => {
+          RV.user = { ...u0, yaw: (((u0.yaw + (ev.clientX - sx) * 0.5) % 360) + 360) % 360, pitch: clamp(u0.pitch - (ev.clientY - sy) * 0.4, -90, 90) };
+          win.render();
+        };
+        const up = () => {
+          cv.removeEventListener('pointermove', move);
+          cv.removeEventListener('pointerup', up);
+        };
+        cv.addEventListener('pointermove', move);
+        cv.addEventListener('pointerup', up);
+      });
+      cv.addEventListener('click', (e) => {
+        if (!RV.onPick || RV.view !== 'plan' || !RV.last) return;
+        const r = cv.getBoundingClientRect();
+        const [X, Y] = RV.last.inv(e.clientX - r.left, e.clientY - r.top);
+        RV.onPick({ X: clamp(X, 0, M.W), Y: clamp(Y, 0, M.L) });
+      });
+    }
+    return group('Room View Manager', main, pad);
+  }
+
+  const newRV = (view = '3d') => ({ view, user: { ...DEFAULT_USER }, mode: 'R', last: null, onPick: null });
+
+  /**
+   * Draw a room view: the box (with the Display Axis when it is on), the
+   * speakers as red boxes, the listener as a red circle; `under` and `over`
+   * draw the window's own layers below and above them. Returns { S, k }.
+   */
+  function drawRoom(cv, RV, { speakers = [], lis = null, under = null, over = null, note = '' } = {}) {
+    const p = prep(cv);
+    if (!p) return null;
+    const { ctx, w, h: hh } = p;
+    const dims = { L: M.L, W: M.W, H: M.H };
+    const proj = project(RV.view, dims, RV.user);
+    const f = fit(proj, dims, w, hh, { margin: 34, user: RV.view === 'user' ? RV.user : null });
+    RV.last = f;
+    const { S } = f;
+    under?.(ctx, S, f);
+    drawBox(ctx, S, dims, { axis: M.gen.axis && lis ? { listener: lis, speakers } : null });
+    const sz = M.spkSize;
+    ctx.strokeStyle = COL.red;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (const s of speakers) boxPath(ctx, S, s.X - sz.w / 2, s.X + sz.w / 2, s.Y - sz.d / 2, s.Y + sz.d / 2, s.Z - M.woofer, s.Z - M.woofer + sz.h);
+    ctx.stroke();
+    if (lis) {
+      const L0 = S(lis);
+      ctx.beginPath();
+      ctx.arc(L0[0], L0[1], 6, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1;
+    over?.(ctx, S, f);
+    ctx.fillStyle = COL.title;
+    ctx.fillText(`Room Display (${VIEWS.find((v) => v[0] === RV.view)[1]})   ${fmt(toU(M.L))} × ${fmt(toU(M.W))} × ${fmt(toU(M.H))} ${M.units}${note ? `   ${note}` : ''}`, 8, 14);
+    ctx.fillStyle = COL.text;
+    if (RV.view === 'plan') ctx.fillText('front wall ↑', 8, hh - 8);
+    if (RV.view === 'side') ctx.fillText('← front wall', 8, hh - 8);
+    if (RV.view === 'end') ctx.fillText('looking at the front wall', 8, hh - 8);
+    if (RV.view === 'user') ctx.fillText(`turn ${Math.round(RV.user.yaw)}° · tip ${Math.round(RV.user.pitch)}° — drag to turn`, 8, hh - 8);
+    return f;
+  }
+
+  /** A report table as rows of cells, for the Data View and every export. */
+  const reportTable = (head, rows) => h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, head.map((t) => h('th', {}, t)))), h('tbody', {}, rows.map((r) => h('tr', {}, r.map((c) => h('td', {}, c))))));
+  function reportNode(rep) {
+    return h(
+      'div',
+      { class: 'report' },
+      h('h4', {}, rep.title),
+      projectLines().map((l) => h('div', { class: 'small' }, l)),
+      rep.sections.map((s) => h('div', {}, h('h5', {}, s.heading), s.text ? h('p', {}, s.text) : null, s.rows ? reportTable(s.head ?? [], s.rows) : null)),
+    );
+  }
+  const projectLines = () => [M.project.description && `Project: ${M.project.description}`, M.project.client && `Client: ${M.project.client}`, M.project.location && `Location: ${M.project.location}`].filter(Boolean);
+
   // ═════════════════════════════════════════════════════════════════════════
   // 1. MODAL RESPONSE
   // ═════════════════════════════════════════════════════════════════════════
-  makeWindow('modal', 'Acoustic X — Modal Response', { w: 800, h: 540 }, (win) => {
-    const S = { sel: null, show: { axial: true, tangential: true, oblique: true }, ratioMode: false, ratiosOpen: false, ranges: null, step: 0.05, results: [], resSel: 0, coarse: null, res: null };
+  makeWindow('modal', 'Acoustic X — Modal Response', { w: 860, h: 600 }, (win) => {
+    const S = {
+      sel: null,
+      sort: 'all',
+      order: 'asc',
+      listed: 'all',
+      ratioMode: false,
+      ranges: null,
+      step: 0.05,
+      pct: 25,
+      results: [],
+      resSel: 0,
+      res: null,
+      idx: { nx: 1, ny: 0, nz: 0 },
+      multi: false,
+      lf: 40,
+      hf: 60,
+      dbase: 'third',
+      dres: 0.3048,
+      disp: 'horizontal',
+      at: { horizontal: 0, length: null, width: null },
+      param: 'pressure',
+      hold: false,
+      held: [],
+      field: null,
+      hover: null,
+      RV: newRV('3d'),
+    };
     const dims = () => ({ L: M.L, W: M.W, H: M.H });
     const minDim = () => Math.min(M.L, M.W, M.H);
 
-    // Room tab
+    // ── Room tab
     const ratioBox = (k) => {
       const inp = h('input', { type: 'number', step: 0.01, title: 'Ratio to the smallest dimension' });
       inp.addEventListener('change', () => {
@@ -517,46 +797,37 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       sizeR.checked = !S.ratioMode;
       ratioR.checked = S.ratioMode;
     });
-    const ratioList = h('select', { class: 'list', size: 8 }, FAVOURABLE_RATIOS.map((r) => h('option', { value: r.id }, r.ratio ? `${r.name}   ${r.ratio.map((x) => x.toFixed(2)).join(' : ')}` : r.name)));
-    const ratioNote = h('div', { class: 'small muted' });
-    const ratioPanel = h('div', { hidden: true }, ratioList, ratioNote, h('div', { class: 'btns' }, h('button', { onclick: applyRatio, title: 'Keep the height, set width and length from the ratio' }, 'Apply ratio')));
-    ratioList.addEventListener('change', () => {
-      const r = FAVOURABLE_RATIOS.find((x) => x.id === ratioList.value);
-      if (r?.check) {
-        const c = r.check(dims());
-        ratioNote.textContent = c.ok ? 'This room is inside the BS.1116 bounds.' : c.notes.join('; ');
-      } else ratioNote.textContent = r ? `H : W : L = ${r.ratio.join(' : ')}` : '';
-    });
-    function applyRatio() {
-      const r = FAVOURABLE_RATIOS.find((x) => x.id === ratioList.value);
-      if (!r?.ratio) return;
-      M.W = M.H * r.ratio[1];
-      M.L = M.H * r.ratio[2];
-      dimsChanged();
-      edited();
-    }
-    const showRatiosB = h('button', { onclick: () => ((ratioPanel.hidden = !ratioPanel.hidden), (showRatiosB.textContent = ratioPanel.hidden ? 'Show Favorable Room Ratios' : 'Hide Favorable Room Ratios')) }, 'Show Favorable Room Ratios');
     const bonelloBox = h('div', { class: 'scroll small', style: 'max-height:110px;min-height:40px' });
 
-    // Optimize tab
+    // ── Optimize tab
     const rng = (k, i) => () => (S.ranges ??= defaultRanges())[k][i];
     const setRng = (k, i) => (v) => ((S.ranges ??= defaultRanges())[k][i] = Math.max(0.5, v));
     function defaultRanges() {
       const r = (v, a, b) => [Math.round(v * a * 20) / 20, Math.round(v * b * 20) / 20];
       return { L: r(M.L, 0.9, 1.1), W: r(M.W, 0.9, 1.1), H: [M.H, M.H] };
     }
-    const optList = h('select', { class: 'list', size: 10 });
+    const searchOn = { L: true, W: true, H: false };
+    const elemChecks = ['L', 'W', 'H'].map((k) => {
+      const c = h('input', { type: 'checkbox', onchange: () => (searchOn[k] = c.checked) });
+      win.syncers.push(() => (c.checked = searchOn[k]));
+      return h('label', { class: 'opt' }, c, { L: 'Length', W: 'Width', H: 'Height' }[k]);
+    });
+    function fromPct() {
+      const p = S.pct / 100;
+      S.ranges = Object.fromEntries(['L', 'W', 'H'].map((k) => [k, searchOn[k] ? [M[k] * (1 - p), M[k] * (1 + p)] : [M[k], M[k]]]));
+      win.refresh();
+    }
+    const optList = h('select', { class: 'list', size: 9 });
     optList.addEventListener('change', () => (S.resSel = optList.selectedIndex));
     const optNote = h('div', { class: 'small muted' });
-    const rangeRows = ['L', 'W', 'H'].map((k) =>
-      h('div', { class: 'cols' }, lenField(win, `${k} min`, rng(k, 0), setRng(k, 0), { local: true }), lenField(win, 'max', rng(k, 1), setRng(k, 1), { local: true })),
-    );
+    const rangeRows = ['L', 'W', 'H'].map((k) => h('div', { class: 'cols' }, lenField(win, `${k} min`, rng(k, 0), setRng(k, 0), { local: true }), lenField(win, 'max', rng(k, 1), setRng(k, 1), { local: true })));
     function runOptimise() {
       const ranges = (S.ranges ??= defaultRanges());
       let step = S.step;
+      const k = C / cNow();
       let grid = dimensionGrid(ranges, step);
       while (grid.count > 40000) grid = dimensionGrid(ranges, (step *= 2));
-      S.coarse = step !== S.step ? step : null;
+      const coarse = step !== S.step ? step : null;
       const best = [];
       optNote.textContent = `Searching ${grid.count} rooms…`;
       job(
@@ -566,14 +837,15 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
           const L = grid.L[i];
           for (const W of grid.W)
             for (const H of grid.H) {
-              const s = scoreDimensions({ L, W, H });
+              const s = scoreDimensions({ L: L * k, W: W * k, H: H * k });
               keepBest(best, { L, W, H, score: s.score, ok: s.ok }, 10);
             }
         },
         () => {
           S.results = best;
           S.resSel = 0;
-          optNote.textContent = `${grid.count} rooms tried${S.coarse ? `, step coarsened to ${fmt(toU(S.coarse), 2)} ${M.units}` : ''}. Score = 2·(Bonello failures) + spread of the axial and of all mode spacings — lower is better.`;
+          const ok = best.filter((b) => b.ok).length;
+          optNote.textContent = `${grid.count} rooms tried${coarse ? `, step coarsened to ${fmt(toU(coarse), 2)} ${M.units}` : ''}; ${ok} of the best ten meet the criteria. Score = 2·(Bonello failures) + spread of the axial and of all mode spacings — lower is better.`;
           win.render();
         },
       );
@@ -589,118 +861,235 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       onDrawRoom?.({ L: r.L, W: r.W, H: r.H });
     }
 
-    // Mode1 / Mode2 tabs
-    const modeTable = h('tbody');
-    const filters = ['axial', 'tangential', 'oblique'].map((t) => {
-      const c = h('input', { type: 'checkbox', checked: true, onchange: () => ((S.show[t] = c.checked), win.render()) });
-      win.syncers.push(() => (c.checked = S.show[t]));
-      return h('label', { class: 'opt' }, c, t[0].toUpperCase() + t.slice(1));
+    // ── Mode 1 tab: which mode, or which band of them
+    const idxField = (k, label) => numField(win, label, '', () => S.idx[k], (v) => ((S.idx[k] = Math.max(0, Math.round(v))), (S.multi = false)), { title: { nx: 'Related to room length', ny: 'Related to room width', nz: 'Related to room height' }[k], width: 46 });
+    const modeFRo = readout('The frequency of the mode entered');
+    const multiC = h('input', { type: 'checkbox', onchange: () => ((S.multi = multiC.checked), win.refresh()) });
+    win.syncers.push(() => (multiC.checked = S.multi));
+    const countRo = readout('How many modes the band holds');
+    const dbSel = h('select', {}, h('option', { value: 'octave' }, 'Octave'), h('option', { value: 'third' }, '1/3 Octave'));
+    const fcSel = h('select', {});
+    const fillFc = () => {
+      const list = S.dbase === 'octave' ? [16, 31.5, 63, 125, 250] : thirdOctaveBands(16, 250).map((b) => b.fc);
+      fcSel.replaceChildren(h('option', { value: '' }, 'centre…'), ...list.map((f) => h('option', { value: f }, `${f} Hz`)));
+    };
+    dbSel.addEventListener('change', () => ((S.dbase = dbSel.value), fillFc()));
+    fcSel.addEventListener('change', () => {
+      const fc = parseFloat(fcSel.value);
+      if (!fc) return;
+      const half = S.dbase === 'octave' ? 0.5 : 1 / 6;
+      S.lf = +(fc * 2 ** -half).toFixed(1);
+      S.hf = +(fc * 2 ** half).toFixed(1);
+      S.multi = true;
+      win.refresh();
     });
-    const bandTable = h('tbody');
-    const axialTable = h('tbody');
+    win.syncers.push(() => (dbSel.value = S.dbase));
+    fillFc();
+    const getFreq = () => {
+      if (!S.sel) return;
+      S.lf = +(S.sel.f - 0.05).toFixed(2);
+      S.hf = +(S.sel.f + 0.05).toFixed(2);
+      S.multi = true;
+      win.refresh();
+    };
 
-    const T = tabs(win, ['Room', 'Optimize', 'Mode1', 'Mode2']);
+    // ── Mode 2 tab: how to show it
+    const radios = (name, key, list, after = () => win.refresh()) =>
+      list.map(([v, l]) => {
+        const r = h('input', { type: 'radio', name, onchange: () => ((S[key] = v), after()) });
+        win.syncers.push(() => (r.checked = S[key] === v));
+        return h('div', {}, h('label', { class: 'opt' }, r, l));
+      });
+    const planeAt = () => S.at[S.disp] ?? (S.disp === 'length' ? M.W : S.disp === 'width' ? M.L : 0);
+    const atRow = lenField(win, 'Plane distance', planeAt, (v) => (S.at[S.disp] = Math.max(0, v)), { local: true, title: 'Horizontal: above the floor · Length: from the left wall · Width: from the front wall', disabled: () => S.disp === '3d' });
+    const holdC = h('input', { type: 'checkbox', onchange: () => (S.hold = holdC.checked) });
+    win.syncers.push(() => (holdC.checked = S.hold));
+
+    const T = tabs(win, ['Room', 'Optimize', 'Mode 1', 'Mode 2']);
+    const ratioList = h('select', { class: 'list', size: 7 }, FAVOURABLE_RATIOS.filter((r) => r.ratio).map((r) => h('option', { value: r.id }, `${r.name}   ${r.ratio.map((x) => x.toFixed(2)).join(' : ')}`)));
     T.pages.Room.append(
-      group('Room Dimensions', dimRow('Room Length', 'L', 'Front wall to back wall'), dimRow('Room Width', 'W', 'Left wall to right wall'), dimRow('Room Height', 'H', 'Floor to ceiling'), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Enter'), h('label', { class: 'opt' }, sizeR, 'Size'), h('label', { class: 'opt' }, ratioR, 'Ratio')), unitsRow(win), h('div', { class: 'btns' }, showRatiosB, fromRoomBtn())),
-      ratioPanel,
+      group('Enter Input Data', dimRow('Room Length', 'L', 'Front wall to back wall'), dimRow('Room Width', 'W', 'Left wall to right wall'), dimRow('Room Height', 'H', 'Floor to ceiling'), unitsRow(win)),
+      group('Data Edit Options', h('label', { class: 'opt' }, sizeR, 'Change room dimensions'), h('br'), h('label', { class: 'opt' }, ratioR, 'Change ratio of dimensions')),
+      group('Favourable Room Ratios', ratioList, h('div', { class: 'btns' }, h('button', { onclick: applyRatio, title: 'The 1 is the floor-to-ceiling height: width and length follow' }, 'Apply ratio'), fromRoomBtn())),
       group('Bonello Criterion', bonelloBox),
     );
+    function applyRatio() {
+      const r = FAVOURABLE_RATIOS.find((x) => x.id === ratioList.value);
+      if (!r?.ratio) return;
+      M.W = M.H * r.ratio[1];
+      M.L = M.H * r.ratio[2];
+      dimsChanged();
+      edited();
+    }
     T.pages.Optimize.append(
-      group('Dimension Limits', ...rangeRows, numField(win, 'Step', 'm', () => S.step, (v) => (S.step = Math.max(0.01, v)), { step: 0.01, title: 'Grid step, metres' })),
+      group('Select Elements To Search', ...elemChecks),
+      group('Enter Extent Of Search', numField(win, 'Search size ±', '%', () => S.pct, (v) => (S.pct = clamp(v, 1, 80)), { step: 1 }), numField(win, 'Search step', 'm', () => S.step, (v) => (S.step = Math.max(0.01, v)), { step: 0.01, title: 'Grid step, metres (0.15 m is about 6 in)' }), h('div', { class: 'btns' }, h('button', { onclick: fromPct }, 'Set limits from ±%'))),
+      group('Dimension Limits', ...rangeRows),
       h('div', { class: 'btns' }, h('button', { onclick: runOptimise }, 'Optimize'), h('button', { onclick: useThese, title: 'Take the selected room into every classic window (and hand it to the host to draw)' }, 'Use these')),
       h('div', { style: 'margin-top:6px' }, optList),
       optNote,
     );
-    T.pages.Mode1.append(h('div', { class: 'row' }, ...filters), h('div', { class: 'scroll', style: 'max-height:330px' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['#', 'Hz', 'Nx', 'Ny', 'Nz', 'Type'].map((t) => h('th', {}, t)))), modeTable)));
-    T.pages.Mode2.append(
-      group('Modes per 1/3 Octave', h('div', { class: 'scroll', style: 'max-height:170px' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['Band', 'Edges Hz', 'Modes', ''].map((t) => h('th', {}, t)))), bandTable))),
-      group('Axial Modes (Hz)', h('div', { class: 'scroll', style: 'max-height:120px' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['n', 'Length', 'Width', 'Height'].map((t) => h('th', {}, t)))), axialTable))),
+    T.pages['Mode 1'].append(
+      group('Enter Mode Index', h('div', { class: 'cols' }, idxField('nx', 'Nx'), idxField('ny', 'Ny'), idxField('nz', 'Nz')), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Mode frequency'), modeFRo, 'Hz')),
+      group(
+        'Multi-Mode Summation',
+        h('label', { class: 'opt' }, multiC, 'Sum every mode in the band'),
+        numField(win, 'LF cut-off', 'Hz', () => S.lf, (v) => ((S.lf = Math.max(1, v)), (S.multi = true)), { step: 0.5 }),
+        numField(win, 'HF cut-off', 'Hz', () => S.hf, (v) => ((S.hf = Math.max(1, v)), (S.multi = true)), { step: 0.5 }),
+        h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Bandwidth'), dbSel, fcSel),
+        h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Modes summed'), countRo),
+        h('div', { class: 'btns' }, h('button', { onclick: getFreq, title: 'Take the mode picked on the chart' }, 'Get freq.')),
+      ),
+      group('Display Resolution', lenField(win, 'Display res.', () => S.dres, (v) => (S.dres = clamp(v, 0.05, 2)), { local: true, title: 'Grid spacing of the pressure display — smaller is finer and slower' })),
+    );
+    T.pages['Mode 2'].append(
+      group('Display Type', ...radios('acx-md-disp', 'disp', [['3d', '3-Dimensional'], ['horizontal', 'Horizontal Plane'], ['length', 'Vertical Plane (Length)'], ['width', 'Vertical Plane (Width)']], () => (S.disp !== '3d' && S.RV.view === '3d' ? 0 : 0, win.refresh())), atRow),
+      group('Display Parameter', ...radios('acx-md-par', 'param', [['pressure', 'Relative Sound Pressure'], ['intensity', 'Relative Sound Intensity'], ['phase', 'Relative Phase Addition']])),
+      group('Hold', h('label', { class: 'opt' }, holdC, 'Hold previous display'), h('div', { class: 'btns' }, h('button', { onclick: () => ((S.held = []), win.render()) }, 'Clear held'))),
+      h('div', { class: 'small muted' }, 'Brighter is more pressure. Low-frequency absorbers go where it is brightest — for many modes at once, usually the corners.'),
     );
 
-    // right side
-    const top = chartBox('flex:1.25');
+    // ── right side: the three views
+    const roomCv = h('canvas');
+    const roomPane = h('div', { class: 'acx-pane' }, h('div', { class: 'acx-chart' }, roomCv), roomManager(win, S.RV, roomCv));
+    const top = chartBox('flex:1.2');
     const bot = chartBox('flex:1');
-    const ro = { nx: readout(), ny: readout(), nz: readout(), f: readout(), dev: readout('Standard deviation of the gaps between neighbouring modes') };
+    const ro = { n: readout(), f: readout(), idx: readout(), band: readout(), dev: readout('Actual − ideal modes in the band under the mouse') };
     const byF = h('input', { type: 'number', step: 0.1, title: 'Type a frequency to find the mode nearest it', style: 'width:56px' });
     byF.addEventListener('change', () => {
       const f = parseFloat(byF.value);
       if (!Number.isFinite(f) || !S.res) return;
-      S.sel = nearest(S.res.modes.filter((m) => S.show[m.type]), f);
+      S.sel = nearest(listedModes(), f);
       win.render();
     });
     const nearest = (modes, f) => modes.reduce((b, m) => (!b || Math.abs(m.f - f) < Math.abs(b.f - f) ? m : b), null);
-    top.cv.addEventListener('click', (e) => {
+    const pickTop = (e, click) => {
       if (!S.res || !top.map) return;
       const r = top.cv.getBoundingClientRect();
-      S.sel = nearest(S.res.modes.filter((m) => S.show[m.type]), top.map.Xinv(e.clientX - r.left));
+      const m = nearest(listedModes(), top.map.Xinv(e.clientX - r.left));
+      if (!m) return;
+      if (click && S.sel && Math.abs(S.sel.f - m.f) < 0.01 * m.f) {
+        // clicking a stack again toggles through its modes
+        const stack = listedModes().filter((x) => Math.abs(x.f - m.f) <= 0.005 * m.f);
+        S.sel = stack[(stack.indexOf(S.sel) + 1) % stack.length];
+      } else S.sel = m;
+      if (click) Object.assign(S.idx, { nx: S.sel.nx, ny: S.sel.ny, nz: S.sel.nz });
+      win.render();
+    };
+    top.cv.addEventListener('mousemove', (e) => pickTop(e, false));
+    top.cv.addEventListener('click', (e) => pickTop(e, true));
+    bot.cv.addEventListener('mousemove', (e) => {
+      if (!bot.map || !S.res) return;
+      const r = bot.cv.getBoundingClientRect();
+      const i = Math.floor(((e.clientX - r.left - bot.map.pad.l) / bot.map.iw) * S.res.counts.length);
+      S.hover = i >= 0 && i < S.res.counts.length ? i : null;
       win.render();
     });
     const rr = (l, el, u) => h('div', { class: 'row' }, h('span', { class: 'lbl' }, l), el, u ? h('span', {}, u) : null);
-    const body = h(
+    const chartPane = h(
       'div',
-      { class: 'acx-body' },
-      h('div', { class: 'acx-left' }, T.nodes),
-      h(
-        'div',
-        { class: 'acx-right' },
-        h('fieldset', { class: 'grow' }, h('legend', {}, 'Display Mode Distribution'), h('div', { style: 'display:flex;flex-direction:column;gap:4px;flex:1;min-height:0' }, top.box, bot.box)),
-        group('Chart View Manager', h('div', { class: 'manager' }, rr('Nx', ro.nx), rr('Ny', ro.ny), rr('Nz', ro.nz), rr('Frequency', ro.f, 'Hz'), rr('Deviation', ro.dev, 'Hz'), rr('By Frequency', byF, 'Hz'))),
-      ),
+      { class: 'acx-pane' },
+      h('fieldset', { class: 'grow' }, h('legend', {}, 'Display Mode Distribution'), h('div', { style: 'display:flex;flex-direction:column;gap:4px;flex:1;min-height:0' }, top.box, bot.box)),
+      group('Chart View Manager', h('div', { class: 'manager' }, rr('Modes', ro.n), rr('Frequency', ro.f, 'Hz'), rr('Index', ro.idx), rr('By frequency', byF, 'Hz'), h('button', { onclick: getFreq }, 'Get freq.')), h('div', { class: 'manager' }, rr('Band', ro.band), rr('Deviation', ro.dev))),
     );
-    win.el.append(body);
+    const sortR = radios('acx-md-sort', 'sort', [['all', 'All modes'], ['axial', 'Axial modes'], ['tangential', 'Tangential modes'], ['oblique', 'Oblique modes']], () => win.render());
+    const ordR = radios('acx-md-ord', 'order', [['asc', 'Ascending'], ['desc', 'Descending']], () => win.render());
+    const modeTable = h('tbody');
+    const bandTable = h('tbody');
+    const dataPane = h(
+      'div',
+      { class: 'acx-pane' },
+      group('Data View Manager', h('div', { class: 'manager' }, ...sortR), h('div', { class: 'manager' }, ...ordR, h('button', { onclick: () => ((S.listed = S.sort), win.render()), title: 'Show only these modes on the Chart View, and in the report' }, 'List data'))),
+      h('div', { class: 'scroll', style: 'flex:1;min-height:0' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['#', 'Hz', 'Nx', 'Ny', 'Nz', 'Type'].map((t) => h('th', {}, t)))), modeTable)),
+      group('Modes per 1/3 Octave — actual against ideal', h('div', { class: 'scroll', style: 'max-height:150px' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['Band', 'Edges Hz', 'Actual', 'Ideal', 'Deviation', ''].map((t) => h('th', {}, t)))), bandTable))),
+    );
+    const strip = viewStrip(win, { room: roomPane, chart: chartPane, data: dataPane });
+    win.el.append(h('div', { class: 'acx-body' }, h('div', { class: 'acx-left' }, T.nodes), h('div', { class: 'acx-right' }, strip, roomPane, chartPane, dataPane)));
+
+    const listedModes = () => (S.res?.modes ?? []).filter((m) => S.listed === 'all' || m.type === S.listed);
+    const fieldModes = () => {
+      if (!S.res) return [];
+      if (S.multi) return S.res.modes.filter((m) => m.f >= S.lf && m.f <= S.hf);
+      const { nx, ny, nz } = S.idx;
+      if (!(nx || ny || nz)) return [];
+      return [{ nx, ny, nz, f: modeFreq(dims(), nx, ny, nz, cNow()), type: modeType(nx, ny, nz) }];
+    };
 
     win.compute = () => {
-      const modes = modeList(dims(), 200);
-      const b = bonello(dims(), 200);
-      const gaps = modes.slice(1).map((m, i) => m.f - modes[i].f);
-      const mean = gaps.reduce((s, g) => s + g, 0) / (gaps.length || 1);
-      const sd = Math.sqrt(gaps.reduce((s, g) => s + (g - mean) ** 2, 0) / (gaps.length || 1));
-      S.res = { modes, bonello: b, sd };
-      if (S.sel && !modes.some((m) => m.nx === S.sel.nx && m.ny === S.sel.ny && m.nz === S.sel.nz)) S.sel = null;
-      else if (S.sel) S.sel = modes.find((m) => m.nx === S.sel.nx && m.ny === S.sel.ny && m.nz === S.sel.nz);
+      const k = cNow() / C;
+      const scaled = dimsAtC();
+      const modes = modeList(scaled, 200).map((m) => ({ ...m }));
+      const b = bonello(scaled, 200);
+      const counts = b.counts;
+      const ideal = idealCounts(dims(), counts, cNow());
+      S.res = { modes, bonello: b, counts, ideal, k };
+      if (S.sel) S.sel = modes.find((m) => m.nx === S.sel.nx && m.ny === S.sel.ny && m.nz === S.sel.nz) ?? null;
+      const fm = fieldModes();
+      const at = planeAt();
+      const field = fm.length ? pressureField(dims(), fm, { plane: S.disp, at, res: S.dres, weights: M.gen.weights, param: S.param }) : null;
+      if (S.hold && S.field && field && (S.field.plane !== field.plane || S.field.at !== field.at)) S.held = [...S.held, S.field].slice(-6);
+      S.field = field;
+      S.fieldN = fm.length;
+    };
+
+    win.report = () => {
+      const res = S.res;
+      const shown = listedModes();
+      return {
+        title: 'Modal Response',
+        sections: [
+          { heading: 'Room', rows: [['Length', `${fmt(toU(M.L))} ${M.units}`], ['Width', `${fmt(toU(M.W))} ${M.units}`], ['Height', `${fmt(toU(M.H))} ${M.units}`], ['Ratio H : W : L', `1 : ${fmt(M.W / M.H)} : ${fmt(M.L / M.H)}`], ['Speed of sound', `${fmt(cNow(), 1)} m/s at ${M.gen.tempC} °C`]] },
+          { heading: 'Bonello criterion', text: res.bonello.ok ? 'Passes: the count per third-octave never falls, and no two modes coincide in a band of fewer than five.' : res.bonello.warnings.join('; ') },
+          { heading: `Modes below 200 Hz — ${S.listed}`, head: ['#', 'Hz', 'Nx', 'Ny', 'Nz', 'Type'], rows: shown.map((m, i) => [i + 1, fmt(m.f, 1), m.nx, m.ny, m.nz, m.type]) },
+          { heading: 'Modes per 1/3 octave', head: ['Band Hz', 'Low', 'High', 'Actual', 'Ideal', 'Deviation'], rows: res.counts.map((b, i) => [b.fc, fmt(b.lo, 1), fmt(b.hi, 1), b.count, fmt(res.ideal[i], 1), fmt(b.count - res.ideal[i], 1)]) },
+        ],
+      };
     };
 
     win.render = () => {
       const res = S.res;
       if (!res) return;
-      // Bonello box
       bonelloBox.replaceChildren(
-        h('div', { class: res.bonello.ok ? '' : 'warn' }, res.bonello.ok ? '✓ Passes: counts never fall, no coincident modes in a thin band.' : `⚠ ${res.bonello.warnings.length} warning${res.bonello.warnings.length === 1 ? '' : 's'}:`),
-        res.bonello.warnings.map((w) => h('div', { class: 'warn' }, `• ${w}`)),
+        h('div', { class: res.bonello.ok ? '' : 'warn' }, res.bonello.ok ? '✓ This room meets the criteria: counts never fall, no coincident modes in a thin band.' : `⚠ ${res.bonello.warnings.length} reason${res.bonello.warnings.length === 1 ? '' : 's'} it does not:`),
+        ...res.bonello.warnings.map((w) => h('div', { class: 'warn' }, `• ${w}`)),
+        (() => {
+          const itu = ituBs1116(dims());
+          return h('div', { class: itu.ok ? 'muted' : 'warn' }, itu.ok ? 'Inside the ITU-R BS.1116 proportions.' : `ITU-R BS.1116: ${itu.notes.join('; ')}`);
+        })(),
       );
-      // Optimize list
       optList.replaceChildren(...S.results.map((r, i) => h('option', { selected: i === S.resSel }, `${fmt(toU(r.L))} × ${fmt(toU(r.W))} × ${fmt(toU(r.H))} ${M.units}   ${fmt(r.score, 3)} ${r.ok ? '✓' : '⚠'}`)));
-      // Mode1 table
-      const vis = res.modes.filter((m) => S.show[m.type]);
-      modeTable.replaceChildren(
-        ...vis.map((m, i) =>
-          h('tr', { class: m === S.sel ? 'sel' : '', onclick: () => ((S.sel = m), win.render()) }, h('td', {}, i + 1), h('td', {}, fmt(m.f, 1)), h('td', {}, m.nx), h('td', {}, m.ny), h('td', {}, m.nz), h('td', {}, m.type)),
-        ),
-      );
-      // Mode2 tables
-      const counts = res.bonello.counts;
+      const fm = fieldModes();
+      modeFRo.textContent = !S.multi && fm[0] ? fmt(fm[0].f, 2) : '';
+      countRo.textContent = String(S.multi ? fm.length : fm.length ? 1 : 0);
+      // data view
+      const sorted = res.modes.filter((m) => S.sort === 'all' || m.type === S.sort);
+      if (S.order === 'desc') sorted.reverse();
+      modeTable.replaceChildren(...sorted.map((m, i) => h('tr', { class: m === S.sel ? 'sel' : '', onclick: () => ((S.sel = m), Object.assign(S.idx, { nx: m.nx, ny: m.ny, nz: m.nz }), (S.multi = false), win.refresh()) }, h('td', {}, i + 1), h('td', {}, fmt(m.f, 1)), h('td', {}, m.nx), h('td', {}, m.ny), h('td', {}, m.nz), h('td', {}, m.type))));
       bandTable.replaceChildren(
-        ...counts.map((b, i) => {
-          const drop = i > 0 && counts.slice(0, i).some((x) => x.count > 0) && b.count < counts[i - 1].count;
-          return h('tr', {}, h('td', {}, `${b.fc} Hz`), h('td', {}, `${fmt(b.lo, 1)}–${fmt(b.hi, 1)}`), h('td', {}, b.count), h('td', { class: 'warn' }, drop ? 'falls' : ''));
+        ...res.counts.map((b, i) => {
+          const drop = i > 0 && res.counts.slice(0, i).some((x) => x.count > 0) && b.count < res.counts[i - 1].count;
+          return h('tr', { class: i === S.hover ? 'sel' : '' }, h('td', {}, `${b.fc} Hz`), h('td', {}, `${fmt(b.lo, 1)}–${fmt(b.hi, 1)}`), h('td', {}, b.count), h('td', {}, fmt(res.ideal[i], 1)), h('td', {}, fmt(b.count - res.ideal[i], 1)), h('td', { class: 'warn' }, drop ? 'falls' : ''));
         }),
       );
-      axialTable.replaceChildren(...[1, 2, 3, 4, 5].map((n) => h('tr', {}, h('td', {}, n), h('td', {}, fmt((n * C) / (2 * M.L), 1)), h('td', {}, fmt((n * C) / (2 * M.W), 1)), h('td', {}, fmt((n * C) / (2 * M.H), 1)))));
-      // readouts
-      ro.nx.textContent = S.sel ? S.sel.nx : '';
-      ro.ny.textContent = S.sel ? S.sel.ny : '';
-      ro.nz.textContent = S.sel ? S.sel.nz : '';
+      // chart view manager
+      const stack = S.sel ? listedModes().filter((m) => Math.abs(m.f - S.sel.f) <= 0.005 * S.sel.f) : [];
+      ro.n.textContent = S.sel ? String(stack.length) : '';
       ro.f.textContent = S.sel ? fmt(S.sel.f, 2) : '';
-      ro.dev.textContent = fmt(res.sd, 2);
-      drawModes(vis);
-      drawThirds(counts);
+      ro.idx.textContent = S.sel ? `${S.sel.nx} ${S.sel.ny} ${S.sel.nz}` : '';
+      const hb = S.hover != null ? res.counts[S.hover] : null;
+      ro.band.textContent = hb ? `${hb.fc} Hz: ${hb.count} / ${fmt(res.ideal[S.hover], 1)}` : '';
+      ro.dev.textContent = hb ? fmt(hb.count - res.ideal[S.hover], 1) : '';
+      if (win.pane === 'chart') {
+        drawModes(listedModes());
+        drawThirds(res.counts, res.ideal);
+      }
+      if (win.pane === 'room') drawField();
     };
 
     function drawModes(vis) {
       const p = prep(top.cv);
       if (!p) return;
       const { ctx, w, h: hh } = p;
-      // stack coincident modes: bar height = how many share that frequency
       const groups = [];
       for (const m of vis) {
         const g = groups.find((x) => Math.abs(x.f - m.f) <= 0.005 * x.f);
@@ -708,39 +1097,44 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         else groups.push({ f: m.f, modes: [m] });
       }
       const t = countTicks(Math.max(4, ...groups.map((g) => g.modes.length + 1)));
-      const a = axes(ctx, w, hh, { title: 'Number of Modes / Frequency', x0: 0, x1: 200, y0: 0, y1: t.max, xticks: [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200].map((v) => ({ v, label: String(v) })), yticks: t.ticks, xLabel: 'Hz' });
+      const a = axes(ctx, w, hh, { title: `Number of Modes / Frequency${S.listed === 'all' ? '' : ` — ${S.listed} only`}`, x0: 0, x1: 200, y0: 0, y1: t.max, xticks: [0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200].map((v) => ({ v, label: String(v) })), yticks: t.ticks, xLabel: 'Hz' });
       top.map = a;
       const rank = { axial: 0, tangential: 1, oblique: 2 };
+      if (S.multi) {
+        ctx.fillStyle = 'rgba(255,255,0,0.18)';
+        ctx.fillRect(a.X(Math.max(0, S.lf)), a.pad.t, Math.max(2, a.X(Math.min(200, S.hf)) - a.X(Math.max(0, S.lf))), a.ih);
+      }
       for (const g of groups) {
-        const t = g.modes.reduce((b, m) => (rank[m.type] < rank[b] ? m.type : b), 'oblique');
+        const tt = g.modes.reduce((b, m) => (rank[m.type] < rank[b] ? m.type : b), 'oblique');
         const x = Math.round(a.X(g.f));
         const sel = S.sel && g.modes.includes(S.sel);
-        ctx.fillStyle = sel ? COL.white : t === 'axial' ? COL.red : t === 'tangential' ? COL.orange : COL.grey;
-        const bw = t === 'axial' ? 3 : t === 'tangential' ? 2 : 1;
+        const inBand = S.multi && g.f >= S.lf && g.f <= S.hf;
+        ctx.fillStyle = sel || inBand ? COL.yellow : tt === 'axial' ? COL.red : tt === 'tangential' ? COL.orange : COL.grey;
+        const bw = tt === 'axial' ? 3 : tt === 'tangential' ? 2 : 1;
         const y = a.Y(g.modes.length);
         ctx.fillRect(x - Math.floor(bw / 2), y, bw, a.Y(0) - y);
       }
-      // legend
       ctx.textAlign = 'right';
-      [['Axial', COL.red], ['Tangential', COL.orange], ['Oblique', COL.grey]].forEach(([l, c], i) => {
+      [['Axial', COL.red], ['Tangential', COL.orange], ['Oblique', COL.grey], ['Selected', COL.yellow]].forEach(([l, c], i) => {
         ctx.fillStyle = c;
         ctx.fillText(l, w - 14, 30 + i * 12);
       });
       ctx.textAlign = 'left';
     }
 
-    function drawThirds(counts) {
+    function drawThirds(counts, ideal) {
       const p = prep(bot.cv);
       if (!p) return;
       const { ctx, w, h: hh } = p;
-      const t = countTicks(Math.max(...counts.map((c) => c.count)) * 1.12 + 1);
-      const a = axes(ctx, w, hh, { title: 'Number of Modes / 1/3 Octave Frequency Band', cats: counts.map((c) => String(c.fc)), y0: 0, y1: t.max, x0: 0, x1: 1, yticks: t.ticks, xLabel: 'Hz' });
+      const t = countTicks(Math.max(...counts.map((c) => c.count), ...ideal) * 1.12 + 1);
+      const a = axes(ctx, w, hh, { title: 'Number of Modes / 1/3 Octave Band — green this room, blue the ideal for its volume', cats: counts.map((c) => String(c.fc)), y0: 0, y1: t.max, x0: 0, x1: 1, yticks: t.ticks, xLabel: 'Hz' });
+      bot.map = a;
       counts.forEach((c, i) => {
         const s = a.slot(i);
-        const bw = Math.max(4, s.w * 0.55);
+        const bw = Math.max(4, s.w * 0.5);
         const x = s.x + (s.w - bw) / 2;
         const y = a.Y(c.count);
-        ctx.fillStyle = COL.green;
+        ctx.fillStyle = i === S.hover ? COL.lime : COL.green;
         if (c.count) ctx.fillRect(x, y, bw, a.Y(0) - y);
         const drop = i > 0 && counts.slice(0, i).some((q) => q.count > 0) && c.count < counts[i - 1].count;
         ctx.fillStyle = drop ? COL.yellow : COL.lime;
@@ -748,58 +1142,186 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         ctx.fillText(String(c.count), s.x + s.w / 2, y - 3);
       });
       ctx.textAlign = 'left';
+      ctx.strokeStyle = '#4080ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ideal.forEach((v, i) => {
+        const s = a.slot(i);
+        const y = a.Y(v);
+        if (i) ctx.lineTo(s.x, y);
+        else ctx.moveTo(s.x, y);
+        ctx.lineTo(s.x + s.w, y);
+      });
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+
+    /** The pressure display: each held plane and the current one as shaded cells, or the volume as dots. */
+    function drawField() {
+      const shade = (v, param) => {
+        if (param === 'phase') return v >= 0 ? `rgba(255,${Math.round(220 - 160 * v)},60,${0.2 + 0.75 * v})` : `rgba(60,${Math.round(220 + 160 * v)},255,${0.2 - 0.75 * v})`;
+        const g = Math.round(40 + 215 * v);
+        return `rgb(${g},${g},${g})`;
+      };
+      const paint = (ctx, S2, field) => {
+        if (!field) return;
+        if (field.plane === '3d') {
+          for (const p of field.points) {
+            if (Math.abs(p.value) < 0.15) continue;
+            const q = S2(p);
+            ctx.fillStyle = shade(p.value, field.param ?? S.param);
+            ctx.globalAlpha = 0.25 + 0.6 * Math.abs(p.value);
+            ctx.fillRect(q[0] - 1.5, q[1] - 1.5, 3, 3);
+          }
+          ctx.globalAlpha = 1;
+          return;
+        }
+        const pt = (u, v) => (field.plane === 'horizontal' ? { X: u, Y: v, Z: field.at } : field.plane === 'length' ? { X: field.at, Y: u, Z: v } : { X: u, Y: field.at, Z: v });
+        const { us, vs, grid } = field;
+        ctx.globalAlpha = 0.85;
+        for (let j = 0; j + 1 < vs.length; j++)
+          for (let i = 0; i + 1 < us.length; i++) {
+            const v = (grid[j][i] + grid[j][i + 1] + grid[j + 1][i] + grid[j + 1][i + 1]) / 4;
+            const c4 = [pt(us[i], vs[j]), pt(us[i + 1], vs[j]), pt(us[i + 1], vs[j + 1]), pt(us[i], vs[j + 1])].map(S2);
+            ctx.fillStyle = shade(v, field.param);
+            ctx.beginPath();
+            c4.forEach((q, n) => (n ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
+            ctx.closePath();
+            ctx.fill();
+          }
+        ctx.globalAlpha = 1;
+      };
+      const fm = fieldModes();
+      const label = !fm.length ? 'enter a mode index or a band (Mode 1)' : S.multi ? `${fm.length} modes, ${fmt(S.lf, 1)}–${fmt(S.hf, 1)} Hz` : `mode ${S.idx.nx} ${S.idx.ny} ${S.idx.nz} · ${fmt(fm[0].f, 1)} Hz`;
+      drawRoom(roomCv, S.RV, {
+        under: (ctx, S2) => {
+          for (const f of S.held) paint(ctx, S2, f);
+          paint(ctx, S2, S.field);
+        },
+        note: label,
+      });
     }
   });
 
   // ═════════════════════════════════════════════════════════════════════════
   // 2. SPEAKER BOUNDARY INTERFERENCE RESPONSE
   // ═════════════════════════════════════════════════════════════════════════
-  makeWindow('sbir', 'Acoustic X — Speaker Boundary Interference Response', { w: 820, h: 560 }, (win) => {
-    const S = { view: 'chart', perOct: 12, xover: [80, 0], ranges: null, step: 0.1, results: [], resSel: 0, res: null };
+  makeWindow('sbir', 'Acoustic X — Speaker Boundary Interference Response', { w: 880, h: 610 }, (win) => {
+    const S = { perOct: 12, mode: 'absolute', noSearch: false, ranges: null, step: 0.15, results: [], resSel: 0, res: null, spkOpt: 'position', win: 1, RV: newRV('3d') };
     const T = tabs(win, ['Room', 'SPK', 'Listener', 'Search']);
-    const exc = { nx: readout(), ny: readout(), nz: readout(), f: readout() };
     T.pages.Room.append(dimsGroup(win), group('Surfaces', ...FACES6.map((f) => h('div', { class: 'row' }, h('span', { class: 'lbl' }, FACE_LABEL[f]), faceMatSelect(win, f)))));
-    T.pages.SPK.append(
-      pointGroup(win, 'Speaker1', () => M.spk1, (v) => (M.spk1 = v)),
-      pointGroup(win, 'Speaker2 (mirror image)', spk2, () => {}, { disabled: () => true }),
-      group('Mode Excited By Position', h('div', { class: 'manager' }, h('div', { class: 'row' }, 'Nx', exc.nx), h('div', { class: 'row' }, 'Ny', exc.ny), h('div', { class: 'row' }, 'Nz', exc.nz)), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Frequency'), exc.f, 'Hz'), h('div', { class: 'small muted' }, 'The one of the lowest twenty modes this speaker and the listener couple to most strongly.')),
-    );
-    T.pages.Listener.append(pointGroup(win, 'Listener', () => M.lis, (v) => (M.lis = v)), h('div', { class: 'small muted' }, 'X from the left wall, Y from the front wall, Z above the floor. Linked, it is the mix mic.'));
 
+    // ── SPK: size (or from the database) and position
+    const dbSel = h('select', { class: 'list' }, h('option', { value: '' }, '— speaker database —'), Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub').map(([k, p]) => h('option', { value: k }, p.label)));
+    dbSel.addEventListener('change', () => {
+      const p = SPEAKER_PRESETS[dbSel.value];
+      if (!p) return;
+      const b = boxSize({ kind: dbSel.value, litres: p.litres });
+      M.spkModel = dbSel.value;
+      M.spkSize = { w: b.w, d: b.d, h: b.h };
+      M.woofer = +(b.h * 0.3).toFixed(3);
+      M.lfCut = p.fLow ?? M.lfCut;
+      edited();
+    });
+    win.syncers.push(() => (dbSel.value = M.spkModel ?? ''));
+    const sizeF = (label, k, title) => lenField(win, label, () => M.spkSize[k], (v) => (M.spkSize = { ...M.spkSize, [k]: Math.max(0.05, v) }), { title });
+    const sizePanel = h('div', {}, group('Speaker Database', dbSel), group('Size', sizeF('Depth', 'd', 'Front to back of the cabinet'), sizeF('Width', 'w'), sizeF('Height', 'h'), lenField(win, 'Woofer height', () => M.woofer, (v) => (M.woofer = Math.max(0, v)), { title: 'Centre of the woofer above the bottom of the cabinet: the boundary calculation places the woofer' })));
+    const exc = { idx: readout(), f: readout() };
+    const posPanel = h('div', {}, pointGroup(win, 'Speaker1 (woofer centre)', () => M.spk1, (v) => (M.spk1 = v)), pointGroup(win, 'Speaker2 (mirror image)', spk2, () => {}, { disabled: () => true }), group('Mode Excited By Position', h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Index'), exc.idx), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Frequency'), exc.f, 'Hz'), h('div', { class: 'small muted' }, 'The lowest mode the speaker sits on a pressure maximum of, and the listener hears. Magenta on the chart.')));
+    const optR = ['size', 'position'].map((v) => {
+      const r = h('input', { type: 'radio', name: 'acx-sb-opt', onchange: () => ((S.spkOpt = v), sync()) });
+      win.syncers.push(() => (r.checked = S.spkOpt === v));
+      return h('label', { class: 'opt' }, r, v === 'size' ? 'Size' : 'Position');
+    });
+    const sync = () => {
+      sizePanel.hidden = S.spkOpt !== 'size';
+      posPanel.hidden = S.spkOpt !== 'position';
+    };
+    win.syncers.push(sync);
+    T.pages.SPK.append(sizePanel, posPanel, group('Option', ...optR));
+
+    // ── Listener: where, the critical frequencies, what the geometry says
+    const geo = { angle: readout(), d: readout(), tilt: readout(), rear: readout() };
+    const geoWarn = h('div', { class: 'warn small' });
+    T.pages.Listener.append(
+      pointGroup(win, 'Listener', () => M.lis, (v) => (M.lis = v)),
+      group('Speaker Critical Frequency', numField(win, 'LF cut-off', 'Hz', () => M.lfCut, (v) => (M.lfCut = Math.max(10, v)), { step: 1, title: 'Red on the chart: only frequencies above it count toward the deviation', local: false }), numField(win, 'LF cross-over', 'Hz', () => M.xover, (v) => (M.xover = Math.max(0, v)), { step: 10, title: 'Yellow on the chart: a dip here is flagged', local: false })),
+      group('Valid Listening Window', lenField(win, 'Window size', () => S.win, (v) => (S.win = clamp(v, 0.2, 3)), { local: true, title: 'How far the head may move round the mix position and still hear no first reflection — the specular absorbers are sized to it' })),
+      group('Listener / Speakers', h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Angle between'), geo.angle, '°'), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Distance'), geo.d), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Speaker tilt'), geo.tilt, '°'), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Rear angle'), geo.rear), geoWarn),
+    );
+
+    // ── Search
     const rng = (k, i) => () => (S.ranges ??= defaultRanges())[k][i];
     const setRng = (k, i) => (v) => ((S.ranges ??= defaultRanges())[k][i] = v);
     function defaultRanges() {
-      const s = M.spk1;
-      return { X: [Math.max(0.2, s.X - 0.5), Math.min(M.W - 0.2, s.X + 0.5)], Y: [Math.max(0.2, s.Y - 0.5), s.Y + 0.5], Z: [s.Z, s.Z] };
+      const g = M.gen.sbir;
+      if (g.custom) return { X: [g.sideMin, g.sideMax], Y: [g.frontMin, g.frontMax] };
+      return { X: [0.3, Math.max(0.35, M.W / 2 - M.gen.sbir.minSpk / 2)], Y: [0.3, Math.max(0.35, Math.min(M.L * 0.45, M.lis.Y - 0.5))] };
     }
     const resList = h('select', { class: 'list', size: 8 });
     resList.addEventListener('change', () => (S.resSel = resList.selectedIndex));
-    const searchNote = h('div', { class: 'small muted' }, `Least absolute deviation (mean |dev| ≤ ${ABS_DEV_MAX_HZ} Hz). Speaker2 follows as the mirror image.`);
+    const searchNote = h('div', { class: 'small muted' });
+    const noC = h('input', { type: 'checkbox', onchange: () => (S.noSearch = noC.checked) });
+    win.syncers.push(() => (noC.checked = S.noSearch));
+    const modeR = [
+      ['absolute', 'Min. Absolute Deviation'],
+      ['negative', 'Min. Negative Deviation'],
+    ].map(([v, l]) => {
+      const r = h('input', { type: 'radio', name: 'acx-sb-mode', onchange: () => ((S.mode = v), win.refresh()) });
+      win.syncers.push(() => (r.checked = S.mode === v));
+      return h('div', {}, h('label', { class: 'opt' }, r, l));
+    });
     T.pages.Search.append(
-      group('Search Limits (Speaker1)', ...['X', 'Y', 'Z'].map((k) => h('div', { class: 'cols' }, lenField(win, `${k} min`, rng(k, 0), setRng(k, 0), { local: true }), lenField(win, 'max', rng(k, 1), setRng(k, 1), { local: true }))), numField(win, 'Step', 'm', () => S.step, (v) => (S.step = Math.max(0.02, v)), { step: 0.01 })),
-      h('div', { class: 'btns' }, h('button', { onclick: runSearch }, 'Search'), h('button', { onclick: applyResult, title: "Move the design's speaker (and its mirror twin) to the selected position" }, 'Apply')),
+      group('Search Parameters', h('label', { class: 'opt' }, noC, 'No search — check the position as it is'), lenField(win, 'Search step', () => S.step, (v) => (S.step = Math.max(0.02, v)), { local: true, title: 'The grid the optimiser walks (0.15 m ≈ 6 in)' }), ...modeR),
+      group('Search Limits (Speaker1)', h('div', { class: 'small muted' }, 'X from the side wall, Y from the front wall. The height stays where the SPK tab puts it.'), ...['X', 'Y'].map((k) => h('div', { class: 'cols' }, lenField(win, `${k} min`, rng(k, 0), setRng(k, 0), { local: true }), lenField(win, 'max', rng(k, 1), setRng(k, 1), { local: true }))), h('div', { class: 'btns' }, h('button', { onclick: () => ((S.ranges = null), win.refresh()) }, 'Automatic limits'))),
+      h('div', { class: 'btns' }, h('button', { onclick: () => runSearch() }, 'Search'), h('button', { onclick: applyResult, title: "Move the design's speaker (and its mirror twin) to the selected position" }, 'Apply')),
       h('div', { style: 'margin-top:6px' }, resList),
       searchNote,
     );
 
-    function runSearch() {
+    /** The deviation at the listener for one speaker position, at this temperature. */
+    function devAt(P, perOct = 48) {
+      const freqs = sbirFreqs(16, 1000, perOct);
+      const k = C / cNow();
+      const out = sbirDeviation(box(), toBox(P), toBox(M.lis), freqs.map((f) => f * k));
+      return { freqs, dev: out.dev };
+    }
+    const scoreOf = (d) => sbirScore(d.freqs, d.dev, { lfCut: M.lfCut, fMax: 300, mode: S.mode });
+
+    function runSearch(avoidDip = false) {
+      if (S.noSearch) {
+        win.refresh();
+        win.showPane('chart');
+        return;
+      }
       const r = (S.ranges ??= defaultRanges());
-      const room = box();
-      const s = toBox(M.spk1);
-      const l = toBox(M.lis);
-      const xs = steps(r.X, S.step);
-      let best = [];
+      const xs = steps(r.X, S.step).filter((X) => M.W - 2 * X >= M.gen.sbir.minSpk - 1e-9);
+      const ys = steps(r.Y, S.step);
+      if (!xs.length) {
+        searchNote.textContent = `⚠ No X in the limits keeps the speakers ${fmt(toU(M.gen.sbir.minSpk))} ${M.units} apart.`;
+        return;
+      }
+      const all = [];
       job(
         win,
         xs.length,
         (i) => {
-          const part = searchPositions(room, s, l, { x: [xs[i], xs[i]], y: [M.L - Math.max(...r.Y), M.L - Math.min(...r.Y)], z: r.Z }, { step: S.step, top: 8 });
-          best = [...best, ...part].sort((a, b) => a.absDev - b.absDev).slice(0, 8);
+          for (const Y of ys) {
+            const P = { X: xs[i], Y, Z: M.spk1.Z };
+            const d = devAt(P, 24);
+            const x = crossoverCheck(d.freqs, d.dev, M.xover);
+            all.push({ ...P, score: scoreOf(d), dips: x.dips });
+          }
         },
         () => {
-          S.results = best.map((p) => ({ X: p.x, Y: M.L - p.y, Z: p.z, absDev: p.absDev }));
+          all.sort((a, b) => a.score - b.score);
+          const pool = avoidDip ? all.filter((p) => !p.dips) : all;
+          S.results = pool.slice(0, 8);
           S.resSel = 0;
+          const best = S.results[0];
+          searchNote.textContent = `${all.length} positions tried, ${S.mode === 'negative' ? 'least negative' : 'least absolute'} deviation above ${M.lfCut} Hz.`;
           win.render();
+          if (best?.dips && !avoidDip && M.xover > 0 && window.confirm(`The best position has a negative deviation at the ${M.xover} Hz crossover. Find a position where it does not?`)) runSearch(true);
         },
       );
     }
@@ -809,14 +1331,13 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       const real = realRoom();
       const [id1, id2] = M.ids;
       const speakers = store?.state?.speakers ?? [];
+      M.spk1 = { X: P.X, Y: P.Y, Z: P.Z };
       if (!real || !id1 || !speakers.some((s) => s.id === id1)) {
-        M.spk1 = { X: P.X, Y: P.Y, Z: P.Z };
         edited();
         win.status.textContent = 'No speaker in the design to move — the classic Speaker1 moved instead';
         return;
       }
       const wasLinked = M.linked;
-      const sizeDiffers = Math.abs(real.L - M.L) > 0.01 || Math.abs(real.W - M.W) > 0.01 || Math.abs(real.H - M.H) > 0.01;
       const p = toSheetReal(real, P);
       store.update('speaker', id1, { x: p.x, y: p.y, z: p.z });
       const s1 = store.state.speakers.find((s) => s.id === id1);
@@ -824,94 +1345,122 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         const q = toSheetReal(real, { X: real.W - P.X, Y: P.Y, Z: P.Z });
         store.update('speaker', id2, { x: q.x, y: q.y, z: q.z });
       }
-      M.spk1 = { X: P.X, Y: P.Y, Z: P.Z };
       if (!wasLinked) refreshAll();
-      if (sizeDiffers) win.status.textContent = 'Applied — note the classic room is not the size of the designed one';
     }
 
-    // right side
+    // ── right side
     const chart = chartBox();
-    const resRadios = [
-      [1, 'Octave'],
-      [3, '1/3'],
-      [6, '1/6'],
-      [12, '1/12'],
-    ].map(([n, l]) => {
+    const resRadios = [[1, 'Octave'], [3, '1/3'], [6, '1/6'], [12, '1/12']].map(([n, l]) => {
       const r = h('input', { type: 'radio', name: 'acx-sbir-res', onchange: () => ((S.perOct = n), win.render()) });
       win.syncers.push(() => (r.checked = S.perOct === n));
       return h('label', { class: 'opt' }, r, l);
     });
-    const absRo = readout(`Mean |deviation| at or below ${ABS_DEV_MAX_HZ} Hz`);
-    const xo = (i) => numField(win, i ? 'Crossover 2' : 'Crossover', 'Hz', () => S.xover[i], (v) => (S.xover[i] = Math.max(0, v)), { step: 10, title: 'Drawn as a yellow marker; 0 hides it', width: 52 });
-    const viewBtns = [
-      ['plan', 'Plan'],
-      ['side', 'Side Elevation'],
-      ['end', 'End Elevation'],
-      ['3d', '3-Dimensional'],
-      ['chart', 'SBIR Chart'],
-    ].map(([v, l]) => {
-      const b = h('button', { onclick: () => ((S.view = S.view === v && v !== 'chart' ? 'chart' : v), win.render()) }, l);
-      b.dataset.v = v;
-      return b;
-    });
-    const body = h(
-      'div',
-      { class: 'acx-body' },
-      h('div', { class: 'acx-left' }, T.nodes),
-      h(
-        'div',
-        { class: 'acx-right' },
-        h('fieldset', { class: 'grow' }, h('legend', {}, 'SBIR'), h('div', { class: 'manager' }, ...resRadios, xo(0), xo(1)), chart.box, h('div', { class: 'row' }, h('span', { class: 'lbl', style: 'width:auto' }, 'Absolute Deviation'), absRo, 'dB')),
-        group('Room View Manager', h('div', { class: 'btns', style: 'margin:0' }, viewBtns)),
-      ),
-    );
-    win.el.append(body);
+    const devRo = readout();
+    const devLbl = h('span', { class: 'lbl', style: 'width:auto' });
+    const xoWarn = h('span', { class: 'warn small' });
+    const chartPane = h('div', { class: 'acx-pane' }, h('fieldset', { class: 'grow' }, h('legend', {}, 'SBIR'), h('div', { class: 'manager' }, ...resRadios, xoWarn), chart.box, h('div', { class: 'row' }, devLbl, devRo, 'dB')));
+    const roomCv = h('canvas');
+    const absBox = h('div', { class: 'small' });
+    const roomPane = h('div', { class: 'acx-pane' }, h('div', { class: 'acx-chart' }, roomCv), h('div', { class: 'cols' }, roomManager(win, S.RV, roomCv), group('Absorption', absBox)));
+    const devTable = h('tbody');
+    const repBox = h('div', { class: 'scroll', style: 'flex:1;min-height:0' });
+    const dataPane = h('div', { class: 'acx-pane' }, h('div', { class: 'cols', style: 'flex:1;min-height:0' }, h('div', { class: 'scroll', style: 'max-width:200px' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['Hz', 'dB'].map((t) => h('th', {}, t)))), devTable)), repBox));
+    const strip = viewStrip(win, { room: roomPane, chart: chartPane, data: dataPane });
+    win.el.append(h('div', { class: 'acx-body' }, h('div', { class: 'acx-left' }, T.nodes), h('div', { class: 'acx-right' }, strip, roomPane, chartPane, dataPane)));
+
+    const speakersNow = () => {
+      const out = [M.spk1, spk2()];
+      const g = M.gen.sbir;
+      if (g.centre || g.rear) {
+        const sur = surroundPositions(M.spk1, M.lis, { rearRise: g.rearRise });
+        if (g.centre) out.push(sur.centre);
+        if (g.rear) out.push(sur.rearLeft, sur.rearRight);
+      }
+      return out;
+    };
 
     win.compute = () => {
-      const room = box();
-      const fine = sbirDeviation(room, toBox(M.spk1), toBox(M.lis), sbirFreqs(16, 1000, 48));
-      const modes = modeList({ L: M.L, W: M.W, H: M.H }, 200).slice(0, 20);
-      const psi = (m, P) => Math.cos((m.nx * Math.PI * P.Y) / M.L) * Math.cos((m.ny * Math.PI * P.X) / M.W) * Math.cos((m.nz * Math.PI * P.Z) / M.H);
-      const exm = modes.reduce((b, m) => {
-        const c = Math.abs(psi(m, M.spk1) * psi(m, M.lis));
-        return !b || c > b.c + 1e-9 ? { m, c } : b;
-      }, null);
-      S.res = { fine, exm };
+      const fine = devAt(M.spk1, 48);
+      const score = scoreOf(fine);
+      const xo = crossoverCheck(fine.freqs, fine.dev, M.xover);
+      // the modes the position excites: the speaker within 5 % of a pressure maximum, the listener not on a null
+      const dims = { L: M.L, W: M.W, H: M.H };
+      const modes = modeList(dimsAtC(), 300);
+      const excited = modes.filter((m) => Math.abs(modeShape(dims, m, M.spk1)) >= 0.95 && Math.abs(modeShape(dims, m, M.lis)) >= 0.3).slice(0, 6);
+      const absorbers = specularAbsorbers(dims, [M.spk1, spk2()], M.lis, S.win);
+      const sur = surroundPositions(M.spk1, M.lis, { rearRise: M.gen.sbir.rearRise });
+      S.res = { fine, score, xo, excited, absorbers, geo: listenerGeometry(M.spk1, spk2(), M.lis), sur };
+      M.absorbers = absorbers;
+    };
+
+    win.report = () => {
+      const r = S.res;
+      const A = r.absorbers;
+      const surf = (n, a) => (a ? [n, `${fmt(toU(a.u0))}–${fmt(toU(a.u1))}`, `${fmt(toU(a.v0))}–${fmt(toU(a.v1))}`, `${fmt(areaU(a.area), 1)} ${aUnit()}`] : [n, '—', '—', '—']);
+      const pos = (n, P) => [n, fmt(toU(P.X)), fmt(toU(P.Y)), fmt(toU(P.Z))];
+      return {
+        title: 'Speaker Boundary Interference Response',
+        sections: [
+          { heading: `Positions (${M.units}: X from the left wall, Y from the front wall, Z above the floor)`, head: ['', 'X', 'Y', 'Z'], rows: [pos('Speaker 1 (woofer)', M.spk1), pos('Speaker 2 (woofer)', spk2()), pos('Listener', M.lis), ...(M.gen.sbir.centre ? [pos('Centre', r.sur.centre)] : []), ...(M.gen.sbir.rear ? [pos('Rear left', r.sur.rearLeft), pos('Rear right', r.sur.rearRight)] : [])] },
+          { heading: 'Speaker', rows: [['Model', SPEAKER_PRESETS[M.spkModel]?.label ?? 'entered by size'], ['Size (w × d × h)', `${fmt(toU(M.spkSize.w))} × ${fmt(toU(M.spkSize.d))} × ${fmt(toU(M.spkSize.h))} ${M.units}`], ['LF cut-off', `${M.lfCut} Hz`], ['LF cross-over', `${M.xover} Hz`]] },
+          { heading: 'Result', rows: [[S.mode === 'negative' ? 'Negative deviation' : 'Absolute deviation', `${fmt(r.score, 2)} dB`], ['At the crossover', Number.isFinite(r.xo.dev) ? `${fmt(r.xo.dev, 1)} dB${r.xo.dips ? ' — dips' : ''}` : '—'], ['Angle between speakers', `${fmt(r.geo.angle, 1)}°`], ['Speaker tilt', `${fmt(r.geo.tilt, 1)}° ${r.geo.warn}`], ['Modes excited', r.excited.map((m) => `${m.nx}${m.ny}${m.nz} ${fmt(m.f, 1)} Hz`).join(', ') || 'none flagged']] },
+          { heading: `Specular absorption for a ${fmt(toU(S.win))} ${M.units} listening window (u, v on the surface)`, head: ['Surface', 'u', 'v', 'Area'], rows: [surf('Left wall (u = Y, v = Z)', A.left), surf('Right wall (u = Y, v = Z)', A.right), surf('Ceiling (u = X, v = Y)', A.ceiling)] },
+          { heading: 'Deviation, 1/12 octave', head: ['Hz', 'dB'], rows: thinned(r.fine, 12).map(([f, d]) => [fmt(f, 1), fmt(d, 1)]) },
+        ],
+      };
+    };
+    const thinned = (d, perOct) => {
+      const out = [];
+      for (const fc of sbirFreqs(16, 1000, perOct)) {
+        const i = d.freqs.reduce((b, f, j) => (Math.abs(Math.log(f / fc)) < Math.abs(Math.log(d.freqs[b] / fc)) ? j : b), 0);
+        out.push([fc, d.dev[i]]);
+      }
+      return out;
     };
 
     win.render = () => {
       if (!S.res) return;
-      const { fine, exm } = S.res;
-      absRo.textContent = fmt(fine.absDev, 2);
-      exc.nx.textContent = exm?.m.nx ?? '';
-      exc.ny.textContent = exm?.m.ny ?? '';
-      exc.nz.textContent = exm?.m.nz ?? '';
-      exc.f.textContent = exm ? fmt(exm.m.f, 1) : '';
-      resList.replaceChildren(...S.results.map((r, i) => h('option', { selected: i === S.resSel }, `X ${fmt(toU(r.X))}  Y ${fmt(toU(r.Y))}  Z ${fmt(toU(r.Z))} ${M.units}   ${fmt(r.absDev, 2)} dB`)));
-      for (const b of viewBtns) b.classList.toggle('down', b.dataset.v === S.view);
-      if (S.view === 'chart') drawSbir(fine);
-      else drawRoomView(chart.cv, S.view, [M.spk1, spk2()], M.lis);
+      const r = S.res;
+      devLbl.textContent = S.mode === 'negative' ? 'Negative Deviation' : 'Absolute Deviation';
+      devRo.textContent = fmt(r.score, 2);
+      xoWarn.textContent = r.xo.dips ? `⚠ ${fmt(r.xo.dev, 1)} dB at the ${M.xover} Hz crossover` : '';
+      exc.idx.textContent = r.excited[0] ? `${r.excited[0].nx} ${r.excited[0].ny} ${r.excited[0].nz}` : '—';
+      exc.f.textContent = r.excited[0] ? fmt(r.excited[0].f, 1) : '';
+      geo.angle.textContent = fmt(r.geo.angle, 1);
+      geo.d.textContent = `${fmt(toU(r.geo.d1))} ${M.units}`;
+      geo.tilt.textContent = fmt(r.geo.tilt, 1);
+      geo.rear.textContent = M.gen.sbir.rear ? `±110°, tilt ${fmt(r.sur.rearTilt, 1)}°` : 'rears off';
+      geoWarn.textContent = r.geo.warn ? `⚠ ${r.geo.warn}` : '';
+      resList.replaceChildren(...S.results.map((p, i) => h('option', { selected: i === S.resSel }, `X ${fmt(toU(p.X))}  Y ${fmt(toU(p.Y))} ${M.units}   ${fmt(p.score, 2)} dB${p.dips ? ' ⚠ xover' : ''}`)));
+      const A = r.absorbers;
+      absBox.replaceChildren(...[['Left wall', A.left], ['Right wall', A.right], ['Ceiling', A.ceiling]].map(([n, a]) => h('div', {}, `${n}: ${a ? `${fmt(areaU(a.area), 1)} ${aUnit()}` : '—'}`)), h('div', { class: 'muted' }, `for a ${fmt(toU(S.win))} ${M.units} window`));
+      if (win.pane === 'chart') drawSbir(r);
+      if (win.pane === 'room') drawSbirRoom(r);
+      if (win.pane === 'data') {
+        devTable.replaceChildren(...thinned(r.fine, 12).map(([f, d]) => h('tr', {}, h('td', {}, fmt(f, 1)), h('td', { class: d < 0 && S.mode === 'negative' ? 'warn' : '' }, fmt(d, 1)))));
+        repBox.replaceChildren(reportNode(win.report()));
+      }
     };
 
-    function drawSbir(fine) {
+    function drawSbir(r) {
       const p = prep(chart.cv);
       if (!p) return;
       const { ctx, w, h: hh } = p;
-      const a = axes(ctx, w, hh, { title: 'SBIR — Deviation (dB) / Frequency (Hz)', x0: 16, x1: 1000, xlog: true, y0: -30, y1: 12, xticks: FREQ_TICKS, yticks: [-30, -24, -18, -12, -6, 0, 6, 12], xLabel: 'Hz' });
+      const a = axes(ctx, w, hh, { title: `SBIR — Deviation (dB) / Frequency (Hz) — ${S.mode === 'negative' ? 'negative deviation in red' : 'absolute'}`, x0: 16, x1: 1000, xlog: true, y0: -30, y1: 12, xticks: FREQ_TICKS, yticks: [-30, -24, -18, -12, -6, 0, 6, 12], xLabel: 'Hz' });
       const half = 1 / (2 * S.perOct);
       for (const fc of sbirFreqs(16, 1000, S.perOct)) {
         let s = 0;
         let n = 0;
-        fine.freqs.forEach((f, i) => {
+        r.fine.freqs.forEach((f, i) => {
           if (Math.abs(Math.log2(f / fc)) <= half + 1e-9) {
-            s += fine.dev[i];
+            s += r.fine.dev[i];
             n++;
           }
         });
         const v = n ? s / n : 0;
         const x0 = a.X(Math.max(16, fc * 2 ** -half));
         const x1 = a.X(Math.min(1000, fc * 2 ** half));
-        ctx.fillStyle = COL.green;
+        ctx.fillStyle = fc < M.lfCut ? '#305030' : S.mode === 'negative' && v < 0 ? COL.red : COL.green;
         const y0 = a.Y(0);
         const y1 = a.Y(v);
         ctx.fillRect(x0 + 0.5, Math.min(y0, y1), Math.max(1, x1 - x0 - 1), Math.max(1, Math.abs(y1 - y0)));
@@ -921,100 +1470,130 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       ctx.moveTo(a.pad.l, Math.round(a.Y(0)) + 0.5);
       ctx.lineTo(w - a.pad.r, Math.round(a.Y(0)) + 0.5);
       ctx.stroke();
-      ctx.strokeStyle = COL.yellow;
-      for (const f of S.xover)
-        if (f >= 16 && f <= 1000) {
-          ctx.beginPath();
-          ctx.moveTo(Math.round(a.X(f)) + 0.5, a.pad.t);
-          ctx.lineTo(Math.round(a.X(f)) + 0.5, hh - a.pad.b);
-          ctx.stroke();
-          ctx.fillStyle = COL.yellow;
-          ctx.fillText(`${f} Hz`, a.X(f) + 3, a.pad.t + 10);
-        }
+      const vline = (f, colour, label) => {
+        if (!(f >= 16 && f <= 1000)) return;
+        ctx.strokeStyle = colour;
+        ctx.beginPath();
+        ctx.moveTo(Math.round(a.X(f)) + 0.5, a.pad.t);
+        ctx.lineTo(Math.round(a.X(f)) + 0.5, hh - a.pad.b);
+        ctx.stroke();
+        ctx.fillStyle = colour;
+        ctx.fillText(label, a.X(f) + 3, a.pad.t + 10);
+      };
+      vline(M.lfCut, COL.red, `LF cut-off ${M.lfCut} Hz`);
+      vline(M.xover, COL.yellow, `x-over ${M.xover} Hz`);
+      r.excited.forEach((m, i) => {
+        if (!(m.f >= 16 && m.f <= 1000)) return;
+        ctx.strokeStyle = '#ff40ff';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(Math.round(a.X(m.f)) + 0.5, a.pad.t);
+        ctx.lineTo(Math.round(a.X(m.f)) + 0.5, hh - a.pad.b);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ff40ff';
+        ctx.fillText(`${m.nx}${m.ny}${m.nz}`, a.X(m.f) + 3, hh - a.pad.b - 6 - 11 * i);
+      });
+    }
+
+    function drawSbirRoom(r) {
+      const A = r.absorbers;
+      drawRoom(roomCv, S.RV, {
+        speakers: speakersNow(),
+        lis: M.lis,
+        over: (ctx, S2) => {
+          const quad = (pts, fill, stroke) => {
+            const q = pts.map(S2);
+            ctx.beginPath();
+            q.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+            ctx.closePath();
+            ctx.fillStyle = fill;
+            ctx.fill();
+            ctx.strokeStyle = stroke;
+            ctx.stroke();
+          };
+          // the valid listening window, at ear height
+          const w2 = S.win / 2;
+          quad([{ X: M.lis.X - w2, Y: M.lis.Y - w2, Z: M.lis.Z }, { X: M.lis.X + w2, Y: M.lis.Y - w2, Z: M.lis.Z }, { X: M.lis.X + w2, Y: M.lis.Y + w2, Z: M.lis.Z }, { X: M.lis.X - w2, Y: M.lis.Y + w2, Z: M.lis.Z }], 'rgba(255,255,0,0.15)', COL.yellow);
+          // the specular absorbers on the side walls and the ceiling
+          const side = (X, a) => a && quad([{ X, Y: a.u0, Z: a.v0 }, { X, Y: a.u1, Z: a.v0 }, { X, Y: a.u1, Z: a.v1 }, { X, Y: a.u0, Z: a.v1 }], 'rgba(0,192,255,0.25)', COL.cyan);
+          side(0, A.left);
+          side(M.W, A.right);
+          if (A.ceiling) quad([{ X: A.ceiling.u0, Y: A.ceiling.v0, Z: M.H }, { X: A.ceiling.u1, Y: A.ceiling.v0, Z: M.H }, { X: A.ceiling.u1, Y: A.ceiling.v1, Z: M.H }, { X: A.ceiling.u0, Y: A.ceiling.v1, Z: M.H }], 'rgba(0,192,255,0.2)', COL.cyan);
+          // corner absorbers: the two front corners, floor to ceiling, 0.6 m across
+          const c = 0.42;
+          for (const [X0, X1] of [[0, c], [M.W - c, M.W]]) {
+            ctx.strokeStyle = COL.orange;
+            ctx.beginPath();
+            const Ycorner = X0 === 0 ? (X) => c - X : (X) => c - (M.W - X);
+            const a = { X: X0 === 0 ? 0 : M.W, Y: c };
+            const b = { X: X0 === 0 ? c : M.W - c, Y: 0 };
+            for (const Z of [0, M.H]) {
+              const p1 = S2({ ...a, Z });
+              const p2 = S2({ ...b, Z });
+              ctx.moveTo(p1[0], p1[1]);
+              ctx.lineTo(p2[0], p2[1]);
+            }
+            for (const P of [a, b]) {
+              const p1 = S2({ ...P, Z: 0 });
+              const p2 = S2({ ...P, Z: M.H });
+              ctx.moveTo(p1[0], p1[1]);
+              ctx.lineTo(p2[0], p2[1]);
+            }
+            ctx.stroke();
+            void Ycorner;
+          }
+          ctx.fillStyle = COL.text;
+          ctx.fillText('yellow: listening window · cyan: specular absorption · orange: corner absorbers', 8, 28);
+        },
+      });
     }
   });
-
-  /**
-   * The room as the original drew it: a purple wireframe — plan, side
-   * elevation (Y–Z), end elevation (X–Z) or axonometric — with the speakers as
-   * red boxes and the listener as a red circle.
-   */
-  function drawRoomView(cv, view, speakers, lis) {
-    const p = prep(cv);
-    if (!p) return;
-    const { ctx, w, h: hh } = p;
-    const cos30 = Math.cos(Math.PI / 6);
-    const proj = {
-      plan: (P) => [P.X, P.Y],
-      side: (P) => [P.Y, -P.Z],
-      end: (P) => [P.X, -P.Z],
-      '3d': (P) => [(P.X - P.Y) * cos30, (P.X + P.Y) * 0.5 - P.Z],
-    }[view];
-    const corners = [];
-    for (const X of [0, M.W]) for (const Y of [0, M.L]) for (const Z of [0, M.H]) corners.push({ X, Y, Z });
-    const pts = corners.map(proj);
-    const xs = pts.map((q) => q[0]);
-    const ys = pts.map((q) => q[1]);
-    const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    const k = Math.min((w - 60) / (maxX - minX || 1), (hh - 60) / (maxY - minY || 1));
-    const ox = (w - (maxX - minX) * k) / 2 - minX * k;
-    const oy = (hh - (maxY - minY) * k) / 2 - minY * k;
-    const S2 = (P) => {
-      const [u, v] = proj(P);
-      return [ox + u * k, oy + v * k];
-    };
-    const line = (A, B) => {
-      const a = S2(A);
-      const b = S2(B);
-      ctx.moveTo(a[0], a[1]);
-      ctx.lineTo(b[0], b[1]);
-    };
-    const boxEdges = (x0, x1, y0, y1, z0, z1) => {
-      const c = (X, Y, Z) => ({ X, Y, Z });
-      for (const [Y, Z] of [[y0, z0], [y1, z0], [y0, z1], [y1, z1]]) line(c(x0, Y, Z), c(x1, Y, Z));
-      for (const [X, Z] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) line(c(X, y0, Z), c(X, y1, Z));
-      for (const [X, Y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) line(c(X, Y, z0), c(X, Y, z1));
-    };
-    // a faint floor grid, one line a metre, then the room
-    ctx.strokeStyle = 'rgba(176,64,255,0.28)';
-    ctx.beginPath();
-    for (let X = 1; X < M.W; X++) line({ X, Y: 0, Z: 0 }, { X, Y: M.L, Z: 0 });
-    for (let Y = 1; Y < M.L; Y++) line({ X: 0, Y, Z: 0 }, { X: M.W, Y, Z: 0 });
-    ctx.stroke();
-    ctx.strokeStyle = COL.purple;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    boxEdges(0, M.W, 0, M.L, 0, M.H);
-    ctx.stroke();
-    ctx.strokeStyle = COL.red;
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    for (const s of speakers) boxEdges(s.X - 0.13, s.X + 0.13, s.Y - 0.08, s.Y + 0.16, s.Z - 0.2, s.Z + 0.2);
-    ctx.stroke();
-    const L0 = S2(lis);
-    ctx.beginPath();
-    ctx.arc(L0[0], L0[1], 6, 0, 2 * Math.PI);
-    ctx.stroke();
-    ctx.lineWidth = 1;
-    ctx.fillStyle = COL.title;
-    const names = { plan: 'Plan', side: 'Side Elevation', end: 'End Elevation', '3d': '3-Dimensional' };
-    ctx.fillText(`Room View — ${names[view]}   ${fmt(toU(M.L))} × ${fmt(toU(M.W))} × ${fmt(toU(M.H))} ${M.units}`, 8, 14);
-    ctx.fillStyle = COL.text;
-    if (view === 'plan') ctx.fillText('front wall ↑', 8, hh - 8);
-    if (view === 'side') ctx.fillText('← front wall', 8, hh - 8);
-  }
 
   // ═════════════════════════════════════════════════════════════════════════
   // 3. RAY TRACING
   // ═════════════════════════════════════════════════════════════════════════
-  makeWindow('rays', 'Acoustic X — Ray Tracing', { w: 820, h: 560 }, (win) => {
-    const S = { band: 3, order: 2, spk2: true, va: { step: 5, begin: -90, end: 90 }, ha: { step: 5, begin: 0, end: 355 }, mode: 'total', idx: 1, res: null };
-    const T = tabs(win, ['Room', 'SPK', 'LS', 'Acoustics', 'Sim']);
+  makeWindow('rays', 'Acoustic X — Ray Tracing', { w: 880, h: 610 }, (win) => {
+    const S = {
+      band: 2,
+      refl: 14,
+      v: { step: 5, begin: -90, end: 90 },
+      hz: { begin: 0, end: 360 },
+      radius: 0.3,
+      sources: { s1: true, s2: true, c: false, rl: false, rr: false },
+      align: true,
+      aimAt: null,
+      suppress: [false, false, false, false],
+      showTrace: true,
+      items: { speakers: true, absorbers: true, listener: true, polar: true },
+      absAlpha: 0.9,
+      follow: 0.5,
+      mode: 'total',
+      idx: 0,
+      res: null,
+      RV: newRV('plan'),
+      mouseEdit: false,
+    };
+    const T = tabs(win, ['Room', 'SPK', 'LS', 'Acoustic', 'Sim.']);
     T.pages.Room.append(dimsGroup(win));
-    const s2c = h('input', { type: 'checkbox', onchange: () => ((S.spk2 = s2c.checked), win.refresh()) });
-    win.syncers.push(() => (s2c.checked = S.spk2));
-    T.pages.SPK.append(pointGroup(win, 'Speaker1', () => M.spk1, (v) => (M.spk1 = v)), h('label', { class: 'opt' }, s2c, 'Speaker2 on (mirror image)'), pointGroup(win, 'Speaker2', spk2, () => {}, { disabled: () => true }));
-    T.pages.LS.append(pointGroup(win, 'Listening Position', () => M.lis, (v) => (M.lis = v)));
+    const check = (obj, key, label, title, after = () => win.refresh()) => {
+      const c = h('input', { type: 'checkbox', onchange: () => ((obj[key] = c.checked), after()) });
+      win.syncers.push(() => (c.checked = Boolean(obj[key])));
+      return h('div', {}, h('label', { class: 'opt', title }, c, label));
+    };
+    T.pages.SPK.append(
+      pointGroup(win, 'Speaker1', () => M.spk1, (v) => (M.spk1 = v)),
+      pointGroup(win, 'Speaker2 (mirror image)', spk2, () => {}, { disabled: () => true }),
+      group('Parameters', check(S, 'align', 'Automatic speaker alignment', 'On: the speakers always point at the listener. Off: they keep the aim they had', () => ((S.aimAt = S.align ? null : { ...M.lis }), win.refresh()))),
+    );
+    const mouseB = h('button', { title: 'Click on the Plan View to put the listener there', onclick: () => ((S.mouseEdit = !S.mouseEdit), (S.RV.onPick = S.mouseEdit ? pick : null), S.mouseEdit && ((S.RV.view = 'plan'), win.showPane('room')), syncMouse()) }, 'Mouse Edit');
+    const syncMouse = () => mouseB.classList.toggle('down', S.mouseEdit);
+    win.syncers.push(syncMouse);
+    const pick = (P) => {
+      M.lis = { ...M.lis, X: P.X, Y: P.Y };
+      edited();
+    };
+    T.pages.LS.append(pointGroup(win, 'Listening Position', () => M.lis, (v) => (M.lis = v)), h('div', { class: 'btns' }, mouseB, h('button', { title: 'Back to the room being designed', onclick: () => (pullFromRoom(), refreshAll()) }, 'Reset positions')), lenField(win, 'Sphere radius', () => S.radius, (v) => (S.radius = clamp(v, 0.05, 2)), { local: true, title: 'The energy tracking sphere round the listener: bigger catches more reflections' }));
     const bandSel = h('select', {}, BAND_LABELS.map((l, i) => h('option', { value: i }, l)));
     bandSel.addEventListener('change', () => ((S.band = +bandSel.value), win.refresh()));
     const alphaRo = Object.fromEntries(FACES6.map((f) => [f, readout('α in the chosen band')]));
@@ -1022,32 +1601,27 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       bandSel.value = String(S.band);
       for (const f of FACES6) alphaRo[f].textContent = `α ${fmt(material(M.mats[f]).alpha[S.band], 2)}`;
     });
-    T.pages.Acoustics.append(
+    T.pages.Acoustic.append(
       h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Octave band'), bandSel),
-      group('Surfaces', ...FACES6.map((f) => h('div', {}, h('div', { class: 'row' }, h('span', { class: 'lbl' }, FACE_LABEL[f]), alphaRo[f]), faceMatSelect(win, f)))),
+      group('Rect. Room', ...FACES6.map((f) => h('div', {}, h('div', { class: 'row' }, h('span', { class: 'lbl' }, FACE_LABEL[f]), alphaRo[f]), faceMatSelect(win, f)))),
+      group('Specular Absorbers', numField(win, 'α', '', () => S.absAlpha, (v) => (S.absAlpha = clamp(v, 0, 1)), { step: 0.05, title: 'The absorbers the SBIR window places on the side walls and the ceiling' }), check(S.items, 'absorbers', 'Use them in the trace')),
     );
-    const cosmetic = 'Cosmetic: this window traces image sources, which is exact for a box. The angles are kept for the classic layout and only feed the Total Traces readout.';
-    const orderSel = h('select', { title: 'Image-source order: how many bounces a path may take' }, [1, 2, 3, 4].map((n) => h('option', { value: n }, n)));
-    orderSel.addEventListener('change', () => ((S.order = +orderSel.value), win.refresh()));
-    win.syncers.push(() => (orderSel.value = String(S.order)));
     const traces = readout();
-    const imgs = readout();
-    const ang = (o, legend) =>
-      h('fieldset', { title: cosmetic }, h('legend', {}, legend), numField(win, 'Step', '°', () => o.step, (v) => (o.step = Math.max(0.5, v)), { title: cosmetic }), numField(win, 'Begin', '°', () => o.begin, (v) => (o.begin = v), { title: cosmetic }), numField(win, 'End', '°', () => o.end, (v) => (o.end = v), { title: cosmetic }));
-    T.pages.Sim.append(
-      h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Number of Reflections'), orderSel),
-      ang(S.va, 'Vertical Angle'),
-      ang(S.ha, 'Horizontal Angle'),
-      h('div', { class: 'row', title: cosmetic }, h('span', { class: 'lbl' }, 'Total Traces'), traces),
-      h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Image sources'), imgs),
+    const angGroup = (legend, o, withStep) => group(legend, ...(withStep ? [numField(win, 'Step', '°', () => o.step, (v) => (o.step = clamp(v, 0.5, 30)), { step: 0.5 })] : []), numField(win, 'Begin', '°', () => o.begin, (v) => (o.begin = v)), numField(win, 'End', '°', () => o.end, (v) => (o.end = v)));
+    T.pages['Sim.'].append(
+      group('Trace', numField(win, 'Number of ref.', '', () => S.refl, (v) => (S.refl = clamp(Math.round(v), 1, 40)), { title: 'How many reflections each ray is followed for (14: the direct sound and 13 bounces)' }), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Total traces'), traces)),
+      angGroup('Vertical Angle', S.v, true),
+      angGroup('Horizontal Angle (step follows)', S.hz, false),
+      group('Display Items', check(S.items, 'speakers', 'Speakers'), check(S.items, 'listener', 'Listener'), check(S.items, 'polar', 'Polar energy'), check(S, 'showTrace', 'Show the traces')),
+      group('Suppression', ...['Direct energy', 'First reflection', 'Second reflection', 'Third reflection'].map((l, i) => check(S.suppress, i, l))),
+      group('SPK Source', check(S.sources, 's1', 'Speaker 1'), check(S.sources, 's2', 'Speaker 2'), check(S.sources, 'c', 'Centre (General Parameters)'), check(S.sources, 'rl', 'Rear left'), check(S.sources, 'rr', 'Rear right')),
+      numField(win, 'Follow time', '%', () => S.follow * 100, (v) => (S.follow = clamp(v, 5, 100) / 100), { step: 5, title: 'The share of the reverb time the time display tracks' }),
     );
 
+    // ── right side
     const top = chartBox('flex:1');
     const bot = chartBox('flex:1.2');
-    const modeR = [
-      ['single', 'Single Impulse / Surface'],
-      ['total', 'Total Energy / Surface'],
-    ].map(([v, l]) => {
+    const modeR = [['single', 'Single impulse / surface'], ['total', 'Total energy / surface']].map(([v, l]) => {
       const r = h('input', { type: 'radio', name: 'acx-ray-mode', onchange: () => ((S.mode = v), win.render()) });
       win.syncers.push(() => (r.checked = S.mode === v));
       return h('label', { class: 'opt' }, r, l);
@@ -1062,7 +1636,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       win.render();
     };
     bot.cv.addEventListener('click', (e) => {
-      if (!S.res || !bot.map) return;
+      if (!S.res?.arrivals.length || !bot.map) return;
       const r = bot.cv.getBoundingClientRect();
       const t = bot.map.Xinv(e.clientX - r.left);
       let best = 0;
@@ -1073,59 +1647,123 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       win.render();
     });
     const rr = (l, el, u) => h('div', { class: 'row' }, h('span', { class: 'lbl' }, l), el, u ?? null);
-    win.el.append(
-      h(
-        'div',
-        { class: 'acx-body' },
-        h('div', { class: 'acx-left' }, T.nodes),
-        h(
-          'div',
-          { class: 'acx-right' },
-          h('fieldset', { class: 'grow' }, h('legend', {}, 'Energy'), h('div', { style: 'display:flex;flex-direction:column;gap:4px;flex:1;min-height:0' }, top.box, bot.box)),
-          group('Chart View Manager', h('div', { class: 'manager' }, ...modeR), h('div', { class: 'manager' }, rr('Time', ro.t, 'ms'), rr('Level', ro.l, 'dB'), rr('Surface', ro.s), rr('Flagged', ro.flag), h('button', { onclick: () => stepTo(-1) }, '◄ Prev'), h('button', { onclick: () => stepTo(1) }, 'Next ►'))),
-        ),
-      ),
+    const chartPane = h(
+      'div',
+      { class: 'acx-pane' },
+      h('fieldset', { class: 'grow' }, h('legend', {}, 'Impulse Answer'), h('div', { style: 'display:flex;flex-direction:column;gap:4px;flex:1;min-height:0' }, top.box, bot.box)),
+      group('Chart View Manager', h('div', { class: 'manager' }, ...modeR), h('div', { class: 'manager' }, rr('X', ro.t, 'ms'), rr('Y', ro.l, 'dB'), rr('Surface', ro.s), rr('Within 10 dB', ro.flag), h('button', { onclick: () => stepTo(-1) }, '◄ Prev'), h('button', { onclick: () => stepTo(1) }, 'Next ►'))),
     );
+    const roomCv = h('canvas');
+    const roomPane = h('div', { class: 'acx-pane' }, h('div', { class: 'acx-chart' }, roomCv), roomManager(win, S.RV, roomCv));
+    const params = h('tbody');
+    const repBox = h('div', { class: 'scroll', style: 'flex:1;min-height:0' });
+    const dataPane = h('div', { class: 'acx-pane' }, group('Acoustic Parameters', h('table', { class: 'grid' }, params)), repBox);
+    const strip = viewStrip(win, { room: roomPane, chart: chartPane, data: dataPane });
+    win.el.append(h('div', { class: 'acx-body' }, h('div', { class: 'acx-left' }, T.nodes), h('div', { class: 'acx-right' }, strip, roomPane, chartPane, dataPane)));
 
+    const ORDER_COL = [COL.red, '#4060ff', '#60c0ff', COL.green];
+    const orderCol = (o) => ORDER_COL[Math.min(3, o)];
     const BUCKETS = ['direct', 'left', 'back', 'right', 'front', 'floor', 'ceiling'];
+
+    function sourcesNow() {
+      const sur = surroundPositions(M.spk1, M.lis, { rearRise: M.gen.sbir.rearRise });
+      return [
+        ['Speaker 1', M.spk1, S.sources.s1],
+        ['Speaker 2', spk2(), S.sources.s2],
+        ['Centre', sur.centre, S.sources.c],
+        ['Rear left', sur.rearLeft, S.sources.rl],
+        ['Rear right', sur.rearRight, S.sources.rr],
+      ].filter((x) => x[2]);
+    }
+
     win.compute = () => {
-      const room = box();
-      const l = toBox(M.lis);
-      const srcs = [M.spk1, ...(S.spk2 ? [spk2()] : [])].map(toBox);
-      const arrivals = [];
-      let nImg = 0;
-      srcs.forEach((src, si) => {
-        const images = roomImages(room, src, S.order);
-        nImg += images.length;
-        for (const img of images) {
-          const r = Math.max(0.05, Math.hypot(img.x - l.x, img.y - l.y, img.z - l.z));
-          const e = img.reflAbs[S.band] / (r * r);
-          const touched = img.order === 0 ? ['direct'] : [...new Set([...img.walls.map((i) => room.walls[i].face), ...(img.floor ? ['floor'] : []), ...(img.ceiling ? ['ceiling'] : [])])];
-          arrivals.push({ speaker: si, t: (r / C) * 1000, e, order: img.order, surfaces: touched });
-        }
+      const dims = { L: M.L, W: M.W, H: M.H };
+      const alpha = Object.fromEntries(FACES6.map((f) => [f, material(M.mats[f]).alpha[S.band]]));
+      const A = M.absorbers ?? specularAbsorbers(dims, [M.spk1, spk2()], M.lis);
+      const patches = S.items.absorbers ? [['left', A.left], ['right', A.right], ['ceiling', A.ceiling]].filter((x) => x[1]).map(([face, a]) => ({ face, ...a, alpha: S.absAlpha })) : [];
+      const local = equalAreaDirections({ step: S.v.step, vBegin: S.v.begin, vEnd: S.v.end, hBegin: S.hz.begin, hEnd: S.hz.end });
+      const c = cNow();
+      const airDb = airDbPerM(BANDS[S.band], M.gen.tempC, M.gen.rh);
+      const srcs = sourcesNow();
+      const aim = S.align || !S.aimAt ? M.lis : S.aimAt;
+      let arrivals = [];
+      let traces = [];
+      let d0min = Infinity;
+      for (const [, P] of srcs) d0min = Math.min(d0min, Math.hypot(P.X - M.lis.X, P.Y - M.lis.Y, P.Z - M.lis.Z));
+      srcs.forEach(([name, P], si) => {
+        const out = traceRays(dims, P, M.lis, { dirs: raysToward(P, aim, local), alpha, patches, maxRefl: S.refl - 1, radius: S.radius, c, airDb, keepTraces: Math.ceil(300 / srcs.length) });
+        const d0 = Math.hypot(P.X - M.lis.X, P.Y - M.lis.Y, P.Z - M.lis.Z);
+        const shift = 20 * Math.log10(d0min / d0);
+        arrivals.push(...out.arrivals.map((a) => ({ ...a, speaker: si, name, level: a.level + shift })));
+        traces.push(...out.traces);
       });
-      const ref = Math.max(...arrivals.filter((a) => a.order === 0).map((a) => a.e));
-      for (const a of arrivals) a.level = 10 * Math.log10(a.e / ref);
-      const kept = arrivals.filter((a) => a.level > -60).sort((a, b) => a.t - b.t);
-      const totals = Object.fromEntries(BUCKETS.map((b) => [b, dbSum(kept.filter((a) => a.surfaces.includes(b)).map((a) => a.level))]));
-      S.res = { arrivals: kept, totals, nImg };
+      const kept = arrivals.filter((a) => !(a.order <= 3 && S.suppress[a.order]) && a.level > -60).sort((a, b) => a.t - b.t);
+      const totals = Object.fromEntries(BUCKETS.map((b) => [b, dbSum(kept.filter((a) => (b === 'direct' ? a.order === 0 : a.faces.includes(b))).map((a) => a.level))]));
+      // the figures the Data View lists
+      const room = classicRoom();
+      const Sarea = room.surfaces.reduce((s, x) => s + x.area, 0);
+      const abar = room.surfaces.reduce((s, x) => s + x.area * x.material.alpha[S.band], 0) / Sarea;
+      const fig = roomFigures({ V: room.V, S: Sarea, abar, follow: S.follow, c });
+      S.res = { arrivals: kept, totals, traces, fig, rays: local.length * srcs.length, srcs, polar: polarEnergy(kept, 36) };
       if (S.idx >= kept.length) S.idx = 0;
-      const n = (o) => Math.max(1, Math.floor(Math.abs(o.end - o.begin) / o.step) + 1);
-      traces.textContent = String(n(S.va) * n(S.ha) * srcs.length);
-      imgs.textContent = String(nImg);
     };
+
+    win.report = () => {
+      const r = S.res;
+      const f = r.fig;
+      const c = cNow();
+      // per speaker, per surface: the first-order reflection's lag behind the direct sound, and its comb filter
+      const rows = [];
+      for (const [name, P] of r.srcs) {
+        const d0 = Math.hypot(P.X - M.lis.X, P.Y - M.lis.Y, P.Z - M.lis.Z);
+        for (const [face, k, plane] of [['left', 'X', 0], ['right', 'X', M.W], ['front', 'Y', 0], ['back', 'Y', M.L], ['floor', 'Z', 0], ['ceiling', 'Z', M.H]]) {
+          const img = { ...P, [k]: 2 * plane - P[k] };
+          const d = Math.hypot(img.X - M.lis.X, img.Y - M.lis.Y, img.Z - M.lis.Z);
+          const dt = (d - d0) / c;
+          const n = combNulls(dt);
+          rows.push([name, face, fmt(dt * 1000, 2), fmt(toU(d - d0), 2), fmt(n.first, 0), fmt(n.spacing, 0)]);
+        }
+      }
+      return {
+        title: 'Ray Tracing',
+        sections: [
+          { heading: `Acoustic parameters, ${BAND_LABELS[S.band]}`, rows: paramRows(f, r) },
+          { heading: 'Arrivals (within 60 dB)', head: ['ms', 'dB', 'Order', 'Speaker', 'Surfaces'], rows: r.arrivals.slice(0, 120).map((a) => [fmt(a.t, 2), fmt(a.level, 1), a.order, a.name, a.order ? a.faces.join(' → ') : 'direct']) },
+          { heading: 'First-order reflections and their nulls', text: 'Calculated for cross-checking against a measurement: they are where nulls would be, not proof that they are there.', head: ['Speaker', 'Surface', 'Δt ms', `Δpath ${M.units}`, 'First null Hz', 'Spacing Hz'], rows },
+        ],
+      };
+    };
+    const paramRows = (f, r) => [
+      ['Room volume', M.units === 'ft' ? `${fmt(f.V * FT ** 3, 0)} ft³` : `${fmt(f.V, 1)} m³`],
+      ['Room surface area', `${fmt(areaU(f.S), 1)} ${aUnit()}`],
+      ['Alpha (mean α)', fmt(f.abar, 3)],
+      ['RT60 (Sabine)', `${fmt(f.rt60, 2)} s`],
+      ['MFP (mean free path)', `${fmt(toU(f.mfp), 2)} ${M.units}`],
+      ['RC (room constant)', `${fmt(areaU(f.R), 1)} ${aUnit()}`],
+      ['Critical distance (Q = 2)', `${fmt(toU(f.dc), 2)} ${M.units}`],
+      ['Pref. # of reflections', `${f.prefReflections} (to follow ${Math.round(S.follow * 100)} % of RT60)`],
+      ['Total traces', String(r.rays)],
+      ['Follow time', `${Math.round(Math.min(1, ((S.refl - 1) * f.mfp) / cNow() / f.rt60) * 100)} % of RT60 with ${S.refl} reflections`],
+    ];
 
     win.render = () => {
       if (!S.res) return;
       const { arrivals, totals } = S.res;
       const cur = arrivals[S.idx];
-      const flagged = arrivals.filter((a) => a.order > 0 && a.level > -10);
+      traces.textContent = String(S.res.rays);
       ro.t.textContent = cur ? fmt(cur.t, 2) : '';
       ro.l.textContent = cur ? fmt(cur.level, 1) : '';
-      ro.s.textContent = cur ? cur.surfaces.join(' + ') : '';
-      ro.flag.textContent = String(flagged.length);
-      drawSurfaces(S.mode === 'single' && cur ? Object.fromEntries(BUCKETS.map((b) => [b, cur.surfaces.includes(b) ? cur.level : -Infinity])) : totals);
-      drawTime(arrivals, cur);
+      ro.s.textContent = cur ? (cur.order ? cur.faces.join(' → ') : 'direct') : '';
+      ro.flag.textContent = String(arrivals.filter((a) => a.order > 0 && a.level > -10).length);
+      if (win.pane === 'chart') {
+        drawSurfaces(S.mode === 'single' && cur ? Object.fromEntries(BUCKETS.map((b) => [b, (b === 'direct' ? cur.order === 0 : cur.faces.includes(b)) ? cur.level : -Infinity])) : totals);
+        drawTime(arrivals, cur);
+      }
+      if (win.pane === 'room') drawRays();
+      if (win.pane === 'data') {
+        params.replaceChildren(...paramRows(S.res.fig, S.res).map(([k, v]) => h('tr', {}, h('td', {}, k), h('td', {}, v))));
+        repBox.replaceChildren(reportNode(win.report()));
+      }
     };
 
     function drawSurfaces(levels) {
@@ -1137,7 +1775,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         const v = levels[b];
         if (!Number.isFinite(v)) return;
         const s = a.slot(i);
-        const bw = s.w * 0.5;
+        const bw = Math.max(2, s.w * 0.08);
         const y = a.Y(v);
         ctx.fillStyle = COL.white;
         ctx.fillRect(s.x + (s.w - bw) / 2, y, bw, a.Y(-50) - y);
@@ -1152,156 +1790,361 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       const p = prep(bot.cv);
       if (!p) return;
       const { ctx, w, h: hh } = p;
-      const tEnd = Math.max(20, Math.ceil((Math.max(...arrivals.map((x) => x.t)) + 5) / 10) * 10);
-      const step = tEnd > 100 ? 20 : 10;
-      const a = axes(ctx, w, hh, { title: 'Energy (dB) / Time (ms)', x0: 0, x1: tEnd, y0: -50, y1: 5, xticks: Array.from({ length: Math.floor(tEnd / step) + 1 }, (_, i) => ({ v: i * step, label: String(i * step) })), yticks: [-50, -40, -30, -20, -10, 0], xLabel: 'ms' });
+      const follow = S.follow * S.res.fig.rt60 * 1000;
+      const tEnd = Math.max(20, Math.ceil(Math.max(follow, ...arrivals.map((x) => x.t)) / 10) * 10);
+      const step = tEnd > 400 ? 100 : tEnd > 200 ? 50 : tEnd > 100 ? 20 : 10;
+      const a = axes(ctx, w, hh, { title: 'Energy (dB) / Time (ms) — red direct, blue 1st, light blue 2nd, green later', x0: 0, x1: tEnd, y0: -50, y1: 5, xticks: Array.from({ length: Math.floor(tEnd / step) + 1 }, (_, i) => ({ v: i * step, label: String(i * step) })), yticks: [-50, -40, -30, -20, -10, 0], xLabel: 'ms' });
       bot.map = a;
       for (const x of arrivals) {
         const px = Math.round(a.X(x.t));
         const y = a.Y(x.level);
-        ctx.fillStyle = x === cur ? COL.white : COL.green;
+        ctx.fillStyle = x === cur && S.mode === 'single' ? COL.yellow : orderCol(x.order);
         ctx.fillRect(px - 1, y, 2, a.Y(-50) - y);
-        if (x.order > 0 && x.level > -10) {
-          ctx.fillStyle = COL.red;
-          ctx.beginPath();
-          ctx.moveTo(px, y - 3);
-          ctx.lineTo(px - 4, y - 9);
-          ctx.lineTo(px + 4, y - 9);
-          ctx.fill();
-        }
       }
-      ctx.strokeStyle = COL.cyan;
-      ctx.beginPath();
-      ctx.moveTo(a.pad.l, Math.round(a.Y(-10)) + 0.5);
-      ctx.lineTo(w - a.pad.r, Math.round(a.Y(-10)) + 0.5);
-      ctx.stroke();
-      ctx.fillStyle = COL.cyan;
+      // the 10 dB window: the strongest arrival, and 10 dB under it
+      const top0 = Math.max(...arrivals.map((x) => x.level), -50);
+      ctx.strokeStyle = '#4080ff';
+      for (const v of [top0, top0 - 10]) {
+        ctx.beginPath();
+        ctx.moveTo(a.pad.l, Math.round(a.Y(v)) + 0.5);
+        ctx.lineTo(w - a.pad.r, Math.round(a.Y(v)) + 0.5);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#4080ff';
       ctx.textAlign = 'right';
-      ctx.fillText('−10 dB re direct', w - a.pad.r - 4, a.Y(-10) - 4);
+      ctx.fillText('10 dB window', w - a.pad.r - 4, a.Y(top0 - 10) - 4);
       ctx.textAlign = 'left';
+    }
+
+    function drawRays() {
+      const r = S.res;
+      drawRoom(roomCv, S.RV, {
+        speakers: S.items.speakers ? r.srcs.map((x) => x[1]) : [],
+        lis: S.items.listener ? M.lis : null,
+        under: (ctx, S2) => {
+          if (!S.showTrace) return;
+          ctx.globalAlpha = 0.35;
+          for (const poly of r.traces) {
+            for (let i = 1; i < poly.length; i++) {
+              const order = poly[i].order;
+              if (order <= 3 && S.suppress[order]) continue;
+              const a = S2(poly[i - 1]);
+              const b = S2(poly[i]);
+              ctx.strokeStyle = orderCol(order);
+              ctx.beginPath();
+              ctx.moveTo(a[0], a[1]);
+              ctx.lineTo(b[0], b[1]);
+              ctx.stroke();
+            }
+          }
+          ctx.globalAlpha = 1;
+        },
+        over: (ctx, S2, f) => {
+          if (!S.items.polar || S.RV.view !== 'plan') return;
+          // the polar energy round the listener: two blue circles, the strongest direction and 10 dB under it
+          const c = S2(M.lis);
+          const R = Math.min(90, 0.3 * Math.min(M.W, M.L) * f.k);
+          const rOf = (db) => R * Math.max(0, 1 + db / 30);
+          ctx.strokeStyle = '#4080ff';
+          for (const db of [0, -10]) {
+            ctx.beginPath();
+            ctx.arc(c[0], c[1], rOf(db), 0, 2 * Math.PI);
+            ctx.stroke();
+          }
+          ctx.strokeStyle = COL.yellow;
+          ctx.fillStyle = 'rgba(255,255,0,0.25)';
+          ctx.beginPath();
+          r.polar.forEach((db, i) => {
+            const brg = ((i + 0.5) * 10 * Math.PI) / 180;
+            // bearing 0° is toward the front wall (up on the plan), clockwise
+            const x = c[0] + Math.sin(brg) * rOf(Number.isFinite(db) ? db : -30);
+            const y = c[1] - Math.cos(brg) * rOf(Number.isFinite(db) ? db : -30);
+            if (i) ctx.lineTo(x, y);
+            else ctx.moveTo(x, y);
+          });
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = COL.text;
+          ctx.fillText(`polar energy: outer circle the strongest direction, inner −10 dB${S.mouseEdit ? ' · click to move the listener' : ''}`, 8, 28);
+        },
+      });
     }
   });
 
   // ═════════════════════════════════════════════════════════════════════════
   // 4. REVERB TIME
   // ═════════════════════════════════════════════════════════════════════════
-  makeWindow('reverb', 'Acoustic X — Reverb Time', { w: 820, h: 560 }, (win) => {
-    const S = { target: 'control', user: 0.4, formula: 'sabine', absorber: 'absorber-100', face: '', band: 2, sol: null, res: null };
-    const T = tabs(win, ['Surfaces', 'Room Type', 'Optimise']);
-    const volRo = readout();
-    const areaField = (f) => {
-      const inp = h('input', { type: 'number', step: 0.1, style: 'width:58px', title: `${FACE_LABEL[f]} area` });
-      const unit = h('span', { class: 'unit' });
-      inp.addEventListener('change', () => {
-        const v = parseFloat(inp.value);
-        if (!Number.isFinite(v) || v < 0) return win.sync();
-        M.areas = { ...(M.areas ?? boxAreas()), [f]: areaFromU(v) };
-        edited();
-      });
-      win.syncers.push(() => {
-        if (document.activeElement !== inp) inp.value = fmt(areaU(M.areas?.[f] ?? boxAreas()[f]), 1);
-        unit.textContent = aUnit();
-      });
-      return [inp, unit];
-    };
-    const extraRow = h('div', { class: 'small' });
-    T.pages.Surfaces.append(
-      dimsGroup(win, [h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Volume'), volRo)]),
-      group('Surfaces', ...FACES6.map((f) => h('div', {}, h('div', { class: 'row' }, h('span', { class: 'lbl' }, FACE_LABEL[f]), ...areaField(f)), faceMatSelect(win, f))), extraRow),
-    );
+  makeWindow('reverb', 'Acoustic X — Reverb Time', { w: 880, h: 610 }, (win) => {
+    const S = { target: 'control', user: [0.4, 0.4, 0.4, 0.4, 0.4, 0.4], formula: 'sabine', face: 'back', selMat: 'absorber-100', vars: {}, sol: null, res: null, show: 'rt', editUser: false, editMeas: false, RV: newRV('3d') };
+
+    // ── Type: what to aim for
     const typeRadios = RT_TARGETS.map((t) => {
       const r = h('input', { type: 'radio', name: 'acx-rt-type', onchange: () => ((S.target = t.id), win.refresh()) });
       win.syncers.push(() => (r.checked = S.target === t.id));
-      return h('div', {}, h('label', { class: 'opt', title: t.source }, r, t.label), h('span', { class: 'small muted' }, t.source));
+      return h('div', {}, h('label', { class: 'opt', title: t.source }, r, t.label), h('span', { class: 'small muted' }, t.id === 'user' ? 'your own, per band' : t.source));
     });
-    const formulaRadios = FORMULAS.map((f) => {
+    const bandInputs = (arr, set) => h('div', { class: 'bandin' }, BAND_LABELS.map((l, i) => h('label', {}, l, (() => {
+      const inp = h('input', { type: 'number', step: 0.05, style: 'width:52px' });
+      inp.addEventListener('change', () => {
+        const v = parseFloat(inp.value);
+        if (Number.isFinite(v) && v > 0) set(i, v);
+        win.refresh();
+      });
+      win.syncers.push(() => {
+        const a = arr();
+        if (document.activeElement !== inp) inp.value = a ? String(a[i]) : '';
+      });
+      return inp;
+    })())));
+    const userPanel = h('div', { hidden: true }, group("User's RT60 Criteria (s)", bandInputs(() => S.user, (i, v) => (S.user[i] = v)), h('div', { class: 'btns' }, h('button', { onclick: () => ((userPanel.hidden = true), (S.target = 'user'), win.refresh()) }, 'Done'))));
+    const measPanel = h('div', { hidden: true }, group('RT60 Of Empty Room (s)', bandInputs(() => M.measured, (i, v) => (M.measured = (M.measured ?? [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]).map((x, j) => (j === i ? v : x)))), h('div', { class: 'btns' }, h('button', { onclick: () => ((measPanel.hidden = true), (S.formula = 'measured'), win.refresh()) }, 'Done'))));
+
+    // ── RT60: how to calculate it
+    const formulaList = [...FORMULAS, { id: 'measured', label: 'Measured empty RT' }];
+    const formulaRadios = formulaList.map((f) => {
       const r = h('input', { type: 'radio', name: 'acx-rt-f', onchange: () => ((S.formula = f.id), win.refresh()) });
-      win.syncers.push(() => (r.checked = S.formula === f.id));
+      win.syncers.push(() => {
+        r.checked = S.formula === f.id;
+        r.disabled = f.id === 'measured' && !M.measured;
+      });
       return h('div', {}, h('label', { class: 'opt' }, r, f.label));
     });
-    T.pages['Room Type'].append(group('Room Type (reference)', ...typeRadios, numField(win, 'User target', 's', () => S.user, (v) => (S.user = clamp(v, 0.05, 5)), { step: 0.05 })), group('Formula', ...formulaRadios));
 
-    const absSel = matSelect(win, () => S.absorber, (v) => ((S.absorber = v), win.refresh()), 'The material to add');
-    const faceSel = h('select', {}, h('option', { value: '' }, 'Anywhere (spread)'), FACES6.map((f) => h('option', { value: f }, FACE_LABEL[f])));
-    faceSel.addEventListener('change', () => ((S.face = faceSel.value), win.refresh()));
-    const bandSel = h('select', {}, BAND_LABELS.map((l, i) => h('option', { value: i }, l)));
-    bandSel.addEventListener('change', () => ((S.band = +bandSel.value), win.refresh()));
+    // ── Surface: what each surface is made of
+    const faceList = h('select', { class: 'list', size: 6 }, FACES6.map((f) => h('option', { value: f }, FACE_LABEL[f])));
+    faceList.addEventListener('change', () => ((S.face = faceList.value), win.refresh()));
+    const nextFace = () => ((S.face = FACES6[(FACES6.indexOf(S.face) + 1) % 6]), win.refresh());
+    const layerBox = h('div');
+    const remainRo = readout('What the base material still covers');
+    const matList = h('select', { class: 'list', size: 9, title: 'Double-click to lay it on the surface' }, matOptions());
+    const srcRo = h('div', { class: 'small muted' });
+    matList.addEventListener('change', () => ((S.selMat = matList.value), win.render()));
+    const attach = () => {
+      const layers = (M.layers[S.face] ??= []);
+      if (layers.length >= 8) return (win.status.textContent = 'Eight materials per surface at most');
+      const free = faceArea(S.face) - layers.reduce((s, l) => s + l.area, 0);
+      layers.push({ id: S.selMat, area: +Math.max(0, Math.min(free, 1)).toFixed(2) });
+      edited();
+    };
+    matList.addEventListener('dblclick', attach);
     win.syncers.push(() => {
-      faceSel.value = S.face;
-      bandSel.value = String(S.band);
+      faceList.value = S.face;
+      if (document.activeElement !== matList) matList.value = S.selMat;
     });
-    const solBox = h('div', { class: 'small', style: 'margin-top:6px' });
-    T.pages.Optimise.append(
-      group('Absorber', absSel, h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Replacing'), faceSel), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Solve at'), bandSel)),
-      h(
-        'div',
-        { class: 'btns' },
-        h('button', { onclick: () => ((S.sol = solve()), win.render()), title: 'How much of it hits the reference in the chosen band (Sabine)' }, 'Optimise'),
-        h('button', { onclick: () => S.sol && ((M.extra = { id: S.absorber, area: S.sol.area, face: S.face }), edited()) }, 'Apply'),
-        h('button', { onclick: () => ((M.extra = null), edited()) }, 'Remove'),
-      ),
-      solBox,
-    );
-    function solve() {
-      const room = classicRoom(false);
-      const tgt = rtTarget(S.target, room.V, S.user).rt[S.band];
-      return { ...absorberAreaFor(room, S.absorber, tgt, S.band, { face: S.face || null }), tgt };
+
+    // ── Optimise: the absorber overview
+    const overview = h('tbody');
+    const optNote = h('div', { class: 'small', style: 'margin-top:4px' });
+    function goOptimise() {
+      const chosen = Object.entries(S.vars).filter(([, v]) => v.on).slice(0, 5);
+      if (!chosen.length) return (optNote.textContent = 'Tick up to five materials to vary, with their Begin, End and Step.');
+      const tgt = targetNow().rt;
+      try {
+        const vars = chosen.map(([, v]) => v);
+        const keys = chosen.map(([k]) => k);
+        const best = optimiseAreas(vars, tgt, (areas) => rtWith(keys, areas));
+        S.sol = { ...best, keys };
+        optNote.replaceChildren(h('div', {}, `${best.tried} combinations tried. Best:`), ...keys.map((k, i) => h('div', {}, `• ${layerName(k)}: ${fmt(areaU(best.areas[i]), 1)} ${aUnit()}`)), h('div', {}, `RT ${best.rt.map((t) => fmt(t, 2)).join(' · ')} s`), h('div', { class: 'btns' }, h('button', { onclick: applySol }, 'Apply')));
+      } catch (e) {
+        optNote.textContent = `⚠ ${e.message}`;
+      }
+    }
+    const layerName = (k) => {
+      const [face, i] = k.split(':');
+      return `${material(M.layers[face][+i].id).name} on the ${FACE_LABEL[face].toLowerCase()}`;
+    };
+    function rtWith(keys, areas) {
+      const saved = keys.map((k) => {
+        const [face, i] = k.split(':');
+        return [face, +i, M.layers[face][+i].area];
+      });
+      keys.forEach((k, j) => {
+        const [face, i] = k.split(':');
+        M.layers[face][+i].area = Math.min(areas[j], faceArea(face));
+      });
+      const rt = rtNow();
+      for (const [face, i, a] of saved) M.layers[face][i].area = a;
+      return rt;
+    }
+    function applySol() {
+      if (!S.sol) return;
+      S.sol.keys.forEach((k, j) => {
+        const [face, i] = k.split(':');
+        M.layers[face][+i].area = Math.min(S.sol.areas[j], faceArea(face));
+      });
+      edited();
     }
 
-    const chart = chartBox();
-    const tbl = h('tbody');
-    win.el.append(
-      h(
-        'div',
-        { class: 'acx-body' },
-        h('div', { class: 'acx-left' }, T.nodes),
-        h(
-          'div',
-          { class: 'acx-right' },
-          h('fieldset', { class: 'grow' }, h('legend', {}, 'Reverb Time'), chart.box),
-          group('Formula Comparison (s)', h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, h('th', {}, ''), BAND_LABELS.map((l) => h('th', {}, l)))), tbl)),
-        ),
-      ),
+    const T = tabs(win, ['Type', 'RT60', 'Surface', 'Optimize', 'Show Item']);
+    T.pages.Type.append(group('Criteria Type', ...typeRadios), h('div', { class: 'btns' }, h('button', { onclick: () => (userPanel.hidden = !userPanel.hidden) }, 'Edit user defined RT60 criteria')), userPanel);
+    T.pages.RT60.append(group('Calculation Method', ...formulaRadios), h('div', { class: 'btns' }, h('button', { onclick: () => ((M.measured ??= [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]), (measPanel.hidden = !measPanel.hidden), win.sync()) }, 'Edit Measured RT60 (Empty)'), h('button', { onclick: () => ((M.measured = null), S.formula === 'measured' && (S.formula = 'sabine'), win.refresh()) }, 'No Measured RT60')), measPanel, h('div', { class: 'small muted' }, 'A measured empty room already includes the air, so none is added. Fitzroy suits a room whose absorption is uneven — a hard floor and ceiling under absorbent walls.'));
+    T.pages.Surface.append(
+      dimsGroup(win),
+      group('Surface Editor', faceList, h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Base'), faceMatSelect(win, 'floor')), layerBox, h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Unspecified'), remainRo), h('div', { class: 'btns' }, h('button', { onclick: nextFace }, 'Next Surface'))),
+      group('Absorber Edit Manager', srcRo, matList, h('div', { class: 'btns' }, h('button', { onclick: attach }, 'Attach to surface'))),
     );
+    // the base select above is rebuilt per surface in render
+    const baseRow = T.pages.Surface.querySelector('fieldset:nth-of-type(2) .row');
+    T.pages.Optimize.append(group('Absorber Overview', h('div', { class: 'scroll', style: 'max-height:260px' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['', 'Material · surface', 'Now', 'Begin', 'End', 'Step'].map((t) => h('th', {}, t)))), overview))), h('div', { class: 'btns' }, h('button', { onclick: goOptimise }, 'Go Optimize')), optNote);
+    const showR = [['rt', 'Reverb Time Data'], ['alpha', 'Average Absorption Coefficients']].map(([v, l]) => {
+      const r = h('input', { type: 'radio', name: 'acx-rt-show', onchange: () => ((S.show = v), win.render()) });
+      win.syncers.push(() => (r.checked = S.show === v));
+      return h('div', {}, h('label', { class: 'opt' }, r, l));
+    });
+    T.pages['Show Item'].append(group('Show Item (Data View)', ...showR));
+
+    // ── right side
+    const alphaC = chartBox('flex:0.8');
+    const rtC = chartBox('flex:1.2');
+    const chartPane = h('div', { class: 'acx-pane' }, h('fieldset', { class: 'grow' }, h('legend', {}, 'Reverb Time'), h('div', { style: 'display:flex;gap:4px;flex:1;min-height:0' }, alphaC.box, rtC.box)));
+    const roomCv = h('canvas');
+    const roomPane = h('div', { class: 'acx-pane' }, h('div', { class: 'acx-chart' }, roomCv), roomManager(win, S.RV, roomCv));
+    const tbl = h('tbody');
+    const repBox = h('div', { class: 'scroll', style: 'flex:1;min-height:0' });
+    const dataPane = h('div', { class: 'acx-pane' }, group('Data Table', h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, h('th', {}, ''), BAND_LABELS.map((l) => h('th', {}, l)))), tbl)), repBox);
+    const strip = viewStrip(win, { room: roomPane, chart: chartPane, data: dataPane });
+    win.el.append(h('div', { class: 'acx-body' }, h('div', { class: 'acx-left' }, T.nodes), h('div', { class: 'acx-right' }, strip, roomPane, chartPane, dataPane)));
+
+    const faceArea = (f) => M.areas?.[f] ?? boxAreas()[f];
+    const targetNow = () => {
+      const V = classicRoom().V;
+      if (S.target !== 'user') return rtTarget(S.target, V);
+      return { rt: [...S.user], lo: S.user.map((t) => t * 0.9), hi: S.user.map((t) => t * 1.1) };
+    };
+    function rtNow(formula = S.formula) {
+      const room = classicRoom();
+      if (formula === 'measured' && M.measured) {
+        const added = [];
+        for (const f of FACES6) for (const l of M.layers[f] ?? []) added.push({ alpha: material(l.id).alpha, area: l.area, under: material(M.mats[f]).alpha });
+        return rtFromMeasured(room.V, M.measured, added);
+      }
+      return BANDS.map((_, b) => rtFormulas(room, b)[formula === 'measured' ? 'sabine' : formula]);
+    }
 
     win.compute = () => {
       const room = classicRoom();
       const all = BANDS.map((_, b) => rtFormulas(room, b));
-      S.res = { room, all, target: rtTarget(S.target, room.V, S.user) };
+      const Sarea = room.surfaces.reduce((s, x) => s + x.area, 0);
+      const abar = BANDS.map((_, b) => room.surfaces.reduce((s, x) => s + x.area * x.material.alpha[b], 0) / Sarea);
+      S.res = { room, all, rt: rtNow(), target: targetNow(), abar, measured: M.measured ? rtNow('measured') : null };
+    };
+
+    win.report = () => {
+      const r = S.res;
+      const rows = [];
+      for (const f of FACES6) {
+        const layers = M.layers[f] ?? [];
+        const used = layers.reduce((s, l) => s + l.area, 0);
+        rows.push([FACE_LABEL[f], material(M.mats[f]).name, `${fmt(areaU(Math.max(0, faceArea(f) - used)), 1)} ${aUnit()}`]);
+        for (const l of layers) rows.push(['', material(l.id).name, `${fmt(areaU(l.area), 1)} ${aUnit()}`]);
+      }
+      return {
+        title: 'Reverb Time',
+        sections: [
+          { heading: 'Room', rows: [['Volume', M.units === 'ft' ? `${fmt(r.room.V * FT ** 3, 0)} ft³` : `${fmt(r.room.V, 1)} m³`], ['Criteria', S.target === 'user' ? 'user defined' : RT_TARGETS.find((t) => t.id === S.target).label], ['Method', formulaList.find((f) => f.id === S.formula).label]] },
+          { heading: 'Materials by surface', head: ['Surface', 'Material', 'Area'], rows },
+          { heading: 'Reverb time (s)', head: ['', ...BAND_LABELS], rows: [...FORMULAS.map((f, i) => [f.label, ...r.all.map((x) => fmt(x[f.id], 2))]), ...(r.measured ? [['Measured basis', ...r.measured.map((t) => fmt(t, 2))]] : []), ['Criteria', ...r.target.rt.map((t) => fmt(t, 2))], ['Mean α', ...r.abar.map((a) => fmt(a, 3))]] },
+        ],
+      };
     };
 
     win.render = () => {
       if (!S.res) return;
-      const { room, all, target } = S.res;
-      volRo.textContent = M.units === 'ft' ? `${fmt(room.V * FT ** 3, 0)} ft³` : `${fmt(room.V, 1)} m³`;
-      extraRow.textContent = M.extra ? `+ ${fmt(areaU(M.extra.area), 1)} ${aUnit()} of ${material(M.extra.id).name} on ${M.extra.face ? FACE_LABEL[M.extra.face] : 'every surface'}` : '';
-      if (S.sol) {
-        const s = S.sol;
-        solBox.replaceChildren(
-          h('div', {}, `Target ${fmt(s.tgt, 2)} s at ${BAND_LABELS[S.band]}: needs A = ${fmt(s.needA, 1)} m² (now ${fmt(s.haveA, 1)}).`),
-          h('div', { class: s.feasible ? '' : 'warn' }, s.feasible ? `Add ${fmt(areaU(s.area), 1)} ${aUnit()} of ${material(S.absorber).name}.` : s.needA < s.haveA ? 'The room is already deader than the target — this cannot help.' : `Not enough area: even ${fmt(areaU(s.maxArea), 1)} ${aUnit()} falls short.`),
-        );
-      } else solBox.textContent = '';
-      tbl.replaceChildren(
-        ...FORMULAS.map((f) => h('tr', { class: f.id === S.formula ? 'sel' : '' }, h('td', {}, f.label), all.map((r) => h('td', {}, fmt(r[f.id], 2))))),
-        h('tr', {}, h('td', {}, 'Reference'), target.rt.map((t) => h('td', {}, fmt(t, 2)))),
+      const r = S.res;
+      // surface editor
+      const layers = M.layers[S.face] ?? [];
+      const used = layers.reduce((s, l) => s + l.area, 0);
+      remainRo.textContent = `${fmt(areaU(faceArea(S.face) - used), 1)} ${aUnit()}`;
+      remainRo.classList.toggle('warn', used > faceArea(S.face) + 1e-6);
+      baseRow?.replaceChildren(h('span', { class: 'lbl' }, 'Base'), matSelectFor(S.face));
+      layerBox.replaceChildren(
+        ...layers.map((l, i) => {
+          const inp = h('input', { type: 'number', step: 0.1, value: fmt(areaU(l.area), 2), style: 'width:56px' });
+          inp.addEventListener('change', () => {
+            const v = parseFloat(inp.value);
+            if (Number.isFinite(v) && v >= 0) l.area = areaFromU(v);
+            edited();
+          });
+          return h('div', { class: 'row' }, h('span', { class: 'lbl', title: material(l.id).name }, material(l.id).name.slice(0, 14)), inp, h('span', { class: 'unit' }, aUnit()), h('button', { title: 'Remove', onclick: () => (layers.splice(i, 1), edited()) }, '×'));
+        }),
       );
-      drawRt(all.map((r) => r[S.formula]), target);
+      srcRo.textContent = `${material(S.selMat).category} — ${material(S.selMat).name}`;
+      // optimise overview
+      overview.replaceChildren(
+        ...FACES6.flatMap((f) =>
+          (M.layers[f] ?? []).map((l, i) => {
+            const k = `${f}:${i}`;
+            const v = (S.vars[k] ??= { on: false, begin: 0, end: Math.round(faceArea(f)), step: Math.max(0.5, Math.round(faceArea(f) / 10)) });
+            const c = h('input', { type: 'checkbox', checked: v.on, onchange: () => (v.on = c.checked) });
+            const n = (key) => {
+              const inp = h('input', { type: 'number', step: 0.1, value: String(+areaU(v[key]).toFixed(2)), style: 'width:44px' });
+              inp.addEventListener('change', () => (v[key] = Math.max(0, areaFromU(parseFloat(inp.value) || 0))));
+              return h('td', {}, inp);
+            };
+            return h('tr', {}, h('td', {}, c), h('td', {}, `${material(l.id).name.slice(0, 18)} · ${f}`), h('td', {}, fmt(areaU(l.area), 1)), n('begin'), n('end'), n('step'));
+          }),
+        ),
+      );
+      if (!overview.children.length) overview.append(h('tr', {}, h('td', { colspan: 6 }, 'Lay materials on the surfaces first (Surface tab).')));
+      // data
+      if (win.pane === 'data') {
+        tbl.replaceChildren(
+          ...(S.show === 'rt'
+            ? [...FORMULAS.map((f) => h('tr', { class: f.id === S.formula ? 'sel' : '' }, h('td', {}, f.label), r.all.map((x) => h('td', {}, fmt(x[f.id], 2))))), ...(r.measured ? [h('tr', { class: S.formula === 'measured' ? 'sel' : '' }, h('td', {}, 'Measured basis'), r.measured.map((t) => h('td', {}, fmt(t, 2))))] : []), h('tr', {}, h('td', {}, 'Criteria'), r.target.rt.map((t) => h('td', {}, fmt(t, 2))))]
+            : [h('tr', {}, h('td', {}, 'Mean α'), r.abar.map((a) => h('td', {}, fmt(a, 3)))), ...FACES6.map((f) => h('tr', {}, h('td', {}, FACE_LABEL[f]), BANDS.map((_, b) => h('td', {}, fmt(faceAlpha(f, b), 2)))))]),
+        );
+        repBox.replaceChildren(reportNode(win.report()));
+      }
+      if (win.pane === 'chart') {
+        drawAlpha();
+        drawRt(r.rt, r.target);
+      }
+      if (win.pane === 'room') drawSurfacesRoom();
     };
 
+    const faceAlpha = (f, b) => {
+      const layers = M.layers[f] ?? [];
+      const A = faceArea(f);
+      const used = Math.min(A, layers.reduce((s, l) => s + l.area, 0));
+      return ((A - used) * material(M.mats[f]).alpha[b] + layers.reduce((s, l) => s + l.area * material(l.id).alpha[b], 0)) / Math.max(A, 1e-9);
+    };
+    function matSelectFor(face) {
+      const s = h('select', { class: 'list' }, matOptions());
+      s.value = M.mats[face];
+      s.addEventListener('change', () => ((M.mats[face] = s.value), edited()));
+      return s;
+    }
+
+    function drawAlpha() {
+      const p = prep(alphaC.cv);
+      if (!p) return;
+      const { ctx, w, h: hh } = p;
+      const mat = material(S.selMat);
+      const a = axes(ctx, w, hh, { title: `α — ${mat.name.slice(0, 30)}`, cats: BANDS.map((b) => (b >= 1000 ? `${b / 1000}k` : String(b))), x0: 0, x1: 1, y0: 0, y1: 1.2, yticks: [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2], fmtY: (v) => v.toFixed(1) });
+      mat.alpha.forEach((v, i) => {
+        const s = a.slot(i);
+        const bw = s.w * 0.5;
+        const y = a.Y(v);
+        ctx.fillStyle = COL.cyan;
+        ctx.fillRect(s.x + (s.w - bw) / 2, y, bw, a.Y(0) - y);
+      });
+    }
+
     function drawRt(rt, target) {
-      const p = prep(chart.cv);
+      const p = prep(rtC.cv);
       if (!p) return;
       const { ctx, w, h: hh } = p;
       const top = Math.max(0.5, Math.ceil(Math.max(...rt.filter(Number.isFinite), ...target.hi) * 12) / 10);
       const tick = top > 2 ? 0.5 : top > 1 ? 0.2 : 0.1;
-      const a = axes(ctx, w, hh, { title: `Reverb Time (s) / Frequency (Hz) — ${FORMULAS.find((f) => f.id === S.formula).label}`, cats: BANDS.map((b) => (b >= 1000 ? `${b / 1000}k` : String(b))), x0: 0, x1: 1, y0: 0, y1: top, yticks: Array.from({ length: Math.floor(top / tick + 1e-9) + 1 }, (_, i) => +(i * tick).toFixed(2)), fmtY: (v) => v.toFixed(1), xLabel: 'Hz' });
+      const a = axes(ctx, w, hh, { title: `Reverb Time (s) — ${formulaList.find((f) => f.id === S.formula).label}`, cats: BANDS.map((b) => (b >= 1000 ? `${b / 1000}k` : String(b))), x0: 0, x1: 1, y0: 0, y1: top, yticks: Array.from({ length: Math.floor(top / tick + 1e-9) + 1 }, (_, i) => +(i * tick).toFixed(2)), fmtY: (v) => v.toFixed(1), xLabel: 'Hz' });
       const mid = (i) => a.slot(i).x + a.slot(i).w / 2;
       rt.forEach((v, i) => {
         const s = a.slot(i);
         const bw = s.w * 0.5;
         const y = a.Y(v);
-        ctx.fillStyle = COL.green;
+        const inside = v >= target.lo[i] && v <= target.hi[i];
+        ctx.fillStyle = inside ? COL.green : COL.orange;
         ctx.fillRect(s.x + (s.w - bw) / 2, y, bw, a.Y(0) - y);
         ctx.fillStyle = COL.lime;
         ctx.textAlign = 'center';
@@ -1319,83 +2162,265 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       poly(target.lo, COL.grey, [3, 3]);
       poly(target.hi, COL.grey, [3, 3]);
       ctx.lineWidth = 2;
-      poly(target.rt, COL.yellow, []);
+      poly(target.rt, COL.grey, []);
       ctx.lineWidth = 1;
-      ctx.fillStyle = COL.yellow;
+      ctx.fillStyle = COL.grey;
       ctx.textAlign = 'right';
-      ctx.fillText(`Reference: ${RT_TARGETS.find((t) => t.id === S.target).label}`, w - 14, 30);
+      ctx.fillText(`Criteria: ${S.target === 'user' ? 'user defined' : RT_TARGETS.find((t) => t.id === S.target).label}`, w - 14, 30);
       ctx.textAlign = 'left';
+    }
+
+    /** The room, the surface being edited filled in. */
+    function drawSurfacesRoom() {
+      const f = S.face;
+      const { L, W, H } = M;
+      const quads = { floor: [[0, 0, 0], [W, 0, 0], [W, L, 0], [0, L, 0]], ceiling: [[0, 0, H], [W, 0, H], [W, L, H], [0, L, H]], front: [[0, 0, 0], [W, 0, 0], [W, 0, H], [0, 0, H]], back: [[0, L, 0], [W, L, 0], [W, L, H], [0, L, H]], left: [[0, 0, 0], [0, L, 0], [0, L, H], [0, 0, H]], right: [[W, 0, 0], [W, L, 0], [W, L, H], [W, 0, H]] };
+      drawRoom(roomCv, S.RV, {
+        under: (ctx, S2) => {
+          const q = quads[f].map(([X, Y, Z]) => S2({ X, Y, Z }));
+          ctx.fillStyle = 'rgba(0,255,255,0.22)';
+          ctx.beginPath();
+          q.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+          ctx.closePath();
+          ctx.fill();
+        },
+        note: `${FACE_LABEL[f]}: ${material(M.mats[f]).name}${(M.layers[f] ?? []).length ? ` + ${(M.layers[f] ?? []).length} more` : ''}`,
+      });
     }
   });
 
   // ═════════════════════════════════════════════════════════════════════════
   // 5. CALCULATOR
   // ═════════════════════════════════════════════════════════════════════════
-  makeWindow('calc', 'Acoustic X — Calculator', { w: 400, h: 540, foot: false }, (win) => {
-    const S = { metric: true };
-    const k = () => (S.metric ? 1 : FT);
-    const u = () => (S.metric ? 'm' : 'ft');
+  makeWindow('calc', 'Acoustic X — Calculator', { w: 420, h: 470, foot: false }, (win) => {
+    const S = { dir: 'toMetric', unit: 'length', wave: 'spherical', kind: 'energy', metric: true };
     const inp = (v, title) => h('input', { type: 'text', value: v, title, oninput: () => calc() });
     const out = () => readout();
-    const mR = h('input', { type: 'radio', name: 'acx-calc-u', checked: true, onchange: () => ((S.metric = true), calc()) });
-    const iR = h('input', { type: 'radio', name: 'acx-calc-u', onchange: () => ((S.metric = false), calc()) });
-    const I = { l1: inp('90', 'Level at the first distance, dB'), d1: inp('1'), d2: inp('4'), levels: inp('90, 90, 87', 'Levels to add, separated by commas'), f: inp('100'), lam: inp('1'), delay: inp('1', 'Delay, ms'), path: inp('0.343', 'Path difference') };
-    const O = { l2: out(), sum: out(), lamOut: out(), fOut: out(), notches: h('div', { class: 'small', style: 'margin-top:3px' }), first: out(), pathMs: out() };
-    const unitSpans = [];
-    const U = () => {
-      const s = h('span', { class: 'unit' });
-      unitSpans.push(s);
-      return s;
-    };
+    const I = { uv: inp('10'), l1: inp('90', 'Level at the reference distance, dB'), d1: inp('1'), d2: inp('4'), levels: inp('90, 90, 87', 'Levels to add, separated by commas'), t: inp('20', '°C — corrects the speed of sound'), f: inp('100'), lam: inp(''), per: inp(''), delay: inp('1', 'Arrival time difference, ms'), path: inp('', 'Path length difference') };
+    const O = { uv: out(), l2: out(), sum: out(), n: out(), c: out(), n1: out(), n2: out(), n3: out(), sp: out() };
     const row = (l, ...kids) => h('div', { class: 'row' }, h('label', {}, l), ...kids);
-    win.el.append(
-      h(
-        'div',
-        { class: 'acx-calc' },
-        group('Units', h('label', { class: 'opt' }, mR, 'Metric'), h('label', { class: 'opt' }, iR, 'Imperial'), h('span', { class: 'small muted' }, `c = 343 m/s (1125 ft/s)`)),
-        group('Inverse Square Law', row('Level at d1 (dB)', I.l1), row('d1', I.d1, U()), row('d2', I.d2, U()), row('Level at d2 (dB)', O.l2)),
-        group('Add Levels', row('Levels (dB)', I.levels), row('Sum (dB)', O.sum)),
-        group('Frequency ↔ Wavelength', row('Frequency (Hz)', I.f), row('Wavelength', O.lamOut), row('Wavelength', I.lam, U()), row('Frequency (Hz)', O.fOut)),
-        group('Comb Filter', row('Delay (ms)', I.delay), row('First notch (Hz)', O.first), O.notches, row('Path difference', I.path, U()), row('Delay (ms)', O.pathMs)),
-      ),
-    );
+    const radio = (name, key, v, l) => {
+      const r = h('input', { type: 'radio', name, checked: S[key] === v, onchange: () => ((S[key] = v), calc()) });
+      return h('label', { class: 'opt' }, r, l);
+    };
+    const unitSel = h('select', {}, [...UNITS.map((u) => h('option', { value: u[0] }, `${u[0]} (${u[1]} ↔ ${u[2]})`)), h('option', { value: 'temperature' }, 'temperature (°C ↔ °F)')]);
+    unitSel.addEventListener('change', () => ((S.unit = unitSel.value), calc()));
+    const lenU = () => (S.metric ? 'm' : 'ft');
+    const lenK = () => (S.metric ? 1 : FT);
+    const T = tabs(win, ['U', 'ISL', 'Add', 'Wave', 'Comb']);
+    T.pages.U.append(group('Units Conversion', h('div', {}, radio('acx-c-dir', 'dir', 'toMetric', 'IMP to MKS'), radio('acx-c-dir', 'dir', 'toImperial', 'MKS to IMP')), row('Unit', unitSel), row('Value', I.uv), row('Converted', O.uv)));
+    T.pages.ISL.append(group('Inverse Square Law', h('div', {}, radio('acx-c-wave', 'wave', 'spherical', 'Spherical (point source)'), radio('acx-c-wave', 'wave', 'cylindrical', 'Cylindrical (line source)')), row('Reference dist.', I.d1), row('Level @ ref. dist.', I.l1, 'dB'), row('Distance', I.d2), row('Level @ distance', O.l2, 'dB')));
+    T.pages.Add.append(group('Level Addition', h('div', {}, radio('acx-c-kind', 'kind', 'energy', 'Energy (uncorrelated)'), radio('acx-c-kind', 'kind', 'pressure', 'Pressure (in phase)')), row('Levels (dB)', I.levels), row('Quantity of level', O.n), row('Total level', O.sum, 'dB')));
+    T.pages.Wave.append(group('Frequency / Wavelength / Period', h('div', {}, radio('acx-c-m', 'metric', true, 'Metric'), radio('acx-c-m', 'metric', false, 'Imperial')), row('Temperature °C', I.t), row('Speed of sound', O.c), row('Frequency (Hz)', I.f), row('Wavelength', I.lam), row('Period (ms)', I.per), h('div', { class: 'small muted' }, 'Type into any one of the three: the other two follow.')));
+    T.pages.Comb.append(group('Comb-Filter', row('Arrival time diff. (ms)', I.delay), row('Path length diff.', I.path), row('First null (Hz)', O.n1), row('Second null (Hz)', O.n2), row('Third null (Hz)', O.n3), row('Null spacing (Hz)', O.sp), h('div', { class: 'small muted' }, 'Enter either difference. Useful for the reflection off a console top.')));
+    win.el.append(h('div', { class: 'acx-calc' }, T.nodes));
     const num = (el) => parseFloat(String(el.value).replace(',', '.'));
+    let last = { wave: 'f', comb: 'delay' };
+    for (const k of ['f', 'lam', 'per']) I[k].addEventListener('input', () => (last.wave = k));
+    for (const k of ['delay', 'path']) I[k].addEventListener('input', () => (last.comb = k));
     function calc() {
-      for (const s of unitSpans) s.textContent = u();
+      const v = num(I.uv);
+      O.uv.textContent = Number.isFinite(v) ? fmt(convert(S.unit, v, S.dir), 4) : '—';
       const l1 = num(I.l1);
       const d1 = num(I.d1);
       const d2 = num(I.d2);
-      O.l2.textContent = d1 > 0 && d2 > 0 ? fmt(l1 - 20 * Math.log10(d2 / d1), 1) : '—';
+      O.l2.textContent = d1 > 0 && d2 > 0 ? fmt(inverseSquare(l1, d1, d2, S.wave), 1) : '—';
       const lv = String(I.levels.value).split(/[,;\s]+/).map(Number).filter(Number.isFinite);
-      O.sum.textContent = lv.length ? fmt(dbSum(lv), 1) : '—';
-      const f = num(I.f);
-      O.lamOut.textContent = f > 0 ? `${fmt((C / f) * k(), 3)} ${u()}  (½ ${fmt((C / f / 2) * k(), 3)}, ¼ ${fmt((C / f / 4) * k(), 3)})` : '—';
-      const lam = num(I.lam) / k();
-      O.fOut.textContent = lam > 0 ? fmt(C / lam, 1) : '—';
-      const tau = num(I.delay) / 1000;
-      if (tau > 0) {
-        O.first.textContent = fmt(1 / (2 * tau), 1);
-        O.notches.textContent = `Notches every ${fmt(1 / tau, 1)} Hz: ${Array.from({ length: 8 }, (_, n) => fmt((2 * n + 1) / (2 * tau), 0)).join(', ')} Hz …`;
-      } else {
-        O.first.textContent = '—';
-        O.notches.textContent = '';
+      O.n.textContent = String(lv.length);
+      O.sum.textContent = lv.length ? fmt(addLevels(lv, S.kind), 1) : '—';
+      const t = num(I.t);
+      const c = speedOfSound(Number.isFinite(t) ? t : 20);
+      O.c.textContent = `${fmt(c * lenK(), 1)} ${lenU()}/s`;
+      const set = (el, val, d) => document.activeElement !== el && (el.value = Number.isFinite(val) ? fmt(val, d) : '');
+      let f = num(I.f);
+      if (last.wave === 'lam') f = c / (num(I.lam) / lenK());
+      if (last.wave === 'per') f = 1000 / num(I.per);
+      if (f > 0) {
+        set(I.f, f, 2);
+        set(I.lam, (c / f) * lenK(), 4);
+        set(I.per, 1000 / f, 4);
       }
-      const path = num(I.path) / k();
-      O.pathMs.textContent = path >= 0 ? fmt((path / C) * 1000, 3) : '—';
+      let dt = num(I.delay) / 1000;
+      if (last.comb === 'path') dt = num(I.path) / lenK() / c;
+      const n = combNulls(dt);
+      if (dt > 0) {
+        set(I.delay, dt * 1000, 3);
+        set(I.path, dt * c * lenK(), 3);
+      }
+      [O.n1, O.n2, O.n3].forEach((o, i) => (o.textContent = fmt(n.nulls[i], 1)));
+      O.sp.textContent = fmt(n.spacing, 1);
     }
     win.refresh = calc;
     calc();
   });
 
-  // ── About ──
-  makeWindow('about', 'About Acoustic X (classic)', { w: 380, h: 210, foot: false }, (win) => {
+  // ═════════════════════════════════════════════════════════════════════════
+  // START SCREEN · GENERAL PARAMETERS · FAST GUIDE · REPORTS · ABOUT
+  // ═════════════════════════════════════════════════════════════════════════
+  const MODULES = [
+    ['modal', 'Modal Response'],
+    ['sbir', 'Speaker Boundary Interference Response'],
+    ['rays', 'Ray Tracing'],
+    ['reverb', 'Reverb Time'],
+  ];
+
+  makeWindow('start', 'Acoustic X', { w: 460, h: 430, foot: false }, (win) => {
+    const field = (label, key) => {
+      const inp = h('input', { type: 'text', style: 'flex:1' });
+      inp.addEventListener('input', () => (M.project[key] = inp.value));
+      win.syncers.push(() => document.activeElement !== inp && (inp.value = M.project[key]));
+      return h('div', { class: 'row' }, h('label', {}, label), inp);
+    };
+    win.el.append(
+      h(
+        'div',
+        { class: 'acx-calc' },
+        h('div', { class: 'start-title' }, 'Acoustic X', h('span', { class: 'small muted' }, ' room acoustic optimisation — in the style of the 1997 program')),
+        group('Modules', h('div', { class: 'startgrid' }, ...MODULES.map(([n, l]) => h('button', { onclick: () => open(n) }, l)), h('button', { disabled: true }, '—'), h('button', { disabled: true }, '—'), h('button', { onclick: () => open('calc') }, 'Acoustic X Calculator'))),
+        group('Project', field('Description', 'description'), field('Client', 'client'), field('Location', 'location'), h('div', { class: 'small muted' }, 'Pasted into every Data View report, and every printed or saved one.')),
+        h('div', { class: 'btns' }, h('button', { onclick: () => open('general') }, 'General Parameters…'), h('button', { onclick: () => open('guide') }, 'Fast Guide'), h('button', { onclick: () => open('reports') }, 'Print Report…')),
+      ),
+    );
+    win.refresh = () => win.sync();
+  });
+
+  makeWindow('general', 'Options — General Parameters', { w: 420, h: 470 }, (win) => {
+    const T = tabs(win, ['General', 'Modal Response', 'SBIR']);
+    const checkG = (obj, key, label, title) => {
+      const c = h('input', { type: 'checkbox', onchange: () => ((obj[key] = c.checked), refreshAll()) });
+      win.syncers.push(() => (c.checked = Boolean(obj[key])));
+      return h('div', {}, h('label', { class: 'opt', title }, c, label));
+    };
+    const air = readout();
+    win.syncers.push(() => (air.textContent = `c ${fmt(speedOfSound(M.gen.tempC), 1)} m/s · air ${fmt(airDbPerM(4000, M.gen.tempC, M.gen.rh) * 1000, 1)} dB/km at 4 kHz`));
+    const ftC = h('input', { type: 'number', step: 1, style: 'width:56px', title: '°F' });
+    ftC.addEventListener('change', () => ((M.gen.tempC = +convert('temperature', parseFloat(ftC.value) || 68, 'toMetric').toFixed(1)), refreshAll()));
+    win.syncers.push(() => document.activeElement !== ftC && (ftC.value = fmt(convert('temperature', M.gen.tempC, 'toImperial'), 0)));
+    T.pages.General.append(
+      group('Environment', numField(win, 'Temperature', '°C', () => M.gen.tempC, (v) => (M.gen.tempC = clamp(v, -20, 50)), { step: 0.5, local: false, title: 'Sets the speed of sound everywhere in Acoustic X' }), h('div', { class: 'row' }, h('label', {}, ''), ftC, h('span', { class: 'unit' }, '°F')), numField(win, 'Humidity', '%', () => M.gen.rh, (v) => (M.gen.rh = clamp(v, 5, 100)), { step: 5, local: false, title: 'Sets the air absorption of the high frequencies (ISO 9613-1)' }), h('div', { class: 'small' }, air)),
+      group('Display', checkG(M.gen, 'axis', 'Display Axis', 'Grey lines: the centre listening axis at the listener height, and each speaker’s axis to the listener'), unitsRow(win)),
+    );
+    const ratioList = h('select', { class: 'list', size: 9 }, FAVOURABLE_RATIOS.filter((r) => r.ratio).map((r) => h('option', { value: r.id }, `${r.name}   ${r.ratio.map((x) => x.toFixed(2)).join(' : ')}`)));
+    T.pages['Modal Response'].append(
+      group('Some Favourable Room Ratios', ratioList, h('div', { class: 'btns' }, h('button', { onclick: () => {
+        const r = FAVOURABLE_RATIOS.find((x) => x.id === ratioList.value);
+        if (!r?.ratio) return;
+        M.W = M.H * r.ratio[1];
+        M.L = M.H * r.ratio[2];
+        dimsChanged();
+        edited();
+      } }, 'OK — apply')), h('div', { class: 'small muted' }, 'The 1 of the ratio is the floor-to-ceiling height. Not every favoured ratio suits every volume.')),
+      group('Modal Weighting', ...['axial', 'tangential', 'oblique'].map((k) => numField(win, `${k[0].toUpperCase()}${k.slice(1)}`, '', () => M.gen.weights[k], (v) => (M.gen.weights[k] = clamp(v, 0, 2)), { step: 0.05, local: false }))),
+    );
+    const g = M.gen.sbir;
+    T.pages.SBIR.append(
+      group('Allowable Search Size', checkG(g, 'custom', 'Custom search (otherwise automatic)'), ...[['frontMin', 'Front min'], ['frontMax', 'Front max'], ['sideMin', 'Side min'], ['sideMax', 'Side max']].map(([k, l]) => lenField(win, l, () => g[k], (v) => (g[k] = Math.max(0, v)), { title: 'Distance of Speaker1 from the front / side wall' })), lenField(win, 'Min. between SPKs', () => g.minSpk, (v) => (g.minSpk = Math.max(0.2, v)), { title: 'The least the left and right speakers may be apart' })),
+      group('Surround Speakers', checkG(g, 'centre', 'Center speaker'), checkG(g, 'rear', 'Rear speakers'), lenField(win, 'Rear height offset', () => g.rearRise, (v) => (g.rearRise = v), { title: 'How far above the listener’s ears the rears sit — their distance to the listener is kept' })),
+    );
+  });
+
+  const GUIDE = {
+    start: ['Type the project description, client and location: every report carries them.', 'Set the temperature and humidity under General Parameters.', 'Open Modal Response first: it settles the room size.', 'Then Speaker Boundary Interference to place the speakers, Ray Tracing to check the reflections, Reverb Time to balance the decay.', 'Each module also works on its own — and each starts from the room being designed.'],
+    modal: ['Enter the length, width and height on the Room tab — or a ratio, or a favourable one.', 'Press Start: the Bonello box says whether the room meets the criteria.', 'Chart View: the modes at their frequencies above, the count per 1/3 octave against the ideal (blue) below. Move the mouse over them.', 'Optimize: tick the dimensions that may change, set ±% and the step, and Optimize; Use these takes a result.', 'Room View: enter a mode index or a band (Mode 1), pick a plane (Mode 2) — the bright regions are where bass traps work.'],
+    sbir: ['Pick the speaker from the database (SPK · Size) or enter its size and woofer height.', 'Set the LF cut-off and crossover on the Listener tab, and the listener’s position.', 'Search tab: choose Min. Absolute or Min. Negative deviation and the step, then Search.', 'Chart View: green above the red LF cut-off counts; a dip at the yellow crossover is flagged; magenta marks a mode the position excites.', 'Room View: the listening window, the specular absorbers that keep it clean, the corner absorbers. Apply moves the design’s speakers.'],
+    rays: ['Check the speaker and listening positions (SPK, LS) — Mouse Edit moves the listener on the Plan View.', 'Acoustic tab: the octave band and each surface’s material; the specular absorbers’ α.', 'Sim. tab: the number of reflections (14), the vertical step, and what to show or suppress.', 'Press Start. Chart View: energy by surface above, by time below with the 10 dB window — Next steps through each arrival.', 'Room View in plan: the polar energy shows where reflections within 10 dB come from. The Data View lists the room figures and each surface’s nulls.'],
+    reverb: ['Type tab: pick the criteria for the room’s use, or enter your own.', 'RT60 tab: pick the formula — or enter a measured empty-room RT60 as the basis.', 'Surface tab: pick a surface, set its base material, then double-click materials to lay them on it and give each an area.', 'Watch the chart: green bars are inside the criteria, orange are not. Next Surface moves on.', 'Optimize tab: tick up to five materials, give each a Begin, End and Step, and Go Optimize; Apply takes the best.'],
+    calc: ['U: convert between metric and imperial.', 'ISL: the level at a distance from one measured at another — spherical or cylindrical.', 'Add: levels added as energy or in-phase pressure.', 'Wave: frequency, wavelength and period, corrected for temperature.', 'Comb: the nulls of a reflection from its delay or its extra path.'],
+  };
+  let guideFor = 'start';
+  makeWindow('guide', 'Fast Guide', { w: 330, h: 300, foot: false }, (win) => {
+    const body = h('div', { class: 'acx-calc' });
+    win.el.append(body);
+    win.refresh = () => {
+      const name = (MODULES.find(([n]) => n === guideFor) ?? [guideFor, guideFor === 'calc' ? 'Calculator' : 'Getting started'])[1];
+      body.replaceChildren(h('b', {}, name), h('ol', {}, (GUIDE[guideFor] ?? GUIDE.start).map((s) => h('li', {}, s))));
+    };
+  });
+
+  makeWindow('reports', 'Report Print Manager', { w: 380, h: 330, foot: false }, (win) => {
+    const pick = Object.fromEntries(MODULES.map(([n]) => [n, true]));
+    const fmtSel = h('select', {}, [['html', 'HTML'], ['csv', 'Comma-separated values (CSV)'], ['tsv', 'Tab-separated values'], ['txt', 'Text']].map(([v, l]) => h('option', { value: v }, l)));
+    const checks = MODULES.map(([n, l]) => {
+      const c = h('input', { type: 'checkbox', checked: true, onchange: () => (pick[n] = c.checked) });
+      win.syncers.push(() => (c.checked = pick[n]));
+      return h('div', {}, h('label', { class: 'opt' }, c, l));
+    });
+    const reports = () =>
+      MODULES.filter(([n]) => pick[n]).map(([n]) => {
+        const w = wins[n];
+        if (!w.report || !S0(w)) w.refresh();
+        return w.report();
+      });
+    const S0 = (w) => {
+      try {
+        return Boolean(w.report());
+      } catch {
+        return false;
+      }
+    };
+    function html(reps) {
+      const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+      const head = `<h1>Acoustic X report</h1>${projectLines().map((l) => `<div>${esc(l)}</div>`).join('')}<div>${new Date().toLocaleString()}</div>`;
+      const body = reps.map((r) => `<h2>${esc(r.title)}</h2>${r.sections.map((s) => `<h3>${esc(s.heading)}</h3>${s.text ? `<p>${esc(s.text)}</p>` : ''}${s.rows ? `<table>${s.head ? `<tr>${s.head.map((x) => `<th>${esc(x)}</th>`).join('')}</tr>` : ''}${s.rows.map((r2) => `<tr>${r2.map((x) => `<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</table>` : ''}`).join('')}`).join('');
+      return `<!doctype html><html><head><meta charset="utf-8"><title>Acoustic X report</title><style>body{font:12px/1.35 Arial,sans-serif;margin:24px;color:#000;background:#fff}table{border-collapse:collapse;margin:4px 0 10px}td,th{border:1px solid #999;padding:2px 6px;text-align:left}h2{border-bottom:2px solid #000;margin-top:24px}</style></head><body>${head}${body}</body></html>`;
+    }
+    function delimited(reps, sep) {
+      const cell = (v) => {
+        const s = String(v ?? '');
+        return sep === ',' && /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s.replace(/\t/g, ' ');
+      };
+      const lines = [...projectLines()];
+      for (const r of reps) {
+        lines.push('', r.title);
+        for (const s of r.sections) {
+          lines.push('', s.heading);
+          if (s.text) lines.push(s.text);
+          if (s.head) lines.push(s.head.map(cell).join(sep));
+          for (const row of s.rows ?? []) lines.push(row.map(cell).join(sep));
+        }
+      }
+      return lines.join('\n') + '\n';
+    }
+    function text(reps) {
+      return delimited(reps, '   ');
+    }
+    function preview(print = false) {
+      const w = window.open('', 'acx-report', 'width=820,height=900');
+      if (!w) return (win.status && (win.status.textContent = 'The browser blocked the window'));
+      w.document.open();
+      w.document.write(html(reports()));
+      w.document.close();
+      if (print) w.addEventListener('load', () => w.print());
+      if (print) setTimeout(() => w.print(), 300);
+    }
+    function exportFile() {
+      const reps = reports();
+      const kind = fmtSel.value;
+      const [data, type] = kind === 'html' ? [html(reps), 'text/html'] : kind === 'csv' ? [delimited(reps, ','), 'text/csv'] : kind === 'tsv' ? [delimited(reps, '\t'), 'text/tab-separated-values'] : [text(reps), 'text/plain'];
+      const a = h('a', { href: URL.createObjectURL(new Blob([data], { type })), download: `acoustic-x-report.${kind}` });
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+    win.el.append(
+      h(
+        'div',
+        { class: 'acx-calc' },
+        group('Reports', ...checks, h('div', { class: 'btns' }, h('button', { onclick: () => (MODULES.forEach(([n]) => (pick[n] = true)), win.sync()) }, 'Select all reports'))),
+        h('div', { class: 'btns' }, h('button', { onclick: () => preview(false) }, 'Preview'), h('button', { onclick: () => preview(true) }, 'Print')),
+        group('Export', h('div', { class: 'row' }, h('label', {}, 'Format'), fmtSel), h('div', { class: 'btns' }, h('button', { onclick: exportFile }, 'Export to disk file'))),
+      ),
+    );
+    win.refresh = () => win.sync();
+  });
+
+  makeWindow('about', 'About Acoustic X (classic)', { w: 400, h: 230, foot: false }, (win) => {
     win.el.append(
       h(
         'div',
         { class: 'about' },
         h('p', {}, h('b', {}, ACX_LABEL)),
-        h('p', {}, 'Modal response, speaker boundary interference, early reflections and reverberation time, laid out the way the 1998 Windows 95 program (reviewed in Sound On Sound, December 1998) laid them out.'),
-        h('p', { class: 'muted' }, "Not Pilchner-Schoustal's software: every number here is computed by ACOUSTIC.LIKE.AUDIO's own acoustics, from the room being designed."),
+        h('p', {}, 'Modal response, speaker boundary interference, ray tracing and reverberation time, laid out the way the 1997 Windows 95 program (Acoustic-X Release 1.0; reviewed in Sound On Sound, December 1998) laid them out.'),
+        h('p', { class: 'muted' }, "Not Pilchner-Schoustal's software: every number here is computed by ACOUSTIC.LIKE.AUDIO's own acoustics, from the room being designed. The arithmetic is in Documentation/acoustic-x."),
         h('div', { class: 'btns' }, h('button', { onclick: () => close('about') }, 'OK')),
       ),
     );
@@ -1404,13 +2429,15 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
 
   // ── the launcher ──
   const MENU = [
-    ['modal', 'Modal Response'],
-    ['sbir', 'Speaker Boundary Interference Response'],
-    ['rays', 'Ray Tracing'],
-    ['reverb', 'Reverb Time'],
+    ['start', 'Start Screen'],
+    ...MODULES,
     ['calc', 'Calculator'],
+    null,
+    ['general', 'General Parameters…'],
+    ['guide', 'Fast Guide'],
+    ['reports', 'Report Print Manager…'],
   ];
-  const menu = h('div', { class: 'acx-menu', hidden: true }, h('div', { class: 'note small' }, ACX_LABEL), h('div', { class: 'sep' }), MENU.map(([n, l]) => h('div', { class: 'item', onclick: () => (open(n), (menu.hidden = true)) }, l)), h('div', { class: 'sep' }), h('div', { class: 'item', onclick: () => (open('about'), (menu.hidden = true)) }, 'About…'));
+  const menu = h('div', { class: 'acx-menu', hidden: true }, h('div', { class: 'note small' }, ACX_LABEL), h('div', { class: 'sep' }), MENU.map((m) => (m ? h('div', { class: 'item', onclick: () => (open(m[0]), (menu.hidden = true)) }, m[1]) : h('div', { class: 'sep' }))), h('div', { class: 'sep' }), h('div', { class: 'item', onclick: () => (open('about'), (menu.hidden = true)) }, 'About…'));
   const launchB = h('button', { title: ACX_LABEL, onclick: (e) => (e.stopPropagation(), (menu.hidden = !menu.hidden)) }, 'Acoustic X ▾');
   const launch = h('span', { class: 'acx acx-launch' }, launchB, menu);
   document.addEventListener('pointerdown', (e) => !launch.contains(e.target) && (menu.hidden = true));

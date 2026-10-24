@@ -55,6 +55,7 @@
 .acx .acx-win.min > :not(.acx-title) { display: none; }
 
 .acx .acx-title {
+  position: relative; z-index: 5;
   display: flex; align-items: center; gap: 3px; height: 18px; padding: 0 2px; color: var(--hi); font-weight: bold;
   background: linear-gradient(90deg, var(--navy), var(--title2)); user-select: none; cursor: default; flex: none;
 }
@@ -114,8 +115,8 @@
 .acx input.ro { background: var(--face); }
 .acx select { height: 20px; padding: 1px 2px; }
 .acx select[size] { height: auto; padding: 1px; }
-/* the app's own .readout (a meter's corner number) is absolute: in here a readout sits in its row, clear of the title bar's buttons */
-.acx .readout { position: static; color: inherit; font: inherit; pointer-events: auto; display: inline-block; min-width: 56px; height: 18px; padding: 1px 4px; background: var(--hi); box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade), inset -2px -2px var(--lite), inset 2px 2px var(--dark); white-space: nowrap; overflow: hidden; }
+/* a readout sits in its row. Its own class, so the app's absolutely-placed .readout (a meter's corner number) can never match it */
+.acx .acx-ro { position: static; color: inherit; font: inherit; pointer-events: auto; display: inline-block; min-width: 56px; height: 18px; padding: 1px 4px; background: var(--hi); box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade), inset -2px -2px var(--lite), inset 2px 2px var(--dark); white-space: nowrap; overflow: hidden; }
 .acx label.opt { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; white-space: nowrap; }
 .acx input[type=radio], .acx input[type=checkbox] { margin: 0; accent-color: var(--navy); }
 .acx .list { width: 100%; font: inherit; }
@@ -155,3 +156,47 @@
 .acx .cols .row > label:first-child { width: 38px; }
 .acx .cols input[type=number] { width: 50px; }
 .acx .cols .row .unit { width: 16px; }
+
+/* ── Room View · Chart View · Data View ──────────────────────────── */
+.acx .acx-views { margin: 0; flex: none; }
+.acx .acx-pane { flex: 1; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.acx .acx-pane[hidden] { display: none; }
+.acx .acx-pane > .acx-chart { flex: 1; }
+.acx .acx-pane > .cols { flex: none; }
+
+/* the Room View Manager: the view buttons, and the Set panel's arrows */
+.acx .rvm { display: flex; flex-direction: column; gap: 3px; }
+.acx .rvm[hidden] { display: none; }
+.acx .rvm .pair { display: flex; gap: 3px; }
+.acx .rvm .pair > button { flex: 1; }
+.acx .rvm .pad { display: grid; grid-template-columns: repeat(3, 28px); gap: 2px; justify-content: center; }
+.acx .rvm .pad button { padding: 2px 0; min-width: 0; }
+.acx .acx-pane fieldset { flex: none; }
+
+/* six octave inputs in two rows */
+.acx .bandin { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px 6px; }
+.acx .bandin label { display: flex; flex-direction: column; font-size: 10px; }
+
+/* the start screen */
+.acx .start-title { font: bold 18px Arial, sans-serif; color: var(--navy); margin: 2px 0 8px; }
+.acx .startgrid { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.acx .startgrid button { text-align: left; }
+.acx ol { margin: 6px 0 0 18px; padding: 0; }
+.acx ol li { margin: 0 0 5px; }
+
+/* a report in the Data View */
+.acx .report { padding: 4px 6px; }
+.acx .report h4 { margin: 2px 0 4px; font-size: 12px; }
+.acx .report h5 { margin: 8px 0 3px; font-size: 11px; }
+.acx .report p { margin: 2px 0 4px; }
+.acx .report table.grid { margin-bottom: 6px; }
+
+/* nothing inside a window may ever sit over its title bar and its close button: every part below the
+   title is its own positioning context, so even an absolutely placed child stays inside it */
+.acx .acx-win > :not(.acx-title) { position: relative; z-index: 1; }
+
+/* the control menu under a window's title-bar icon */
+.acx .acx-title .ico { cursor: default; }
+.acx .acx-sys { top: 18px; left: 0; min-width: 150px; color: var(--ink); font-weight: normal; }
+.acx .acx-sys .item.off { color: var(--shade); text-shadow: 1px 1px var(--hi); }
+.acx .acx-sys .item.off:hover { background: none; color: var(--shade); }
