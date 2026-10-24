@@ -26,8 +26,8 @@ import { turbo } from '../views/paint.js';
  *                labelled with the speaker each answers. They are painted with
  *                a palette product, so they come back as treatments and the
  *                room hears them.
- *   cutaways     the room in three cut-away axonometric views beside the
- *                drawing: plan, ceiling and the four elevations together, the
+ *   cutaways     the room in three cut-away axonometric views on top of its
+ *                blow-up tower: plan, ceiling and the four elevations together, the
  *                walls nearest the eye taken away, panels, desk and speakers in
  *                place. Line work in a block, so it never becomes a wall.
  *                With a mix seat, each speaker's first reflections too: the
@@ -48,11 +48,11 @@ import { turbo } from '../views/paint.js';
  *                walls (a splay, a short return) each their own drawing; each
  *                with its treatments, size, finish and how much is treated.
  *
- * Where they go: one column per room, at the plan's left edge. The blow-up
- * above each plan; under the room being designed its elevations (seeded there,
- * elevations.js), then the cut-aways one under another, the sections under
- * those — never past the far end of a sheet of many rooms. Labels give
- * lengths in millimetres.
+ * Where they go: one column per room, at the plan's left edge. Above each plan
+ * its tower — the blow-up, and on top of the room being designed its
+ * cut-aways, one over another; under that room its elevations (seeded there,
+ * elevations.js), then the sections — never past the far end of a sheet of
+ * many rooms. Labels give lengths in millimetres.
  *
  * Everything here works in sheet METRES; `toCad` scales to drawing units last.
  */
@@ -90,16 +90,14 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
   if (on.labels) out.labels = toCad(labelMarks(room, settings, planLayer));
   if (on.panels && mix) out.panels = toCad(panelMarks(room, state, mix));
   if (on.arrangement) out.arrangement = toCad(arrangementMarks(room, settings, mix));
-  // under the room being designed and its elevations: the cut-aways in a column, the sections under them
+  // the tower over each plan: its blow-up, and on top of the room being designed the cut-aways
+  const towers = on.blowup ? rooms.map((r) => ({ room: r.room, ...blowupMarks(r.room, r.name, has) })) : [];
+  if (on.blowup) out.blowup = toCad(towers.flatMap((t) => t.items));
+  const plan = bboxOf(room.poly);
+  if (on.cutaways) out.cutaways = toCad(cutawayMarks(room, state, plan.x0, towers.find((t) => t.room === room)?.top ?? plan.y1 + 1.2, has));
+  // under the room being designed and its elevations: the sections
   const b = localBounds(room);
-  let below = b.y0 - Math.max(1, 0.15 * Math.max(room.L, room.W));
-  if (on.cutaways) {
-    const cut = cutawayMarks(room, state, b.x0, below, has);
-    out.cutaways = toCad(cut.items);
-    below = cut.bottom - 0.8;
-  }
-  if (on.sections) out.sections = toCad(sectionMarks(settings, b.x0, below));
-  if (on.blowup) out.blowup = toCad(rooms.flatMap((r) => blowupMarks(r.room, r.name, has)));
+  if (on.sections) out.sections = toCad(sectionMarks(settings, b.x0, b.y0 - Math.max(1, 0.15 * Math.max(room.L, room.W))));
   return out;
 }
 
@@ -214,25 +212,26 @@ const VIEWS = [
 ];
 const TILT = 30 * DEG;
 
-function cutawayMarks(room, state, x0, top, has) {
+/** The cut-aways in a column standing on `base`, read top to bottom in VIEWS order. */
+function cutawayMarks(room, state, x0, base, has) {
   const items = [];
   const gap = Math.max(0.8, 0.1 * Math.max(room.L, room.W));
-  let bottom = top;
+  let floor = base;
   const mix = state.mics.find((m) => m.mix);
   const rays = state.settings.cadMarks?.reflections !== false && mix ? firstReflections(room, arrangedSpeakers(state.speakers, state.settings), mix, state.settings.band ?? 2) : [];
-  for (const v of VIEWS) {
+  for (const v of [...VIEWS].reverse()) {
     const d = cutaway(room, state, (state.settings.frontDeg + v.az) * DEG, has, rays, mix);
     if (!d.lines.length) continue;
     const h = d.y1 - d.y0;
-    // a column, like the elevations above: each view's top-left at (x0, bottom), the title just above it
-    const at = [r3(x0 - d.x0), r3(bottom - 0.3 - d.y1)];
+    // built from the bottom up: each view's bottom-left at (x0, floor), the title just above it
+    const at = [r3(x0 - d.x0), r3(floor - d.y0)];
     d.texts.push({ text: v.title, x: d.x0, y: r3(d.y1 + 0.1), height: BT * 1.5 });
     // one block per view — walls, boxes, people, rays, labels and the heat spots together, so the set moves and selects as one
     const fills = d.spots.map((sp) => ({ points: sp.pts, color: sp.color, opacity: sp.opacity, ...(has(REFLECTION_LAYER) ? { layer: REFLECTION_LAYER } : {}) }));
     items.push({ kind: 'drawing', layer: CUTAWAY_LAYER, layerColor: '#94a3b8', name: v.name, at, lines: d.lines, texts: d.texts, fills });
-    bottom -= 0.3 + h + gap;
+    floor += h + 0.3 + gap;
   }
-  return { items, bottom: bottom + gap };
+  return items;
 }
 
 /** One axonometric cut-away: lines [x1, y1, x2, y2, layer] in view metres, and its extent. */
@@ -391,8 +390,9 @@ const BT = 0.07;
  * top, then the floor, then the walls in rows — every drawing at true size,
  * outlined, with its treatments drawn on it and named, and a title line.
  */
+/** One room's blow-up: { items, top } — `top` where the tower ends, for what stands on it. */
 function blowupMarks(room, name, has) {
-  if (!room) return [];
+  if (!room) return { items: [], top: 0 };
   const plan = bboxOf(room.poly);
   const width = Math.max(plan.x1 - plan.x0, 6);
   const gap = 0.6;
@@ -489,7 +489,7 @@ function blowupMarks(room, name, has) {
     y += h + gap;
   }
   if (name) items.push({ kind: 'text', layer: BLOWUP_LAYER, layerColor: '#e2e8f0', at: [r3(plan.x0), r3(y)], text: `BLOW-UP · ${name} · top to bottom: ceiling, floor, walls`, height: BT * 1.5 });
-  return items;
+  return { items, top: y + BT * 1.5 + 1.2 };
 }
 
 const centre = (pts) => ({ x: pts.reduce((t, p) => t + p.x, 0) / pts.length, y: pts.reduce((t, p) => t + p.y, 0) / pts.length });

@@ -103,3 +103,24 @@ test('rotating the array turns the placed speakers round the listener, still aim
     assert.equal(m.aim, +((((turned[i].aim % 360) + 360) % 360).toFixed(1)));
   }
 });
+
+test('the cut-aways stand on the blow-up tower over the plan, in its column, the sections under the room', async () => {
+  const { buildMarks } = await import('../js/cad/marks.js');
+  const { DEFAULT_SETTINGS } = await import('../js/model/store.js');
+  const s = { ...DEFAULT_SETTINGS, ...settings, cadMarks: { cutaways: true, blowup: true, sections: true } };
+  const r = buildRoom([{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 7 }, { x: 0, y: 7 }], s);
+  const state = { settings: s, mics: [makeMic('omni', { x: 2.5, y: 3, z: 1.2 }, { mix: true })], speakers: [] };
+  const out = buildMarks({ room: r, state, planLayer: 'Room', sheetBounds: null, k: 1, layers: new Set(), rooms: [{ name: 'Box', room: r }] });
+  assert.equal(out.cutaways.length, 3);
+  const towerTop = Math.max(...out.blowup.map((it) => it.at[1]));
+  for (const c of out.cutaways) {
+    const ys = c.lines.flatMap((l) => [l[1], l[3]]).map((y) => y + c.at[1]);
+    const xs = c.lines.flatMap((l) => [l[0], l[2]]).map((x) => x + c.at[0]);
+    assert.ok(Math.min(...ys) > towerTop, `${c.name} under the top of the tower`);
+    assert.ok(Math.abs(Math.min(...xs)) < 1e-6, `${c.name} out of the plan's column`);
+  }
+  // read top to bottom in their own order
+  const at = Object.fromEntries(out.cutaways.map((c) => [c.name, c.at[1] + Math.min(...c.lines.flatMap((l) => [l[1], l[3]]))]));
+  assert.ok(at['behind-left'] > at['behind-right'] && at['behind-right'] > at.front);
+  for (const it of out.sections) if (it.at) assert.ok(it.at[1] < 0, 'a section above the plan');
+});

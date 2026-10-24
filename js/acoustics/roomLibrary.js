@@ -147,9 +147,15 @@ export function planArea(poly) {
  *   live rooms and booths
  *        nobody mixes in them: a single listener where a player would stand.
  *
+ * And every room has a way in: a DOOR in the back wall, behind the listener,
+ * at its right-hand end so it clears the couch — a plain one in a home room,
+ * a sealed acoustic door anywhere built as a studio.
+ *
  * Returns { furniture: [{ paletteId, x, y, rotation }], seats: [{ kind, x, y,
- * z, aim, mix? }] } — products from materials.js, seats as listener tiers
- * (devices.js MIC_PRESETS). Pure: main.js offsets it to where the room is drawn.
+ * z, aim, mix? }], door: { paletteId, x, y, w, h } } — products from
+ * materials.js, seats as listener tiers (devices.js MIC_PRESETS), the door's
+ * centre where it meets the floor on the back wall. Pure: main.js offsets it
+ * to where the room is drawn, and hangs the door on the back elevation.
  */
 export function furnish(room) {
   const xs = room.poly.map(([x]) => x);
@@ -163,15 +169,16 @@ export function furnish(room) {
   const seats = [];
   const ear = 1.2;
   const face = 90;
+  const door = doorOf(room);
   if (room.group === 'Live rooms') {
     seats.push({ kind: 'mixer', x: cx, y: y0 + L * 0.5, z: room.id.includes('booth') || room.id.includes('iso') ? 1.6 : ear, aim: face, mix: true });
-    return { furniture, seats };
+    return { furniture, seats, door };
   }
   if (room.id === 'podcast' || room.id === 'radio') {
     const y = y0 + L * 0.5;
     furniture.push({ paletteId: 'desk-1800x900', x: cx, y, rotation: 0 });
     seats.push({ kind: 'mixer', x: cx, y: y - 0.85, z: ear, aim: face, mix: true }, { kind: 'client', x: cx, y: y + 0.85, z: ear, aim: face + 180 });
-    return { furniture, seats };
+    return { furniture, seats, door };
   }
   const mixY = front - 0.38 * L;
   const desk = W < 4 ? { id: 'desk-1800x900', w: 1.8, d: 0.9 } : W < 6.5 ? { id: 'console-2400x1000', w: 2.4, d: 1.0 } : { id: 'console-3200x1200', w: 3.2, d: 1.2 };
@@ -182,14 +189,41 @@ export function furnish(room) {
   if (mixY - 1.0 > y0 + 0.5) seats.push({ kind: 'producer', x: cx, y: mixY - 1.0, z: ear + 0.1, aim: face });
   if (W >= 3.6) seats.push({ kind: 'client', x: cx + desk.w / 2 - 0.2, y: mixY + 0.05, z: ear, aim: face });
   if (W - desk.w >= 1.6) furniture.push({ paletteId: 'rack-600x800', x: cx - desk.w / 2 - 0.5, y: deskY - 0.3, rotation: 0 });
-  // a couch at the back, if there is room behind the producer for it
+  // a couch at the back, if there is room behind the producer for it — and beside the door, which comes first
   const couch = W < 5 ? { id: 'couch-2000x900', w: 2.0, d: 0.9 } : { id: 'couch-2400x1000', w: 2.4, d: 1.0 };
   const couchY = y0 + 0.25 + couch.d / 2;
-  if (mixY - 1.0 - couchY > 1.0 && W >= couch.w + 0.6) {
+  const clearOfDoor = !door || Math.abs(door.x - cx) >= couch.w / 2 + door.w / 2;
+  if (mixY - 1.0 - couchY > 1.0 && W >= couch.w + 0.6 && clearOfDoor) {
     furniture.push({ paletteId: couch.id, x: cx, y: couchY, rotation: 0 });
     for (const dx of [-couch.w / 4, couch.w / 4]) seats.push({ kind: 'entourage', x: cx + dx, y: couchY, z: 1.0, aim: face });
   }
   // an odd plan (an L, a fan) can leave a piece outside: it is left out, never the mixer
   const inside = (p) => pointInPolygon(p.x, p.y, room.poly.map(([x, y]) => ({ x, y })));
-  return { furniture: furniture.filter(inside), seats: seats.filter((s) => s.mix || inside(s)) };
+  return { furniture: furniture.filter(inside), seats: seats.filter((s) => s.mix || inside(s)), door };
+}
+
+const DOOR_CLEAR = 0.15;
+
+/**
+ * The door: on the squarest wall facing back (outward within 45° of −Y, the
+ * walls the back elevation draws) that it fits, the longer of a tie, its far
+ * edge DOOR_CLEAR in from that wall's right-hand corner. Null only for a plan with no back wall it fits.
+ */
+function doorOf(room) {
+  const [paletteId, w, h] = room.group === 'Home & project' ? ['door-900x2100', 0.9, 2.1] : ['door-acoustic-1000x2100', 1.0, 2.1];
+  let best = null;
+  room.poly.forEach((a, i) => {
+    const b = room.poly[(i + 1) % room.poly.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    // wound counter-clockwise, so the outward normal is the edge turned clockwise
+    const backward = -(a[0] - b[0]) / len;
+    if (backward < Math.SQRT1_2 || len < w + 2 * DOOR_CLEAR) return;
+    // squarest first: the elevation draws a splayed wall foreshortened, so a door-sized block there stretches 1/cos
+    const better = !best || backward > best.backward + 1e-6 || (backward > best.backward - 1e-6 && (len > best.len + 1e-9 || (len > best.len - 1e-9 && b[0] > best.b[0])));
+    if (better) best = { a, b, len, backward };
+  });
+  if (!best) return null;
+  const { a, b, len } = best;
+  const s = (len - DOOR_CLEAR - w / 2) / len;
+  return { paletteId, x: a[0] + (b[0] - a[0]) * s, y: a[1] + (b[1] - a[1]) * s, w, h };
 }

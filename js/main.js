@@ -3,6 +3,7 @@
 import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
 import { buildRoom } from './acoustics/room.js';
+import { elevationOrigin, faceCoords } from './acoustics/patches.js';
 import { arrayFront, carryArray, LAYOUTS } from './acoustics/layouts.js';
 import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
 import { widthSweep } from './acoustics/widthFinder.js';
@@ -464,10 +465,27 @@ function pickDrawnRoom() {
   store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90, roomHeights: heights });
   // furnished, and with its people in it: the console, couch and rack into the CAD as real blocks, the listeners seated
   if (entry.group) {
-    const { furniture, seats } = furnish(entry);
+    const { furniture, seats, door } = furnish(entry);
     if (furniture.length) cad.link.place('Furniture', furniture.map((f) => ({ paletteId: f.paletteId, at: [+((f.x + ox) / k).toFixed(4), +((f.y + oy) / k).toFixed(4)], rotation: f.rotation })));
     store.seat(seats.map((s) => makeMic(s.kind, { x: s.x + ox, y: s.y + oy, z: s.z }, { aim: s.aim, mix: Boolean(s.mix) })));
+    if (door) hangDoor(loop, door, h, ox, oy, k);
   }
+}
+
+/**
+ * The door goes on the back elevation, where a door is drawn: its frame is
+ * the one the engine will read the patch in (patches.js elevationOrigin) — the
+ * back loop already drawn, or the seed under this plan — so it is built here
+ * as the engine is about to build the room.
+ */
+function hangDoor(loop, door, h, ox, oy, k) {
+  const room = buildRoom(loop.poly, { ...store.state.settings, frontDeg: 90, roomHeight: h }, engine.out.elevations ?? []);
+  const origin = elevationOrigin(room, 'back');
+  if (!origin) return;
+  const { t } = faceCoords(room, 'back')({ x: door.x + ox, y: door.y + oy });
+  // the back elevation is seen from inside, looking back: t (from the left) runs right to left on the sheet
+  const at = [origin.x + room.W - t, origin.y + door.h / 2];
+  cad.link.place(ELEVATION_LAYER.back, [{ paletteId: door.paletteId, at: at.map((v) => +(v / k).toFixed(4)), rotation: 0 }]);
 }
 
 document.getElementById('grabBag').addEventListener('click', () => drawRoom(grabBag(store.state.settings.lastLibraryRoom)));

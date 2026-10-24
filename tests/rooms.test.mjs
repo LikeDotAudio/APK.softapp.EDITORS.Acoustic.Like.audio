@@ -39,3 +39,26 @@ test('every library room comes furnished, its people inside it, one mixer at the
   assert.ok(big.furniture.some((f) => f.paletteId.startsWith('console')) && big.furniture.some((f) => f.paletteId.startsWith('couch')));
   assert.deepEqual([...new Set(big.seats.map((s) => s.kind))].sort(), ['client', 'entourage', 'mixer', 'producer']);
 });
+
+test('every library room has a door in its back wall, clear of the couch', async () => {
+  const { furnish } = await import('../js/acoustics/roomLibrary.js');
+  for (const r of ROOM_LIBRARY) {
+    const { door, furniture } = furnish(r);
+    assert.ok(door, `${r.id}: no door`);
+    assert.ok(door.h < r.h, `${r.id}: door taller than the room`);
+    // on one of the plan's edges, and that edge faces back
+    const on = r.poly.some((a, i) => {
+      const b = r.poly[(i + 1) % r.poly.length];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const cross = ((b[0] - a[0]) * (door.y - a[1]) - (b[1] - a[1]) * (door.x - a[0])) / len;
+      return Math.abs(cross) < 1e-9 && (b[0] - a[0]) / len > Math.SQRT1_2;
+    });
+    assert.ok(on, `${r.id}: door not on a back wall`);
+    for (const f of furniture.filter((x) => x.paletteId.startsWith('couch'))) {
+      const half = f.paletteId === 'couch-2000x900' ? 1.0 : 1.2;
+      assert.ok(Math.abs(door.x - f.x) >= half + door.w / 2, `${r.id}: door behind the couch`);
+    }
+  }
+  assert.equal(furnish(ROOM_LIBRARY.find((r) => r.id === 'bedroom')).door.paletteId, 'door-900x2100');
+  assert.equal(furnish(ROOM_LIBRARY.find((r) => r.id === 'vocal-booth')).door.paletteId, 'door-acoustic-1000x2100');
+});
