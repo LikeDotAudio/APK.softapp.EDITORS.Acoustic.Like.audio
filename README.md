@@ -50,6 +50,18 @@ The CAD is in an iframe. The CAD's `src/shell/hostBridge/` and `js/cad/cadLink.j
 
 The CAD only publishes; it never reads this app's state. The overlay is saved in the browser per CAD file name. It can be exported as JSON, and positions can be exported in the AcousticRooms metadata shape.
 
+## Hosting
+
+Published on GitHub Pages by `.github/workflows/deploy.yml` on every push to `main` and nightly. The CAD's tracked `dist/` is copied in beside the page at `EDITORS.CAD.Like.audio/dist/`, the path the iframe names, so the bridge stays same-origin; a CAD change shows up here on the next run.
+
+**Live now:** https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/
+
+> **Note:** the custom domain `acoustics.cad.like.audio` is switched off until its DNS is in place. GitHub redirects the github.io address to the custom domain as soon as one is set, so setting it before DNS resolves breaks the link above. To switch it on:
+>
+> 1. At the `like.audio` DNS host (Varial Hosting), add a CNAME `acoustics.cad.like.audio` → `likedotaudio.github.io`.
+> 2. Wait until `dig +short acoustics.cad.like.audio` answers with GitHub's addresses.
+> 3. Set the domain: `gh api -X PUT repos/LikeDotAudio/APK.softapp.EDITORS.Acoustic.Like.audio/pages -f cname=acoustics.cad.like.audio`, then tick *Enforce HTTPS* in Settings → Pages once the certificate is issued.
+
 ## Layout
 
 ```

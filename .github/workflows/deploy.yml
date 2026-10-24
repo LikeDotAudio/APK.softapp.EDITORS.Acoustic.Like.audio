@@ -1,14 +1,17 @@
 name: Publish to acoustics.cad.like.audio
 
-# Publishes this page to GitHub Pages, served at the custom domain
-# acoustics.cad.like.audio (Settings → Pages → Custom domain).
+# Publishes this page to GitHub Pages. Live at
+# https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/ until the custom domain
+# acoustics.cad.like.audio is switched on (see README, Hosting).
 #
 # The CAD iframe is ../EDITORS.CAD.Like.audio/dist/index.html and the host
 # bridge only talks to its own origin, so the CAD cannot come from
 # cad.like.audio: its tracked dist/ is copied in beside this page, at the path
 # the iframe already names. The nightly run picks up CAD changes on their own.
 #
-# DNS: acoustics.cad.like.audio is a CNAME to likedotaudio.github.io.
+# DNS: acoustics.cad.like.audio must be a CNAME to likedotaudio.github.io
+# BEFORE the domain is set in Settings → Pages, or the github.io address
+# redirects to a name that does not resolve.
 
 on:
   push:
