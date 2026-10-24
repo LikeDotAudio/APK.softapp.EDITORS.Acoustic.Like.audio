@@ -300,6 +300,20 @@ function drawResponse(canvas, out, settings, hover = null) {
   }
   trace(r.modal, '#22d3ee', 1.2);
   trace(r.wave, '#f43f5e', 1.8);
+  // The sweep's frames: a faint tick for each one still to paint, a dot on the curve for each one ready.
+  const { ready = [], ladder = [] } = out.frames ?? {};
+  const done = new Set(ready);
+  ctx.fillStyle = 'rgba(253, 224, 71, .25)';
+  for (const f of ladder) if (!done.has(f)) ctx.fillRect(x(f) - 0.5, h - 26, 1, 2);
+  ctx.fillStyle = '#fde047';
+  for (const f of ready) {
+    ctx.fillRect(x(f) - 0.5, h - 28, 1.5, 4);
+    const db = waveAt(r, f);
+    if (!Number.isFinite(db)) continue;
+    ctx.beginPath();
+    ctx.arc(x(f), y(db), 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.strokeStyle = '#fde047';
   ctx.beginPath();
   ctx.moveTo(x(settings.freq), 6);
@@ -329,6 +343,15 @@ function drawResponse(canvas, out, settings, hover = null) {
     ctx.fillStyle = '#e5e7eb';
     ctx.fillText(label, lx + 4, 31);
   }
+}
+
+/** The wave curve at `f`, read off between its computed points on a log axis. */
+function waveAt(r, f) {
+  const i = r.freqs.findIndex((g) => g >= f);
+  if (i < 0) return NaN;
+  if (i === 0 || r.freqs[i] === f) return r.wave[i];
+  const t = Math.log(f / r.freqs[i - 1]) / Math.log(r.freqs[i] / r.freqs[i - 1]);
+  return r.wave[i - 1] + t * (r.wave[i] - r.wave[i - 1]);
 }
 
 /** 63, 1.2k, 17k — short enough for an axis. */

@@ -63,21 +63,9 @@ export function fieldScale(values, rangeDb) {
   return { top: Math.ceil(top), range: rangeDb };
 }
 
-export function drawColourBar(ctx, x, y, w, h, scale, label) {
-  for (let i = 0; i < w; i++) {
-    ctx.fillStyle = css(LUT[Math.round((i / (w - 1)) * 255)]);
-    ctx.fillRect(x + i, y, 1, h);
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,.4)';
-  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-  ctx.fillStyle = '#ddd';
-  ctx.font = '10px ui-monospace, monospace';
-  ctx.textBaseline = 'top';
-  ctx.textAlign = 'left';
-  ctx.fillText(`${scale.top - scale.range}`, x, y + h + 2);
-  ctx.textAlign = 'right';
-  ctx.fillText(`${scale.top} dB${label ? ` · ${label}` : ''}`, x + w, y + h + 2);
-  ctx.textAlign = 'left';
+/** The scale as a CSS gradient, for a ramp drawn in the DOM rather than on a canvas. */
+export function rampGradient() {
+  return `linear-gradient(to right, ${Array.from({ length: 17 }, (_, i) => css(LUT[Math.round((i / 16) * 255)])).join(', ')})`;
 }
 
 /** Value of grid `values` (w×h, row 0 at the top) at fractional position (fx, fy) ∈ [0,1]². */

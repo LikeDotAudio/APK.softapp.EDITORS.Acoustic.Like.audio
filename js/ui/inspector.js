@@ -4,7 +4,7 @@ import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
 import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
-import { LAYOUTS, layoutPositions } from '../acoustics/layouts.js';
+import { LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
 import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
 import { MIC_PATTERNS, SPEAKER_PATTERNS } from '../acoustics/patterns.js';
 import { allModes, fromFrame, inFrame, schroeder } from '../acoustics/room.js';
@@ -575,12 +575,13 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const ax = store.axis();
     const kind = S().placeKind.speaker === 'sub' ? 'monitor' : S().placeKind.speaker;
     const keep = S().speakers.filter((s) => !s.role);
-    const placed = layoutPositions(settings.layout.preset, mix, settings.frontDeg, settings.layout.radius, room.H);
+    const centre = layoutCentre(mix, settings.frontDeg, settings.layout.offset);
+    const placed = layoutPositions(settings.layout.preset, centre, settings.frontDeg, settings.layout.radius, room.H);
     const pairs = new Map();
     const speakers = placed.map((p) => {
       const s = makeSpeaker(p.sub ? 'sub' : kind, p, { name: p.role, role: p.role, side: p.side, aim: +p.aim.toFixed(1), tilt: +p.tilt.toFixed(1) });
       const base = p.role.slice(1);
-      if (settings.symmetric && ax != null && Math.abs(mix.x - ax) < 0.02 && (p.side === 'L' || p.side === 'R')) {
+      if (settings.symmetric && ax != null && Math.abs(centre.x - ax) < 0.02 && (p.side === 'L' || p.side === 'R')) {
         if (!pairs.has(base)) pairs.set(base, newId('p'));
         s.pairId = pairs.get(base);
       }
@@ -598,7 +599,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const products = PRODUCTS.map((p) => ({ value: p.id, label: p.name }));
     return [
       h('h4', {}, 'Drawn into the CAD'),
-      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout')),
+      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('reflections', 'rays & reflection heat in the cut-aways'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout')),
       row('Wall panel', select(ap.wall, products, (v) => set({ autoPanels: { ...ap, wall: v } }))),
       row('Panel size', num(ap.w, (v) => set({ autoPanels: { ...ap, w: v } }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(ap.h, (v) => set({ autoPanels: { ...ap, h: v } }), { unit: 'm tall', min: 0.2, step: 0.05 })),
       row('Ceiling cloud', select(ap.ceiling, products, (v) => set({ autoPanels: { ...ap, ceiling: v } }))),

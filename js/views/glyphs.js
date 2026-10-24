@@ -110,10 +110,25 @@ export function drawPerson(ctx, x, y, ang, { ppm = 40, colour = '#ff3b3b', selec
   if (label) drawLabel(ctx, x, y + s + 12, label, colour);
 }
 
-export function drawLabel(ctx, x, y, text, colour = '#ddd') {
+/**
+ * A label in a dark box. Labels never pile up: each canvas keeps the boxes
+ * drawn on it this frame (fitCanvas clears the list), and one that would
+ * cover an earlier one is left out — the first drawn wins, so draw what
+ * matters first. `force` draws it regardless (the thing being dragged).
+ * Returns whether it was drawn.
+ */
+export function drawLabel(ctx, x, y, text, colour = '#ddd', { force = false } = {}) {
+  if (!text) return false;
   ctx.save();
   ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
   const w = ctx.measureText(text).width + 8;
+  const box = { x0: x - w / 2, x1: x + w / 2, y0: y - 7, y1: y + 7 };
+  const taken = (ctx.canvas.__labels ??= []);
+  if (!force && taken.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0)) {
+    ctx.restore();
+    return false;
+  }
+  taken.push(box);
   ctx.fillStyle = 'rgba(10,12,18,.8)';
   ctx.fillRect(x - w / 2, y - 7, w, 14);
   ctx.fillStyle = colour;
@@ -121,6 +136,31 @@ export function drawLabel(ctx, x, y, text, colour = '#ddd') {
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x, y);
   ctx.restore();
+  return true;
+}
+
+const TIER_TAG = { mixer: 'MIX', producer: 'P', client: 'C', entourage: 'E' };
+
+/**
+ * What to call a device on a drawing. Roomy (a big, uncrowded view): its
+ * name. Otherwise a tag — a speaker by its role (L, Ls, Rtf …) or S1, S2 …;
+ * a listener by tier (MIX, P, C, E1, E2 …); a measurement mic M1, M2 … —
+ * numbered in the order the devices were placed, so the same thing has the
+ * same tag in every view.
+ */
+export function deviceLabel(dev, kind, state, roomy) {
+  if (kind === 'speaker') {
+    if (roomy) return dev.role || dev.name;
+    return dev.role || `S${state.speakers.indexOf(dev) + 1}`;
+  }
+  if (roomy) return dev.mix ? `MIX · ${dev.name}` : dev.name;
+  if (dev.mix) return 'MIX';
+  const tier = TIER_TAG[dev.kind];
+  if (tier) {
+    const same = state.mics.filter((m) => m.kind === dev.kind && !m.mix);
+    return same.length > 1 ? `${tier}${same.indexOf(dev) + 1}` : tier;
+  }
+  return `M${state.mics.filter((m) => !TIER_TAG[m.kind] || m.mix).indexOf(dev) + 1}`;
 }
 
 export function dashedLine(ctx, a, b, colour, dash = [6, 4], width = 1) {
@@ -147,6 +187,8 @@ export function fitCanvas(canvas) {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
+  // a fresh frame: no labels on it yet (drawLabel)
+  canvas.__labels = [];
   return { ctx, w, h };
 }
 

@@ -1,6 +1,9 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
-import { mirrorPoint, segmentCross } from './geometry.js';
+import { BANDS, C } from './bands.js';
+import { mirrorPoint, pointInPolygon, segmentCross } from './geometry.js';
+import { specular } from './images.js';
+import { deviceGain } from './patterns.js';
 import { elevationOrigin, faceCoords } from './patches.js';
 import { heightsAtXY } from './elevations.js';
 
@@ -93,3 +96,70 @@ function onElevation(room, wall, at, z, w, h) {
   const y1 = origin.y + z + h / 2;
   return [{ x: lo, y: y0 }, { x: hi, y: y0 }, { x: hi, y: y1 }, { x: lo, y: y1 }];
 }
+
+/**
+ * THE FIRST REFLECTIONS THEMSELVES — what the panels answer, as rays
+ *
+ * For each speaker (subs excepted) and the mix seat: every first-order bounce
+ * off a wall, the ceiling and the floor, as a point in the room (`hit`, x y z
+ * metres), its path, its delay behind the direct sound, and how hot it lands
+ * at the seat — `db` relative to the direct sound: the box's pattern toward
+ * the bounce against toward the seat, the extra spreading, and what the
+ * surface keeps in the mirror direction in `band` (a treatment over the spot
+ * is what it keeps, so a panel cools its own spot). `zone` is the radius of
+ * the first Fresnel zone at that band — the patch of surface that does the
+ * reflecting, the size the heat spot is drawn.
+ *
+ * Unlike the panels, a wall hit is not clamped: a bounce that would land
+ * above the ceiling or under the floor is not a wall reflection, and is left out.
+ */
+export function firstReflections(room, speakers, mix, band = 2) {
+  if (!room || !mix) return [];
+  const freq = BANDS[band];
+  const lambda = C / freq;
+  const out = [];
+  for (const s of speakers) {
+    if (s.kind === 'sub') continue;
+    const direct = Math.hypot(s.x - mix.x, s.y - mix.y, s.z - mix.z);
+    if (direct < 1e-6) continue;
+    const toSeat = deviceGain(s, [mix.x - s.x, mix.y - s.y, mix.z - s.z], freq);
+    const add = (surface, wall, face, hit, mat, patch) => {
+      const d1 = Math.hypot(hit.x - s.x, hit.y - s.y, hit.z - s.z);
+      const d2 = Math.hypot(mix.x - hit.x, mix.y - hit.y, mix.z - hit.z);
+      const path = d1 + d2;
+      const keep = Math.max(1e-6, specular(patch?.material ?? mat, band));
+      const db = deviceGain(s, [hit.x - s.x, hit.y - s.y, hit.z - s.z], freq) - toSeat + 20 * Math.log10(direct / path) + 10 * Math.log10(keep);
+      out.push({ speaker: s, name: s.role || s.name, surface, wall, face, hit, path, delayMs: ((path - direct) / C) * 1000, db, treated: patch ?? null, zone: Math.sqrt((lambda * d1 * d2) / path) });
+    };
+    for (const wall of room.walls) {
+      const side = (s.x - wall.a.x) * wall.nIn.x + (s.y - wall.a.y) * wall.nIn.y;
+      if (side <= 0) continue;
+      const img = mirrorPoint(s, wall.a, wall.nIn);
+      const cross = segmentCross(img, mix, wall.a, wall.b);
+      if (!cross) continue;
+      const at = { x: wall.a.x + (wall.b.x - wall.a.x) * cross.u, y: wall.a.y + (wall.b.y - wall.a.y) * cross.u };
+      const z = s.z + (mix.z - s.z) * cross.t;
+      const hts = heightsAtXY(room, at.x, at.y);
+      if (z < hts.floor || z > hts.ceiling) continue;
+      const u = (at.x - wall.a.x) * wall.t.x + (at.y - wall.a.y) * wall.t.y;
+      const patch = (room.patches ?? []).find((p) => p.surface === 'wall' && p.wall === wall.i && pointInPolygon(u, z, p.points3d.map((q) => ({ x: (q.x - wall.a.x) * wall.t.x + (q.y - wall.a.y) * wall.t.y, y: q.z }))));
+      add('wall', wall.i, wall.face, { ...at, z }, wall.material, patch);
+    }
+    // ceiling and floor as flat at their height over the seat — the mirror is horizontal
+    const { floor, ceiling } = heightsAtXY(room, mix.x, mix.y);
+    for (const [surface, level, mat] of [['ceiling', ceiling, room.ceiling], ['floor', floor, room.floor]]) {
+      const a = Math.abs(level - s.z);
+      const b = Math.abs(level - mix.z);
+      if (a + b < 1e-6 || (s.z - level) * (mix.z - level) <= 0) continue;
+      const q = a / (a + b);
+      const hit = { x: s.x + (mix.x - s.x) * q, y: s.y + (mix.y - s.y) * q, z: level };
+      if (!pointInPolygon(hit.x, hit.y, room.poly)) continue;
+      const patch = (room.patches ?? []).find((p) => p.surface === surface && pointInPolygon(hit.x, hit.y, p.points3d));
+      add(surface, null, surface, hit, mat, patch);
+    }
+  }
+  return out;
+}
+
+/** A reflection's heat, 0 (20 dB under the direct sound, or quieter) to 1 (as loud as it). */
+export const heatOf = (r) => Math.max(0, Math.min(1, (r.db + 20) / 20));

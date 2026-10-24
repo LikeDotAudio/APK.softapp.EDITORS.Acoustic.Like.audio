@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS = {
   /** Ceiling heights of the other plan loops on the sheet (library rooms), by layer id, for their blow-ups. */
   roomHeights: {},
   /** What this app draws into the CAD itself (cad/marks.js): labels, reflection panels, cut-aways, construction sections. */
-  cadMarks: { labels: true, panels: true, ceilingPanels: true, cutaways: true, sections: true, arrangement: true, blowup: true },
+  cadMarks: { labels: true, panels: true, ceilingPanels: true, cutaways: true, reflections: true, sections: true, arrangement: true, blowup: true },
   autoPanels: { wall: 'panel-1200x600x100', ceiling: 'cloud-1200', w: 0.6, h: 1.2 },
   show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true, arrangement: true },
 };

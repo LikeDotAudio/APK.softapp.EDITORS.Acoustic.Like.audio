@@ -21,7 +21,8 @@ import { angleDiff, DEG } from './geometry.js';
  * 30–55°, unless it names its own `elRange` — 22.2 (BS.2051 System H, NHK's
  * Super Hi-Vision layout) has a top layer, a voice of god straight up, and a
  * bottom layer below the ears. `lfe` lists the subwoofers by bearing: one for
- * every .1, two for 22.2's .2.
+ * every .1, two for a .2; an `under` sub stands on the floor at the mains'
+ * radius, below them, rather than just inside it.
  */
 
 const pair = (base, az, el, range, extra = {}) => [
@@ -31,14 +32,21 @@ const pair = (base, az, el, range, extra = {}) => [
 
 const ONE_LFE = [{ name: 'LFE', az: -15 }];
 const BED_FRONT = [{ name: 'C', az: 0, el: 0, range: [0, 0], side: 'C', line: true }, ...pair('', 30, 0, [22, 30], { line: true })];
+const UNDER_LR = [{ name: 'LFE1', az: 30, under: true }, { name: 'LFE2', az: -30, under: true }];
 const TOPS_4 = [...pair('tf', 45, 45, [30, 55]), ...pair('tr', 135, 45, [110, 150])];
 
 export const LAYOUTS = {
   '2.0': { label: 'Stereo 2.0', speakers: pair('', 30, 0, [22, 30]) },
+  // floor subs right under the mains: one between them on the centre line, or one beneath each
+  '2.1': { label: 'Stereo 2.1', speakers: pair('', 30, 0, [22, 30]), lfe: [{ name: 'LFE', az: 0, under: true }] },
+  '2.2': { label: 'Stereo 2.2', speakers: pair('', 30, 0, [22, 30]), lfe: UNDER_LR },
   '5.1': { label: '5.1', speakers: [...BED_FRONT, ...pair('s', 110, 0, [100, 120])], lfe: ONE_LFE },
+  '5.2': { label: '5.2', speakers: [...BED_FRONT, ...pair('s', 110, 0, [100, 120])], lfe: UNDER_LR },
   '5.1.4': { label: '5.1.4', speakers: [...BED_FRONT, ...pair('s', 135, 0, [110, 135]), ...TOPS_4], lfe: ONE_LFE },
+  '5.2.4': { label: '5.2.4', speakers: [...BED_FRONT, ...pair('s', 135, 0, [110, 135]), ...TOPS_4], lfe: UNDER_LR },
   '7.1': { label: '7.1', speakers: [...BED_FRONT, ...pair('ss', 90, 0, [90, 110]), ...pair('rs', 150, 0, [135, 150])], lfe: ONE_LFE },
   '7.1.4': { label: '7.1.4', speakers: [...BED_FRONT, ...pair('ss', 90, 0, [90, 110]), ...pair('rs', 150, 0, [135, 150]), ...TOPS_4], lfe: ONE_LFE },
+  '7.2.4': { label: '7.2.4', speakers: [...BED_FRONT, ...pair('ss', 90, 0, [90, 110]), ...pair('rs', 150, 0, [135, 150]), ...TOPS_4], lfe: UNDER_LR },
   '9.1.6': {
     label: '9.1.6',
     speakers: [
@@ -84,6 +92,33 @@ export const LAYOUTS = {
 export const elWindow = (s) => s.elRange ?? (s.el === 0 ? [-10, 10] : [30, 55]);
 
 /**
+ * The speakers the highlighted arrangement soloes: those whose role is one of
+ * its own (2.0 picks L and R out of a 7.1.4). Every speaker when no
+ * arrangement is shown, or when none of them carries one of its roles.
+ */
+export function arrangedSpeakers(speakers, settings) {
+  const layout = LAYOUTS[settings.layout?.preset];
+  if (!layout || settings.show?.arrangement === false) return speakers;
+  const roles = new Set([...layout.speakers, ...(layout.lfe ?? [])].map((s) => s.name));
+  const picked = speakers.filter((s) => roles.has(s.role));
+  return picked.length ? picked : speakers;
+}
+
+/**
+ * The arrangement's centre: the mix seat moved by `offset` — millimetres to
+ * the listener's right, toward the front and up ({ right, front, up }). Every
+ * arrangement is placed around, drawn from and checked against this point, so
+ * an array can sit off the seat (a producer's desk behind the mixer's chair).
+ */
+export function layoutCentre(seat, frontDeg, offset = {}) {
+  const f = { x: Math.cos(frontDeg * DEG), y: Math.sin(frontDeg * DEG) };
+  const r = { x: f.y, y: -f.x };
+  const right = (offset.right ?? 0) / 1000;
+  const front = (offset.front ?? 0) / 1000;
+  return { x: seat.x + r.x * right + f.x * front, y: seat.y + r.y * right + f.y * front, z: (seat.z ?? 1.2) + (offset.up ?? 0) / 1000 };
+}
+
+/**
  * Speaker positions for `layout` around the mix position. Bearings are world
  * degrees CCW from +x; the listener faces `frontDeg`. Heights clamp under the
  * ceiling, and the check table reports the elevation the room actually allows.
@@ -106,7 +141,8 @@ export function layoutPositions(layout, mix, frontDeg, radius, ceiling) {
   }
   for (const sub of LAYOUTS[layout].lfe ?? []) {
     const bearing = frontDeg + sub.az;
-    out.push({ role: sub.name, side: 'C', x: mix.x + radius * 0.9 * Math.cos(bearing * DEG), y: mix.y + radius * 0.9 * Math.sin(bearing * DEG), z: 0.3, aim: bearing + 180, tilt: 0, sub: true });
+    const r = radius * (sub.under ? 1 : 0.9);
+    out.push({ role: sub.name, side: 'C', x: mix.x + r * Math.cos(bearing * DEG), y: mix.y + r * Math.sin(bearing * DEG), z: 0.3, aim: bearing + 180, tilt: 0, sub: true });
   }
   return out;
 }

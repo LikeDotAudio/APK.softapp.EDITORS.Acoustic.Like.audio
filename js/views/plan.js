@@ -3,14 +3,14 @@
 import { BANDS, C } from '../acoustics/bands.js';
 import { criticalDistance } from '../acoustics/analysis.js';
 import { DEG, mirrorPoint, segmentCross } from '../acoustics/geometry.js';
-import { LAYOUTS } from '../acoustics/layouts.js';
+import { arrangedSpeakers, LAYOUTS, layoutCentre } from '../acoustics/layouts.js';
 import { fromFrame } from '../acoustics/room.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { MIC_PRESETS, isListener } from '../acoustics/devices.js';
 import { mirrorName } from '../acoustics/symmetry.js';
-import { FACE_COLOURS, dashedLine, dragFrom, drawLabel, drawMic, drawPerson, drawSpeaker, fitCanvas } from './glyphs.js';
+import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, drawPerson, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
-import { drawColourBar, gridCanvas } from './paint.js';
+import { gridCanvas } from './paint.js';
 
 /**
  * THE PLAN IS THE CAD
@@ -280,6 +280,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     const mix = state.mics.find((m) => m.mix);
     if (show.arrangement !== false) drawArrangement(ctx, room, settings, mix, toScreen, pxPerMetre());
     const band = settings.band;
+    const soloed = new Set(arrangedSpeakers(state.speakers, settings));
     for (const s of state.speakers) {
       const p = toScreen(s.x, s.y);
       if (show.coverage && s.kind !== 'sub') {
@@ -312,30 +313,34 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         ctx.restore();
       }
       if (show.rings && state.selected?.id === s.id) drawRings(ctx, s, p, pxPerMetre(), settings);
-      // Every box's reflections at once is a hairball: the selected speaker's, labelled, or all of them faint.
+      // Every box's reflections at once is a hairball: the selected speaker's, labelled, or the highlighted arrangement's faint.
       const picked = state.selected?.kind === 'speaker' ? state.selected.id : null;
-      if (show.rays && mix && (!picked || picked === s.id)) drawRays(ctx, room, s, mix, toScreen, Boolean(picked));
+      if (show.rays && mix && (picked ? picked === s.id : soloed.has(s))) drawRays(ctx, room, s, mix, toScreen, Boolean(picked));
     }
 
     if (show.devices) {
-      for (const s of state.speakers) {
-        const p = toScreen(s.x, s.y);
-        drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: s.role || s.name });
-      }
-      for (const m of state.mics) {
+      // under the glyphs: where each one points, out to the wall it faces
+      for (const s of state.speakers) if (s.kind !== 'sub') drawAimRay(ctx, room, s, s.color, toScreen);
+      for (const m of state.mics) drawAimRay(ctx, room, m, MIC_PRESETS[m.kind].colour, toScreen);
+      // names when the plan is big and uncrowded, tags (L, M3, MIX, E2) when it is not
+      const roomy = pxPerMetre() >= 60 && state.speakers.length + state.mics.length <= 10;
+      // the selected device and the mix seat label first: where labels collide, the first drawn keeps its label
+      const first = (list) => [...list].sort((a, b) => (b.id === state.selected?.id) - (a.id === state.selected?.id) || (b.mix ? 1 : 0) - (a.mix ? 1 : 0));
+      for (const m of first(state.mics)) {
         const p = toScreen(m.x, m.y);
         const ang = (-m.aim * Math.PI) / 180;
-        const label = m.mix ? `MIX · ${m.name}` : m.name;
+        const label = deviceLabel(m, 'mic', state, roomy);
         if (isListener(m)) drawPerson(ctx, p.x, p.y, ang, { ppm: pxPerMetre(), colour: MIC_PRESETS[m.kind].colour, mix: m.mix, selected: state.selected?.id === m.id, label });
         else drawMic(ctx, p.x, p.y, ang, { mix: m.mix, selected: state.selected?.id === m.id, label });
+      }
+      for (const s of first(state.speakers)) {
+        const p = toScreen(s.x, s.y);
+        drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy) });
       }
     }
     if (orbit) drawOrbit(ctx, orbit, toScreen, pxPerMetre());
     ctx.restore();
 
-    if (show.field && out.scale && state.speakers.length) {
-      drawColourBar(ctx, left + 12, top + v.rect.height - 34, 180, 10, out.scale, planLabel(settings));
-    }
     syncHits();
   }
 
@@ -395,7 +400,7 @@ function drawPlanGuides(ctx, room, show, toScreen) {
 function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
   const layout = LAYOUTS[settings.layout?.preset];
   if (!layout) return;
-  const seat = mix ?? fromFrame(room, 0.38 * room.L, 0.5 * room.W);
+  const seat = layoutCentre(mix ?? fromFrame(room, 0.38 * room.L, 0.5 * room.W), settings.frontDeg, settings.layout.offset);
   const r = settings.layout.radius ?? 2;
   const c = toScreen(seat.x, seat.y);
   const at = (az, k = 1) => {
@@ -450,6 +455,28 @@ function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
   drawLabel(ctx, c.x, c.y + r * ppm + 14, `${layout.label} · r ${r.toFixed(1)} m${mix ? '' : ' · no mix mic: seat at 38 %'}`, '#fde047');
 }
 
+/** A device's aim as a ray out to the first wall it meets, its bearing written where it lands. */
+function drawAimRay(ctx, room, d, colour, toScreen) {
+  const far = { x: d.x + 1000 * Math.cos(d.aim * DEG), y: d.y + 1000 * Math.sin(d.aim * DEG) };
+  let t = 1;
+  for (const w of room?.walls ?? []) {
+    const hit = segmentCross(d, far, w.a, w.b);
+    if (hit && hit.t > 1e-6) t = Math.min(t, hit.t);
+  }
+  if (t === 1) return;
+  const a = toScreen(d.x, d.y);
+  const b = toScreen(d.x + (far.x - d.x) * t, d.y + (far.y - d.y) * t);
+  ctx.save();
+  ctx.globalAlpha = 0.7;
+  dashedLine(ctx, a, b, colour, [5, 4], 1);
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = colour;
+  ctx.fill();
+  ctx.restore();
+  drawLabel(ctx, b.x, b.y - 10, `${Math.round(wrap(d.aim))}°`, colour);
+}
+
 /** The hold-to-orbit read-out: the circle the speaker rides, its spoke and its partner's, angle, distance and toe. */
 function drawOrbit(ctx, o, toScreen, ppm) {
   const c = toScreen(o.listener.x, o.listener.y);
@@ -482,7 +509,7 @@ function drawOrbit(ctx, o, toScreen, ppm) {
     ctx.stroke();
   }
   ctx.restore();
-  drawLabel(ctx, p.x, p.y - 22, `${o.name} · ${Math.abs(o.az)}° ${o.az > 0 ? 'left' : o.az < 0 ? 'right' : 'centre'} · ${o.dist.toFixed(2)} m · toe ${o.toe > 0 ? '+' : ''}${o.toe}°${o.partner ? ' · partner mirrored' : ''}`, '#22d3ee');
+  drawLabel(ctx, p.x, p.y - 22, `${o.name} · ${Math.abs(o.az)}° ${o.az > 0 ? 'left' : o.az < 0 ? 'right' : 'centre'} · ${o.dist.toFixed(2)} m · toe ${o.toe > 0 ? '+' : ''}${o.toe}°${o.partner ? ' · partner mirrored' : ''}`, '#22d3ee', { force: true });
 }
 
 /** The sub crawl's map: every tried position as a square, green good → red bad, the best five numbered. */

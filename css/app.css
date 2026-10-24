@@ -19,7 +19,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
-body { display: grid; grid-template-rows: auto 1fr 210px; overflow: hidden; }
+body { display: grid; grid-template-rows: auto 1fr auto 210px; overflow: hidden; }
 
 button, select, input, .button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; }
 button, .button { cursor: pointer; }
@@ -113,6 +113,9 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 .advice li b { display: block; font-size: 12px; }
 .advice li span { color: var(--muted); font-size: 12px; }
 
+#fieldScale { display: flex; gap: 8px; align-items: center; padding: 3px 8px; background: #121418; border-top: 1px solid var(--line); font: 10px var(--mono); color: #ddd; }
+#fieldScale[hidden] { display: flex; visibility: hidden; }
+#fieldScale .ramp { flex: 1; height: 8px; border: 1px solid rgba(255,255,255,.4); }
 #meters { display: flex; gap: 6px; padding: 6px; background: #121418; border-top: 1px solid var(--line); overflow-x: auto; }
 .meter { flex: 0 0 200px; display: flex; flex-direction: column; background: #0b0d12; border: 1px solid #262b36; border-radius: 6px; padding: 4px 6px; min-height: 0; }
 .meter.wide { flex-basis: 320px; }
@@ -186,3 +189,6 @@ main.inspector-out { grid-template-columns: 1fr; }
 td.bad { color: var(--bad); }
 td.ok { color: #4ade80; }
 .stage .hit.holding { outline: 2px solid #22d3ee; outline-offset: 4px; box-shadow: 0 0 14px #22d3ee; }
+.arrayFields { gap: 6px; align-items: center; }
+.arrayField { display: flex; align-items: center; gap: 3px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.arrayField input { width: 64px; padding: 2px 4px; }

@@ -3,7 +3,7 @@
 import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
 import { buildRoom } from './acoustics/room.js';
-import { LAYOUTS } from './acoustics/layouts.js';
+import { arrangedSpeakers, LAYOUTS, layoutCentre } from './acoustics/layouts.js';
 import { paletteItems } from './acoustics/materials.js';
 import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
 import { makeMic } from './acoustics/devices.js';
@@ -19,8 +19,8 @@ import { createInspector } from './ui/inspector.js';
 import { createMeters } from './ui/meters.js';
 import { createFaceView } from './views/faceView.js';
 import { FACE_COLOURS } from './views/glyphs.js';
-import { fieldScale } from './views/paint.js';
-import { createPlanView } from './views/plan.js';
+import { fieldScale, rampGradient } from './views/paint.js';
+import { createPlanView, planLabel } from './views/plan.js';
 import { createView3d } from './views/view3d.js';
 
 const CEILING_LAYER = 'Ceiling';
@@ -45,6 +45,11 @@ const status = document.getElementById('status');
 const cad = { link: null };
 
 const engine = createEngine(store, (out, phase) => {
+  if (phase === 'frame') {
+    // a sweep frame painted ahead: only the response chart's markers change
+    meters.render();
+    return;
+  }
   out.scale = fieldScale(out.values, store.state.settings.rangeDb);
   if (phase === 'room') {
     status.textContent = '⟳ computing…';
@@ -116,6 +121,7 @@ function renderAll() {
     // the layout first: a tile the toolbar just un-hid (3-D) must have its size before it is drawn
     syncToolbar();
     renderGeometry();
+    syncFieldScale();
     meters.render();
     inspector.render();
   });
@@ -185,6 +191,18 @@ document.getElementById('method').addEventListener('click', (e) => {
 const freq = document.getElementById('freq');
 freq.addEventListener('input', () => store.setSettings({ freq: Math.round(10 ** parseFloat(freq.value)) }));
 
+/** One colour scale for every drawing of the field — they all share it, so it is shown once, above the meters. */
+const scaleBar = document.getElementById('fieldScale');
+scaleBar.querySelector('.ramp').style.background = rampGradient();
+function syncFieldScale() {
+  const { scale } = engine.out;
+  const { settings, speakers } = store.state;
+  scaleBar.hidden = !(settings.show.field && scale && speakers.length);
+  if (scaleBar.hidden) return;
+  scaleBar.querySelector('.lo').textContent = `${scale.top - scale.range} dB`;
+  scaleBar.querySelector('.hi').textContent = `${scale.top} dB · ${planLabel(settings)}`;
+}
+
 function syncToolbar() {
   const { mode, settings } = store.state;
   for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('on', b.dataset.mode === mode);
@@ -204,6 +222,11 @@ function syncToolbar() {
   document.getElementById('freqOut').textContent = settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${hz(settings.freq)} Hz`;
   freq.disabled = settings.method === 'energy';
   for (const b of document.querySelectorAll('#arrangement button[data-preset]')) b.classList.toggle('on', b.dataset.preset === settings.layout.preset);
+  for (const input of document.querySelectorAll('.arrayFields input')) {
+    if (document.activeElement === input) continue;
+    const key = input.dataset.array;
+    input.value = Math.round(key === 'radius' ? (settings.layout.radius ?? 2) * 1000 : settings.layout.offset?.[key] ?? 0);
+  }
 }
 
 for (const header of document.querySelectorAll('.tile header, .tile.face canvas, .tile.t3d canvas')) {
@@ -259,6 +282,48 @@ new ResizeObserver(() => renderGeometry()).observe(views);
     if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
   };
   bar.append(place);
+
+  // the array's centre off the mix seat, and its radius, in mm — moving either carries the placed speakers with it
+  const field = (key, glyph, title) => {
+    const input = Object.assign(document.createElement('input'), { type: 'number', step: 10, title });
+    input.dataset.array = key;
+    input.addEventListener('change', () => {
+      const v = parseFloat(input.value);
+      if (Number.isFinite(v)) moveArray(key, v);
+    });
+    const label = document.createElement('label');
+    label.className = 'arrayField';
+    label.title = title;
+    label.append(glyph, input);
+    return label;
+  };
+  const fields = document.createElement('div');
+  fields.className = 'group arrayFields';
+  fields.append(
+    field('right', '↔', 'Array centre: mm to the listener’s right of the mix seat'),
+    field('front', '↕', 'Array centre: mm toward the front from the mix seat'),
+    field('up', '⇡', 'Array centre: mm above the mix seat’s ears'),
+    field('radius', 'r', 'Array radius, mm — the placed speakers scale with it'),
+  );
+  bar.after(fields);
+}
+
+/** Change the array's centre offset or radius (mm), carrying the speakers placed in it along. */
+function moveArray(key, mm) {
+  const { settings, speakers, mics } = store.state;
+  const layout = settings.layout;
+  const next = key === 'radius' ? { ...layout, radius: Math.max(0.3, mm / 1000) } : { ...layout, offset: { ...layout.offset, [key]: mm } };
+  const mix = mics.find((m) => m.mix);
+  const moved = new Set(arrangedSpeakers(speakers, settings).filter((s) => s.role));
+  if (mix && moved.size) {
+    const a = layoutCentre(mix, settings.frontDeg, layout.offset);
+    const b = layoutCentre(mix, settings.frontDeg, next.offset);
+    const k = next.radius / (layout.radius ?? 2);
+    // around the old centre by the radius ratio, then over to the new one; a sub stays on the floor
+    const carry = (s) => ({ ...s, x: b.x + (s.x - a.x) * k, y: b.y + (s.y - a.y) * k, z: s.kind === 'sub' ? s.z : Math.max(0.1, b.z + (s.z - a.z) * k) });
+    store.replaceSpeakers(speakers.map((s) => (moved.has(s) ? carry(s) : s)));
+  }
+  store.setSettings({ layout: next });
 }
 
 // ------------------------------------------------------------------ furniture: the CAD draws it, at true size
@@ -351,33 +416,49 @@ function stopSweep() {
   if (!sweep) return;
   clearInterval(sweep.timer);
   sweep = null;
+  engine.frames(false);
   sweepBtn.classList.remove('on');
   tourBtn.classList.remove('on');
   sweepBtn.textContent = '▶ Sweep';
   if (views.classList.contains('maxed')) maximise(null);
 }
 
-/** Up the slider, log-even, in `seconds`; with `slides`, each view of the room in turn takes the screen. */
+/**
+ * Up and down the frames the engine has painted, a lap every `seconds`
+ * however many are ready — coarse at first, smoother as the gaps fill in.
+ * With `slides`, each view of the room in turn takes the screen.
+ */
 function startSweep({ seconds = 16, slides = null } = {}) {
   stopSweep();
   const t0 = performance.now();
-  const lo = Math.log10(F_MIN);
-  const span = Math.log10(F_MAX) - lo;
   if (store.state.settings.method === 'energy') store.setSettings({ method: 'wave' });
+  engine.frames(true);
   sweep = {
     timer: setInterval(() => {
-      const t = ((performance.now() - t0) / 1000) % seconds;
-      const f = Math.round(10 ** (lo + (t / seconds) * span));
-      if (f !== store.state.settings.freq) store.setSettings({ freq: f });
+      const now = performance.now();
+      const ready = engine.out.frames.ready;
+      if (ready.length && now - sweep.stepped >= Math.max(40, (seconds * 1000) / ready.length)) {
+        sweep.stepped = now;
+        // from wherever the slider is to the next ready frame, turning round at the ends
+        const at = store.state.settings.freq;
+        let i = sweep.dir > 0 ? ready.findIndex((f) => f > at) : ready.findLastIndex((f) => f < at);
+        if (i < 0) {
+          sweep.dir = -sweep.dir;
+          i = sweep.dir > 0 ? Math.min(1, ready.length - 1) : Math.max(0, ready.length - 2);
+        }
+        if (ready[i] !== at) store.setSettings({ freq: ready[i] });
+      }
       if (slides) {
-        const i = Math.floor(((performance.now() - t0) / 1000 / seconds) * slides.length) % slides.length;
+        const i = Math.floor(((now - t0) / 1000 / seconds) * slides.length) % slides.length;
         if (sweep.slide !== i) {
           sweep.slide = i;
           showSlide(slides[i]);
         }
       }
-    }, 140),
+    }, 30),
     slide: -1,
+    stepped: 0,
+    dir: 1,
   };
   (slides ? tourBtn : sweepBtn).classList.add('on');
   sweepBtn.textContent = '■ Stop';

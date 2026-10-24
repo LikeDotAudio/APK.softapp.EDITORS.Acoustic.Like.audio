@@ -2,7 +2,9 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { heightsAtXY } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
-import { css, colourOf } from './paint.js';
+import { arrangedSpeakers } from '../acoustics/layouts.js';
+import { firstReflections, heatOf } from '../acoustics/reflectionPanels.js';
+import { css, colourOf, turbo } from './paint.js';
 import { fitCanvas } from './glyphs.js';
 import { drawPatch } from './treatments.js';
 
@@ -23,6 +25,13 @@ import { drawPatch } from './treatments.js';
  * The treatments painted in the CAD sit on their surfaces as tinted panels,
  * lifted a few millimetres into the room and sorted by their nearest corner,
  * so the grid of field cells under one never paints over it.
+ *
+ * With a mix seat, each speaker's first reflections (the plan's rays, in 3-D):
+ * box → bounce → seat, and a glow where each lands on a surface you can see —
+ * the first Fresnel zone, hot when the bounce arrives nearly as loud as the
+ * direct sound, cool when the box's pattern or a treatment tames it. The
+ * highlighted arrangement soloes its own speakers'; select a speaker to see
+ * only its own, labelled.
  */
 
 export function createView3d({ canvas, store, engine }) {
@@ -199,6 +208,60 @@ export function createView3d({ canvas, store, engine }) {
     }
 
     const { state } = store;
+    const mix = state.mics.find((m) => m.mix);
+    if (state.settings.show.rays && mix) {
+      const picked = state.selected?.kind === 'speaker' ? state.selected.id : null;
+      const rays = firstReflections(room, arrangedSpeakers(state.speakers, state.settings).filter((sp) => !picked || sp.id === picked), mix, state.settings.band ?? 2);
+      const labelled = picked || rays.length <= 12;
+      const seen = (r) => {
+        if (r.surface === 'ceiling') return B.eye.z < room.Hmax;
+        if (r.surface === 'floor') return B.eye.z > 0;
+        const wall = room.walls[r.wall];
+        return (B.eye.x - wall.a.x) * wall.nIn.x + (B.eye.y - wall.a.y) * wall.nIn.y >= 0;
+      };
+      for (const r of rays) {
+        if (!seen(r)) continue;
+        const wall = r.surface === 'wall' ? room.walls[r.wall] : null;
+        const along = wall ? { x: wall.t.x, y: wall.t.y, z: 0 } : { x: 1, y: 0, z: 0 };
+        const across = wall ? { x: 0, y: 0, z: 1 } : { x: 0, y: 1, z: 0 };
+        const radius = Math.min(1.2, r.zone);
+        const ring = Array.from({ length: 24 }, (_, i) => {
+          const a = (i / 24) * Math.PI * 2;
+          const [ca, sa] = [Math.cos(a) * radius, Math.sin(a) * radius];
+          return proj({ x: r.hit.x + along.x * ca + across.x * sa, y: r.hit.y + along.y * ca + across.y * sa, z: r.hit.z + along.z * ca + across.z * sa });
+        });
+        const c = proj(r.hit);
+        if (c.depth <= 0.01 || ring.some((q) => q.depth <= 0.01)) continue;
+        const heat = heatOf(r);
+        const rgb = turbo(heat);
+        const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(2, ...ring.map((q) => Math.hypot(q.x - c.x, q.y - c.y))));
+        g.addColorStop(0, css(rgb, 0.35 + 0.55 * heat));
+        g.addColorStop(0.5, css(rgb, 0.15 + 0.3 * heat));
+        g.addColorStop(1, css(rgb, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ring.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+        ctx.closePath();
+        ctx.fill();
+        const a = proj(r.speaker);
+        const m = proj(mix);
+        ctx.strokeStyle = css(rgb, labelled ? 0.85 : 0.4);
+        ctx.lineWidth = labelled ? 1.5 : 1;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.lineTo(m.x, m.y);
+        ctx.stroke();
+        ctx.fillStyle = css(rgb);
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        if (labelled) {
+          ctx.font = '10px ui-monospace, monospace';
+          ctx.fillText(`+${r.delayMs.toFixed(1)} ms · ${r.db.toFixed(0)} dB${r.treated ? ' · treated' : ''}`, c.x + 6, c.y - 6);
+        }
+      }
+    }
     const devices = [
       ...state.speakers.map((d) => ({ d, colour: d.color, r: 6, label: d.role || d.name })),
       ...state.mics.map((d) => ({ d, colour: d.mix ? '#ff3b3b' : '#e5e7eb', r: 5, label: d.mix ? 'MIX' : d.name })),

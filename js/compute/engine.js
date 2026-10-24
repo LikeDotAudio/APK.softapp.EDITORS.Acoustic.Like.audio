@@ -1,12 +1,12 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { advise } from '../acoustics/advisor.js';
-import { layoutCheck } from '../acoustics/layouts.js';
+import { layoutCentre, layoutCheck } from '../acoustics/layouts.js';
 import { ELEVATION_FACES, elevationFaceOf } from '../acoustics/elevations.js';
 import { buildRoom } from '../acoustics/room.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { buildGrids } from './grids.js';
-import { runJob } from './compute.js';
+import { F_MAX, F_MIN, runJob } from './compute.js';
 
 /**
  * FROM STATE TO NUMBERS
@@ -66,7 +66,8 @@ export function createEngine(store, onResult) {
   let seq = 0;
   let busy = false;
   let queued = null;
-  const out = { room: null, grids: null, values: null, reports: {}, response: null, advice: [], layout: [], rooms: [], error: null, computing: false, virtual: false };
+  let inflight = null;
+  const out = { room: null, grids: null, values: null, reports: {}, response: null, frames: { ready: [], ladder: [] }, advice: [], layout: [], rooms: [], error: null, computing: false, virtual: false };
 
   function currentRoom() {
     const { settings, cad } = store.state;
@@ -88,32 +89,44 @@ export function createEngine(store, onResult) {
   }
 
   function run(job) {
-    if (!worker) {
-      setTimeout(() => finish(runJob(job), job), 0);
-      return;
-    }
     busy = true;
-    const id = ++seq;
-    worker.onmessage = (e) => {
-      if (e.data.id !== id) return;
+    inflight = job;
+    const done = (result, error) => {
       busy = false;
-      if (e.data.error) {
-        out.error = e.data.error;
+      inflight = null;
+      if (job.frame) keepFrame(job, result);
+      else if (error) {
+        out.error = error;
         out.computing = false;
         onResult(out);
-      } else finish(e.data.result, job);
+      } else finish(result, job);
       if (queued) {
         const next = queued;
         queued = null;
         run(next);
-      }
+      } else pump();
+    };
+    if (!worker) {
+      setTimeout(() => {
+        try {
+          done(runJob(job));
+        } catch (err) {
+          done(null, String(err?.stack || err));
+        }
+      }, 0);
+      return;
+    }
+    const id = ++seq;
+    worker.onmessage = (e) => {
+      if (e.data.id !== id) return;
+      done(e.data.result, e.data.error);
     };
     worker.onerror = () => {
       worker = null;
       busy = false;
       run(job);
     };
-    worker.postMessage({ id, job });
+    worker.postMessage({ id, job: { ...job, scene: undefined } }); // the scene only keys the frame cache, not worth cloning
   }
 
   function finish(result, job) {
@@ -124,7 +137,53 @@ export function createEngine(store, onResult) {
     out.response = result.response;
     out.error = null;
     out.computing = Boolean(queued);
+    if (!job.coarse && job.scene === scene) cache.set(job.settings.freq, { result, job });
+    syncFrames();
     onResult(out);
+  }
+
+  /**
+   * THE SWEEP'S FRAMES
+   *
+   * While a sweep runs, the idle worker paints the field ahead of it at the
+   * round frequencies — 20, 30, 50, 100, 200, 300, 500, 1k … — then the ones
+   * between (40, 60, 70 …), then halves the gaps again and again. The sweep
+   * plays whichever are ready, so the loop starts coarse and slowly fills in
+   * smooth. Any change but the frequency starts the frames over.
+   */
+  const LADDER = frameLadder();
+  const cache = new Map(); // freq → { result, job }, for `scene`
+  let scene = null;
+  let sceneKey = '';
+  let precalc = false;
+  let last = null; // the last full-resolution job: the template a frame is painted from
+  const failed = new Set();
+
+  function keepFrame(job, result) {
+    if (job.scene !== scene) return;
+    if (result) cache.set(job.settings.freq, { result, job });
+    else failed.add(job.settings.freq);
+    syncFrames();
+    onResult(out, 'frame');
+  }
+
+  function syncFrames() {
+    out.frames = { ready: [...cache.keys()].sort((x, y) => x - y), ladder: precalc || cache.size ? LADDER : [] };
+  }
+
+  /** The worker is free: paint the next frame the sweep has not got yet. */
+  function pump() {
+    if (!precalc || busy || !last || last.settings.method === 'energy') return;
+    const f = LADDER.find((g) => !cache.has(g) && !failed.has(g));
+    if (f === undefined) return;
+    run({ ...last, settings: { ...last.settings, freq: f }, frame: true });
+  }
+
+  /** Paint frames ahead of the sweep, or stop. The frames already painted stay. */
+  function frames(on) {
+    precalc = on;
+    syncFrames();
+    if (on) pump();
   }
 
   /** Recompute. `coarse` halves the resolution — used while something is being dragged. */
@@ -139,15 +198,66 @@ export function createEngine(store, onResult) {
     out.grids = grids;
     const mirror = state.cad.mirror ? { enabled: state.cad.mirror.enabled, x: state.cad.mirror.xMetres } : null;
     out.advice = advise(room, state.speakers, state.mics, settings, mirror);
-    out.layout = mix ? layoutCheck(state.speakers, mix, settings.frontDeg, settings.layout.preset) : [];
+    out.layout = mix ? layoutCheck(state.speakers, layoutCentre(mix, settings.frontDeg, settings.layout.offset), settings.frontDeg, settings.layout.preset) : [];
     const monitorId = (state.selected?.kind === 'mic' && state.selected.id) || mix?.id || state.mics[0]?.id;
-    const job = { room, speakers: state.speakers, mics: state.mics, settings, grids, monitorId };
+    // everything the field depends on but the frequency; what only changes how it is shown is left out
+    const key = [state.cad.geometry, state.speakers, state.mics];
+    const flat = JSON.stringify({ ...settings, freq: 0, view: 0, show: 0, monitorId });
+    if (!scene || key.some((v, i) => v !== scene.refs[i]) || flat !== sceneKey) {
+      scene = { refs: key };
+      sceneKey = flat;
+      cache.clear();
+      failed.clear();
+      syncFrames();
+    }
+    const job = { room, speakers: state.speakers, mics: state.mics, settings, grids, monitorId, scene, coarse };
     out.monitorId = monitorId;
+    if (!coarse) last = job;
+    const hit = !coarse && cache.get(settings.freq);
+    if (hit) {
+      queued = null;
+      // what is being painted now is older than this: keep it as a frame, do not show it over this one
+      if (inflight) inflight.frame = true;
+      finish(hit.result, hit.job);
+      return;
+    }
     out.computing = true;
     onResult(out, 'room');
     if (busy) queued = job;
     else run(job);
   }
 
-  return { update, out, currentRoom };
+  return { update, out, currentRoom, frames };
+}
+
+/**
+ * The order the sweep's frames are painted in: the 1-2-3-5 steps of every
+ * decade, then the rest of the round numbers, then the gaps halved (on a log
+ * scale, to two figures) until they are under a 24th of an octave.
+ */
+export function frameLadder(lo = F_MIN, hi = F_MAX) {
+  const decades = [];
+  for (let d = 10 ** Math.floor(Math.log10(lo)); d <= hi; d *= 10) decades.push(d);
+  const seen = new Set();
+  const order = [];
+  const take = (fs) => {
+    for (const f of fs.filter((g) => g >= lo && g <= hi && !seen.has(g)).sort((x, y) => x - y)) {
+      seen.add(f);
+      order.push(f);
+    }
+  };
+  take(decades.flatMap((d) => [1, 2, 3, 5].map((m) => Math.round(m * d))));
+  take(decades.flatMap((d) => [1.5, 4, 6, 7, 8, 9].map((m) => Math.round(m * d))));
+  for (;;) {
+    const sorted = [...seen].sort((x, y) => x - y);
+    const mids = [];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] / sorted[i - 1] < 2 ** (1 / 24)) continue;
+      const m = Number((Math.sqrt(sorted[i] * sorted[i - 1])).toPrecision(2));
+      if (m > sorted[i - 1] && m < sorted[i]) mids.push(m);
+    }
+    if (!mids.length) break;
+    take(mids);
+  }
+  return order;
 }

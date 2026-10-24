@@ -2,10 +2,9 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { silhouette, silhouetteLoop } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
-import { FACE_COLOURS, dashedLine, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
+import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
-import { drawColourBar, gridCanvas, sampleGrid } from './paint.js';
-import { planLabel } from './plan.js';
+import { gridCanvas, sampleGrid } from './paint.js';
 import { drawPatch, patchName, shortName } from './treatments.js';
 
 /**
@@ -171,7 +170,6 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     ctx.textAlign = 'right';
     ctx.fillText(face === 'ceiling' ? (state.sheet === 'ceiling' ? '✎ in the CAD' : 'click to treat in the CAD') : state.sheet === face ? '✎ in the CAD' : drawn ? 'drawn in the CAD · click to edit' : 'click to draw in the CAD', w - 10, 29);
     ctx.textAlign = 'left';
-    if (show.field && out.scale && state.speakers.length) drawColourBar(ctx, w - 150, h - 26, 140, 8, out.scale, planLabel(state.settings));
   }
 
   /** This face's treatments: the ceiling's on the RCP, a wall face's on its elevation. The selected one last, so it sits on top. */
@@ -272,15 +270,17 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
 
   function drawDevices(ctx, state) {
     if (!state.settings.show.devices) return;
+    // a small tile gets tags (L, M3, MIX); one made big — maximised, popped out — gets names
+    const roomy = ctx.canvas.clientWidth >= 600 && state.speakers.length + state.mics.length <= 10;
     for (const s of state.speakers) {
       const { u, v } = map.project(s);
       const p = map.toS(u, v);
-      drawSpeaker(ctx, p.x, p.y, screenAngle(s), s.color, { selected: state.selected?.id === s.id, label: s.role || s.name, size: 8 });
+      drawSpeaker(ctx, p.x, p.y, screenAngle(s), s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: 8 });
     }
     for (const m of state.mics) {
       const { u, v } = map.project(m);
       const p = map.toS(u, v);
-      drawMic(ctx, p.x, p.y, screenAngle(m), { mix: m.mix, selected: state.selected?.id === m.id, label: m.mix ? 'MIX' : m.name, size: 6 });
+      drawMic(ctx, p.x, p.y, screenAngle(m), { mix: m.mix, selected: state.selected?.id === m.id, label: deviceLabel(m, 'mic', state, roomy), size: 6 });
     }
   }
 

@@ -3,11 +3,12 @@
 import { ELEVATION_FACES, ELEVATION_LAYER, heightsAtXY } from '../acoustics/elevations.js';
 import { DEG } from '../acoustics/geometry.js';
 import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
-import { LAYOUTS, layoutPositions } from '../acoustics/layouts.js';
+import { arrangedSpeakers, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
 import { lookup, material } from '../acoustics/materials.js';
 import { elevationOrigin } from '../acoustics/patches.js';
-import { reflectionPanels } from '../acoustics/reflectionPanels.js';
+import { firstReflections, heatOf, reflectionPanels } from '../acoustics/reflectionPanels.js';
 import { fromFrame } from '../acoustics/room.js';
+import { turbo } from '../views/paint.js';
 
 /**
  * WHAT THIS APP DRAWS INTO THE CAD FILE
@@ -28,6 +29,12 @@ import { fromFrame } from '../acoustics/room.js';
  *                drawing: plan, ceiling and the four elevations together, the
  *                walls nearest the eye taken away, panels, desk and speakers in
  *                place. Line work in a block, so it never becomes a wall.
+ *                With a mix seat, each speaker's first reflections too: the
+ *                ray box → bounce → seat on the "Reflections" layer, and where
+ *                it lands a heat spot — the first Fresnel zone, the patch of
+ *                surface doing the reflecting, coloured by how loud the bounce
+ *                arrives against the direct sound (hot = a panel goes here),
+ *                labelled with its delay and level.
  *   sections     the wall build and the floor build as sections, layer by
  *                layer, drawn five times true size so the layers read.
  *   arrangement  the speaker layout's reference lines from the mix seat — the
@@ -51,6 +58,7 @@ export const MARK_KEYS = ['labels', 'panels', 'cutaways', 'sections', 'arrangeme
 
 const LAYOUT_LAYER = 'Speaker layout';
 const CUTAWAY_LAYER = '3-D cut-aways';
+const REFLECTION_LAYER = 'Reflections';
 const SECTION_LAYER = 'Construction';
 const FURNITURE_HEIGHT = { desk: 0.75, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2 };
 
@@ -148,7 +156,7 @@ function panelMarks(room, state, mix) {
 function arrangementMarks(room, settings, mix) {
   const layout = LAYOUTS[settings.layout?.preset];
   if (!layout) return [];
-  const seat = mix ?? { ...fromFrame(room, 0.38 * room.L, 0.5 * room.W), z: 1.2 };
+  const seat = layoutCentre(mix ?? { ...fromFrame(room, 0.38 * room.L, 0.5 * room.W), z: 1.2 }, settings.frontDeg, settings.layout.offset);
   const radius = settings.layout.radius ?? 2;
   const ref = layoutPositions(settings.layout.preset, { x: seat.x, y: seat.y, z: seat.z ?? 1.2 }, settings.frontDeg, radius, 99);
   const lines = [];
@@ -206,14 +214,18 @@ function cutawayMarks(room, state, x0, top, has) {
   const gap = Math.max(1, 0.2 * Math.max(room.L, room.W));
   let x = x0;
   let bottom = top;
+  const mix = state.mics.find((m) => m.mix);
+  const rays = state.settings.cadMarks?.reflections !== false && mix ? firstReflections(room, arrangedSpeakers(state.speakers, state.settings), mix, state.settings.band ?? 2) : [];
   for (const v of VIEWS) {
-    const d = cutaway(room, state, (state.settings.frontDeg + v.az) * DEG, has);
+    const d = cutaway(room, state, (state.settings.frontDeg + v.az) * DEG, has, rays, mix);
     if (!d.lines.length) continue;
     const w = d.x1 - d.x0;
     const h = d.y1 - d.y0;
     // base point = so the view's top-left sits at (x, top), the title just above it
     const at = [r3(x - d.x0), r3(top - 0.3 - d.y1)];
     d.texts.push({ text: v.title, x: d.x0, y: r3(d.y1 + 0.1), height: Math.max(0.06, r3(w / 60)) });
+    // the heat spots are fills, so they sit on the sheet, not in the block: moved by the block's base point
+    for (const sp of d.spots) items.push({ kind: 'fill', layer: REFLECTION_LAYER, layerColor: '#c084fc', color: sp.color, opacity: sp.opacity, points: sp.pts.map(([px, py]) => [r3(px + at[0]), r3(py + at[1])]) });
     items.push({ kind: 'drawing', layer: CUTAWAY_LAYER, layerColor: '#94a3b8', name: v.name, at, lines: d.lines, texts: d.texts });
     x += w + gap;
     bottom = Math.min(bottom, top - 0.3 - h);
@@ -222,7 +234,7 @@ function cutawayMarks(room, state, x0, top, has) {
 }
 
 /** One axonometric cut-away: lines [x1, y1, x2, y2, layer] in view metres, and its extent. */
-function cutaway(room, state, camAz, has) {
+function cutaway(room, state, camAz, has, rays = [], mix = null) {
   const v = { x: Math.cos(camAz), y: Math.sin(camAz) };
   const right = { x: -Math.sin(camAz), y: Math.cos(camAz) };
   const P = (p, z) => ({ X: p.x * right.x + p.y * right.y, Y: -(p.x * v.x + p.y * v.y) * Math.sin(TILT) + z * Math.cos(TILT) });
@@ -288,9 +300,33 @@ function cutaway(room, state, camAz, has) {
     lines.push([r3(p.X - c), r3(p.Y), r3(p.X + c), r3(p.Y)], [r3(p.X), r3(p.Y - c), r3(p.X), r3(p.Y + c)]);
     if (m.mix) texts.push({ text: 'MIX', x: r3(p.X + c), y: r3(p.Y + c), height: 0.05 });
   }
+  const spots = [];
+  for (const r of rays) {
+    if (r.surface === 'wall' && cut.has(r.wall)) continue;
+    seg(r.speaker, r.speaker.z, r.hit, r.hit.z, REFLECTION_LAYER);
+    seg(r.hit, r.hit.z, mix, mix.z, REFLECTION_LAYER);
+    // the spot lies in its surface: across the wall and up it, or flat for the ceiling and floor
+    const w = r.surface === 'wall' ? room.walls[r.wall] : null;
+    const along = w ? { x: w.t.x, y: w.t.y, z: 0 } : { x: 1, y: 0, z: 0 };
+    const across = w ? { x: 0, y: 0, z: 1 } : { x: 0, y: 1, z: 0 };
+    const [cr, cg, cb] = turbo(heatOf(r));
+    const color = `#${[cr, cg, cb].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+    const radius = Math.min(1.2, r.zone);
+    for (const k of [1, 0.6, 0.3]) {
+      const pts = Array.from({ length: 20 }, (_, i) => {
+        const a = (i / 20) * Math.PI * 2;
+        const [ca, sa] = [Math.cos(a) * radius * k, Math.sin(a) * radius * k];
+        const q = P({ x: r.hit.x + along.x * ca + across.x * sa, y: r.hit.y + along.y * ca + across.y * sa }, r.hit.z + along.z * ca + across.z * sa);
+        return [r3(q.X), r3(q.Y)];
+      });
+      spots.push({ pts, color, opacity: 0.12 + 0.18 * heatOf(r) });
+    }
+    const h = P(r.hit, r.hit.z);
+    texts.push({ text: `${r.name} · +${r.delayMs.toFixed(1)} ms · ${r.db.toFixed(0)} dB${r.treated ? ' · treated' : ''}`, x: r3(h.X + 0.05), y: r3(h.Y + 0.05), height: 0.04 });
+  }
   const xs = lines.flatMap((l) => [l[0], l[2]]);
   const ys = lines.flatMap((l) => [l[1], l[3]]);
-  return { lines, texts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  return { lines, texts, spots, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
 }
 
 function furnitureHeight(paletteId) {
