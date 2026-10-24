@@ -63,7 +63,7 @@ const LAYOUT_LAYER = 'Speaker layout';
 const CUTAWAY_LAYER = '3-D cut-aways';
 const REFLECTION_LAYER = 'Reflections';
 const SECTION_LAYER = 'Construction';
-const FURNITURE_HEIGHT = { desk: 0.75, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2 };
+const FURNITURE_HEIGHT = { desk: 0.75, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3 };
 
 /** A string hash: what the CAD compares to say "already on the sheet". */
 export function hashOf(value) {

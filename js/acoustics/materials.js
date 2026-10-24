@@ -103,6 +103,8 @@ export const MATERIALS = [
   m('desk-top', 'Desk / console top, laminate and metal', 'Furniture', [0.05, 0.04, 0.04, 0.04, 0.05, 0.05], 20, 0.25, 'rough', '#6b7280'),
   m('upholstered', 'Upholstered couch or chair', 'Furniture', [0.35, 0.5, 0.65, 0.75, 0.75, 0.7], 5, 0.6, 'rough', '#7c5a3a'),
   m('rack', 'Equipment rack, steel and gear', 'Furniture', [0.05, 0.05, 0.06, 0.08, 0.1, 0.1], 20, 0.5, 'rough', '#3f4652'),
+  m('drum-kit', 'Drum kit: shells, heads and cymbals', 'Instruments', [0.12, 0.15, 0.12, 0.1, 0.08, 0.08], 5, 0.6, 'rough', '#b91c1c'),
+  m('guitar-amp', 'Guitar amp: wooden cabinet, grille cloth', 'Instruments', [0.12, 0.1, 0.08, 0.08, 0.1, 0.12], 15, 0.3, 'rough', '#27272a'),
   m('door-acoustic', 'Acoustic door, sealed, solid core', 'Wood', [0.12, 0.08, 0.05, 0.05, 0.05, 0.05], 45, 0.05, 'flat', '#5c3b1e'),
   // nothing there
   m('opening', 'Opening / void', 'Opening', [1, 1, 1, 1, 1, 1], 0, 0, 'flat', '#202020'),
@@ -119,6 +121,9 @@ export const PRODUCTS = [
   p('couch-2400x1000', 'Client couch 2400×1000', 'upholstered', [2.4, 1.0]),
   p('armchair-900', 'Armchair 900×900', 'upholstered', [0.9, 0.9]),
   p('rack-600x800', 'Equipment rack 600×800', 'rack', [0.6, 0.8]),
+  p('drum-kit-1800x1500', 'Drum kit 1800×1500, with its throne', 'drum-kit', [1.8, 1.5]),
+  p('guitar-amp-600x280', 'Guitar combo amp 600×280', 'guitar-amp', [0.6, 0.28]),
+  p('guitar-stack-760x360', 'Guitar half stack, 4×12 and head, 760×360', 'guitar-amp', [0.76, 0.36]),
   p('qrd-600', 'QRD 600×600', 'diffuser', [0.6, 0.6]),
   p('qrd-1200x600', 'QRD 1200×600', 'diffuser', [1.2, 0.6]),
   p('skyline-600', 'Skyline diffuser 600×600', 'diffuser', [0.6, 0.6]),
