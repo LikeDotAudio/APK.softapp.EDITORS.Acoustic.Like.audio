@@ -11,11 +11,13 @@ import { BANDS } from './bands.js';
  *
  *   FLOOR   what the room stands on. A slab on grade is tied to the building;
  *           a floating floor or a room on isolators is a mass on a spring,
- *           natural frequency f0. Above √2·f0 it isolates, rising 12 dB per
- *           octave (single degree of freedom, damping ζ = 0.1); AT f0 it
- *           amplifies. That is the structure-borne insertion loss: the kick
- *           drum through the floor into the house, the lorry outside into the
- *           room. A sprung wood floor is also a membrane: it absorbs a little
+ *           natural frequency f0. Above √2·f0 it isolates (single degree of
+ *           freedom, damping ζ = 0.1): about 12 dB per octave just above,
+ *           settling toward 6 dB per octave higher up, where the damping
+ *           carries force across the spring; AT f0 it amplifies. That is
+ *           the structure-borne insertion loss: the kick drum through the
+ *           floor into the house, the lorry outside into the room. A
+ *           sprung wood floor is also a membrane: it absorbs a little
  *           around its resonance, which the room's floor α picks up.
  *
  *   WALLS   how they are built. Sound transmission loss per octave band for

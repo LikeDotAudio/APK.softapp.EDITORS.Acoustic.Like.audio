@@ -148,9 +148,11 @@ For each speaker, it finds the nearest wall and the signed inside distance
 $\sigma = (\mathbf x - \mathbf a)\cdot\hat n^{\text{in}}$ (`nearestWall`). If
 $\sigma < \text{clear}$, that wall's face must move out by
 $\text{clear} - \sigma$. Each face takes the largest such value. The ceiling
-must rise by $\max(0,\ z + \text{headroom} - H)$. All values are rounded to
-cm. `wider` = left + right and `deeper` = front + back. $H$ is the room's
-mean height (chapter 2).
+must rise by $\max(0,\ z + \text{headroom} - H(x, y))$, where $H(x, y)$ is
+the ceiling right above the speaker (`heightsAtXY`; the room's height where
+no elevation is drawn). All values are rounded to cm. `wider` = left + right
+and `deeper` = front + back. The width finder rejects a radius by the same
+local ceiling.
 
 ## 14.5 The room library
 
@@ -159,8 +161,8 @@ rooms, control rooms, live rooms, immersive and film). Each plan is in
 metres, with the front at +y, centred on $x$ = 0, starting at $y$ = 0, and
 wound counter-clockwise, together with a ceiling height. The comment says
 these are room *types*, not surveys of real studios. The ratio rooms are built
-as $W = 2.7\cdot1.4$, $L = 2.7\cdot1.9$ (Louden's ratio, labelled
-"Bolt-area"), Sepmeyer A, and the golden section. `planArea` is the shoelace
+as $W = 2.7\cdot1.4$, $L = 2.7\cdot1.9$ (Louden's ratio, which lies inside
+Bolt's area), Sepmeyer A, and the golden section. `planArea` is the shoelace
 area.
 
 `roomLibrary.js` `furnish(room)` places furniture and listeners in the

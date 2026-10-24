@@ -40,7 +40,8 @@ import { openingsOn, wallKey } from './wallChains.js';
  * A wall can be told what it is (settings.walls, keyed by wallKey): its own
  * finish instead of its face's, and a note in the user's words. A plan of wall
  * pieces with gaps (wallChains.js) brings its OPENINGS: each lies on a wall
- * and is mixed in like a patch of 'opening', α 1 — sound leaves by it.
+ * and is mixed in like a patch of 'opening', all but α 1 — sound leaves by
+ * it (0.99, the cap on every material, so Eyring's ln(1 − α) stays finite).
  */
 
 export const FACES = ['floor', 'ceiling', 'front', 'back', 'left', 'right'];

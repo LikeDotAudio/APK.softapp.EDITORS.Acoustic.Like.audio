@@ -90,14 +90,17 @@ low-frequency pressure gain that implies:
 The methods use the gain in two different ways:
 
 * The **energy method** adds it as a number. `field.js` `mountGainDb` adds
-  the gain when $f \le 250$ Hz and nothing above.
+  the gain where the box radiates as a point source, $f \le$ `omniBelow`
+  (250 Hz for a box that does not give one), and nothing above.
 * The **wave method** never adds it. With the box near a boundary, its image
   source arrives almost in phase, which produces the same gain from the
   physics. The engine's test suite checks that a source 1 mm from a rigid
   wall gains about +6 dB at 50 Hz (node gives +5.7 dB, with the far images
   of a 1000 m room included).
 
-The echogram (chapter 9) does not add the mount gain either.
+The echogram (chapter 9) leaves its discrete arrivals to the images, as the
+wave method does, and adds the gain to its late reverberant tail, as the
+energy method's reverberant field does.
 
 ## 6.4 Size
 
@@ -155,13 +158,14 @@ vertical angle $\varphi_v = \operatorname{atan2}(\hat u\cdot\hat d,\ \hat f\cdot
 The gain is then
 
 $$
-G = \max\!\left(-30,\ -6\left[\left(\frac{\varphi_h}{\Theta_h/2}\right)^2 + \left(\frac{\varphi_v}{\Theta_v/2}\right)^2\right]\right)\ \text{dB}
+G = \max\!\left(-30,\ -6\,\rho^4\right)\ \text{dB},\qquad \rho^2 = \left(\frac{\varphi_h}{\Theta_h/2}\right)^2 + \left(\frac{\varphi_v}{\Theta_v/2}\right)^2
 $$
 
 where $\Theta_h$ and $\Theta_v$ are the rated coverage angles (`hCov`,
 `vCov`, each at least 10°). The result is −6 dB at the rated edge. Inside
-the coverage it is a parabola in angle, not flat: −1.5 dB halfway to the edge.
-A 90° horn reads −1.5 dB at 22.5°, −6 dB at 45° and −24 dB at 90°.
+the coverage it is nearly flat (−0.4 dB halfway to the edge), and past the
+edge it falls fast, as a constant-directivity horn does. A 90° horn reads
+−0.4 dB at 22.5°, −6 dB at 45° and −30 dB (the floor) at 67.5° and beyond.
 
 ### The pattern fades at low frequency
 

@@ -15,8 +15,11 @@ import { frame } from './patterns.js';
  * than recited. Every finding is { level: ok | warn | info, title, detail }.
  *
  *   38 % rule      ears (not speakers) 38 % of the length from the front wall,
- *                  50 % across, clear of the modal null fractions
- *                  (2k − 1)/2n of every dimension for n ≤ 4.
+ *                  clear of the modal null fractions (2k − 1)/2n of the
+ *                  length and the height for n ≤ 4; and 50 % across. The
+ *                  width is not tested against its nulls: its centre IS the
+ *                  null of every odd width mode, a price paid for left–right
+ *                  symmetry.
  *   ear height     38–42 % of the ceiling, never its 50 % null.
  *   acoustic axis  each monitor aimed at the ears; the woofer not at 50 % H.
  *   critical dist. a monitor's listener inside R_c (the room unheard); a

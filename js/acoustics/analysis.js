@@ -3,7 +3,7 @@
 import { AIR_DB_PER_M, BANDS, C } from './bands.js';
 import { sourceDb } from './devices.js';
 import { deviceGain } from './patterns.js';
-import { cachedQ, energyAt, modalDb, waveDb } from './field.js';
+import { cachedQ, energyAt, modalDb, mountGainDb, waveDb } from './field.js';
 
 /**
  * WHAT ONE MICROPHONE HEARS
@@ -38,6 +38,13 @@ import { cachedQ, energyAt, modalDb, waveDb } from './field.js';
  * and Ts and EDT rise as surfaces scatter more. The 4/R reverberant field
  * (energyAt, and the late tail here) depends on absorption alone and is left
  * as it was.
+ *
+ * THE LATE TAIL is the reverberant field's own decay counted from the direct
+ * sound, eRev·k·e^(−k(t − tD)), drawn only from where the images stop: the
+ * images up to that time ARE its early part, so the tail carries the share of
+ * 4/R that is left after them — not all of it again. Its level carries the
+ * mount's boundary gain, as energyAt's reverberant field does; the discrete
+ * arrivals get theirs from the image sources themselves (devices.js).
  *
  * `tail` is everything diffuse — the late tail plus the scattered energy — so
  * the meter and the auralisation draw and play it without knowing the split;
@@ -74,7 +81,7 @@ export function echogram(room, prep, mic, band) {
       arrivals.push({ t: r / C + delay, level: L, energy, scattered, order: img.order, speaker: spk.id, img });
     }
     const Q = cachedQ(spk, freq);
-    eRev += 10 ** ((L0 - 10 * Math.log10(Q / (4 * Math.PI)) + 10 * Math.log10(4 / room.perBand[band].R)) / 10) / qMic;
+    eRev += 10 ** ((L0 + mountGainDb(spk, freq) - 10 * Math.log10(Q / (4 * Math.PI)) + 10 * Math.log10(4 / room.perBand[band].R)) / 10) / qMic;
   }
   arrivals.sort((p, q) => p.t - q.t);
   const T = room.perBand[band].eyring;

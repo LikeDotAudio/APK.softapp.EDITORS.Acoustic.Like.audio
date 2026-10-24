@@ -63,7 +63,7 @@ export const ROOM_LIBRARY = [
   { id: 'podcast', group: 'Home & project', name: 'Podcast room', note: 'two hosts, one table', h: 2.5, poly: rect(3.0, 3.5) },
 
   // ---------------------------------------------------------------- rooms drawn to a ratio
-  { id: 'bolt', group: 'Ratio rooms', name: 'Bolt-area room 1 : 1.4 : 1.9', note: 'height 2.7 m; inside Bolt’s area of even modes', h: 2.7, poly: rect(2.7 * 1.4, 2.7 * 1.9) },
+  { id: 'bolt', group: 'Ratio rooms', name: 'Louden-ratio room 1 : 1.4 : 1.9', note: 'height 2.7 m; Louden’s best ratio, inside Bolt’s area of even modes', h: 2.7, poly: rect(2.7 * 1.4, 2.7 * 1.9) },
   { id: 'sepmeyer', group: 'Ratio rooms', name: 'Sepmeyer A 1 : 1.14 : 1.39', note: 'height 2.7 m', h: 2.7, poly: rect(2.7 * 1.14, 2.7 * 1.39) },
   { id: 'golden', group: 'Ratio rooms', name: 'Golden-ratio room 1 : 1.62 : 2.62', note: 'height 2.5 m', h: 2.5, poly: rect(2.5 * 1.62, 2.5 * 2.62) },
   { id: 'bs1116', group: 'Ratio rooms', name: 'Reference listening room', note: '35 m², 2.8 m — the size ITU-R BS.1116 and EBU Tech 3276 ask for', h: 2.8, poly: rect(5.4, 6.5) },

@@ -2,6 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { prepare, waveDb } from './field.js';
 import { pointInPolygon } from './geometry.js';
+import { heightsAtXY } from './elevations.js';
 import { carryArray, soundingSpeakers } from './layouts.js';
 import { powerMean, roomSeats, seatWeight } from '../compute/compute.js';
 
@@ -39,7 +40,8 @@ export function lowEndSpread(room, speakers, mics, settings, { lo, hi } = LOW_EN
 function speakersAt(room, speakers, settings, mix, r) {
   const moved = new Map(carryArray(speakers, settings, mix, { ...settings.layout, radius: r }, room.H).map((m) => [m.id, m]));
   const next = speakers.map((s) => (moved.has(s.id) ? { ...s, ...moved.get(s.id) } : s));
-  const inside = [...moved.values()].every((m) => pointInPolygon(m.x, m.y, room.poly) && m.z < room.H);
+  // through the ceiling right above it, not the room's mean height: a sloped ceiling is lower at one end
+  const inside = [...moved.values()].every((m) => pointInPolygon(m.x, m.y, room.poly) && m.z < (room.frame ? heightsAtXY(room, m.x, m.y).ceiling : room.H));
   return inside ? soundingSpeakers(next, settings) : null;
 }
 

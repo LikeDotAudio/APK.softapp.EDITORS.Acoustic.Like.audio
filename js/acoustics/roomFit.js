@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { WALL_FACES } from './room.js';
+import { heightsAtXY } from './elevations.js';
 
 /**
  * HOW MUCH BIGGER THE ROOM WOULD HAVE TO BE
@@ -12,7 +13,8 @@ import { WALL_FACES } from './room.js';
  * the wall nearest it has to move out by the difference. Each face of the
  * room (front, back, left, right, as room.js names its walls) moves out by
  * the most any of its walls must; the ceiling goes up by however far a box,
- * plus `headroom`, rises past it.
+ * plus `headroom`, rises past the ceiling right above it (a sloped ceiling is
+ * lower at one end than its mean).
  *
  * Returns { front, back, left, right, up, wider, deeper, any } in metres,
  * `wider` = left + right and `deeper` = front + back. Plain data, cheap: the
@@ -29,13 +31,16 @@ export function roomGrowth(room, speakers, { clear = CLEAR_M, headroom = HEADROO
     if (near && near.inside < clear && WALL_FACES.includes(near.wall.face)) {
       grow[near.wall.face] = Math.max(grow[near.wall.face], clear - near.inside);
     }
-    if (Number.isFinite(s.z)) grow.up = Math.max(grow.up, s.z + headroom - room.H);
+    if (Number.isFinite(s.z)) grow.up = Math.max(grow.up, s.z + headroom - ceilingAt(room, s));
   }
   for (const k of Object.keys(grow)) grow[k] = Math.round(Math.max(0, grow[k]) * 100) / 100;
   const wider = +(grow.left + grow.right).toFixed(2);
   const deeper = +(grow.front + grow.back).toFixed(2);
   return { ...grow, wider, deeper, any: wider > 0 || deeper > 0 || grow.up > 0 };
 }
+
+/** The ceiling height right above a point: the drawn elevations' where there are any, the room's height where not. */
+const ceilingAt = (room, p) => (room.frame ? heightsAtXY(room, p.x, p.y).ceiling : room.H);
 
 /** The wall closest to p, and how far p is inside it (negative: through it). */
 function nearestWall(room, p) {

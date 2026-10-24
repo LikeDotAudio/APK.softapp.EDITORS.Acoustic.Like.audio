@@ -9,8 +9,9 @@ import { pointInPolygon } from './geometry.js';
  *
  * The "sub crawl", done by the model instead of on hands and knees: put a
  * subwoofer at every point of a floor grid, and at each one hear 20–120 Hz at
- * every listening seat (every mic; the mix seat counts double, it is where
- * the mix is made). Two things make a position good:
+ * every listening seat (every mic, each counted by its tier's weight —
+ * devices.js — and the mix seat at least double, it is where the mix is
+ * made). Two things make a position good:
  *
  *   FLAT   the response at a seat deviates little from its own mean — no
  *          mode piling up, no null swallowing a note (the standard deviation
@@ -26,7 +27,7 @@ import { pointInPolygon } from './geometry.js';
  * Plain data in and out; `step` sets the grid and with it the time it takes.
  */
 
-export const SUB_FREQS = Array.from({ length: 31 }, (_, i) => 20 * 2 ** (i / 12)).filter((f) => f <= 120);
+export const SUB_FREQS = Array.from({ length: 32 }, (_, i) => 20 * 2 ** (i / 12)).filter((f) => f <= 120);
 
 /** One candidate: { flat, even, score, curves } for a sub at `at` heard at `seats`. */
 export function scoreSub(room, at, seats, { maxOrder = 3, freqs = SUB_FREQS } = {}) {

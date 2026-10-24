@@ -10,7 +10,9 @@ import { DEG } from './geometry.js';
  * direction, and Q is how much of a diffuse field the capsule rejects.
  *
  * First-order shapes are a + (1 − a)·cos θ. A horn is the one that is not:
- * flat across its rated coverage, −6 dB at the edge the datasheet quotes, with
+ * nearly flat across its rated coverage (−0.4 dB halfway out), −6 dB at the
+ * edge the datasheet quotes and falling fast past it (−30 dB at 1.5× the
+ * coverage) — −6·r⁴, r the angle as a fraction of the half-coverage — with
  * horizontal and vertical coverage separate (90×50, 60×40) because that is how
  * projection boxes are specified.
  *
@@ -55,7 +57,8 @@ export function shapeGain(pattern, fr, dir, hCov = 90, vCov = 60) {
   if (pattern === 'horn') {
     const ph = Math.atan2(dot(fr.r, dir) / len, df);
     const pv = Math.atan2(dot(fr.u, dir) / len, df);
-    const g = -6 * ((ph / ((Math.max(hCov, 10) / 2) * DEG)) ** 2 + (pv / ((Math.max(vCov, 10) / 2) * DEG)) ** 2);
+    const r2 = (ph / ((Math.max(hCov, 10) / 2) * DEG)) ** 2 + (pv / ((Math.max(vCov, 10) / 2) * DEG)) ** 2;
+    const g = -6 * r2 * r2;
     return Math.max(FLOOR_DB, g);
   }
   const a = FIRST_ORDER[pattern] ?? 1;

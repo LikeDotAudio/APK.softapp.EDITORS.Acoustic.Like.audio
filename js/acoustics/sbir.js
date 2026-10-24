@@ -14,9 +14,10 @@ import { mirrorPoint, pointInPolygon } from './geometry.js';
  *
  *   the speaker is a POINT SOURCE (no directivity — below ~300 Hz, where SBIR
  *   matters, a box is all but omni), and it is heard through the DIRECT path
- *   plus the SIX FIRST-ORDER IMAGES: one per wall of the plan (room.walls,
- *   only where the reflection lands on the wall itself), the floor at
- *   zFloor (0 for a flat room) and the ceiling at zCeiling (H). Each image
+ *   plus ONE FIRST-ORDER IMAGE PER SURFACE THAT CAN REFLECT IT: one per wall
+ *   of the plan (room.walls, only where the reflection lands on the wall
+ *   itself), the floor at zFloor (0 for a flat room) and the ceiling at
+ *   zCeiling (H) — six in a rectangle, more in a splayed plan. Each image
  *   keeps (1 − α) of its energy, α from the octave band nearest the frequency
  *   (125 Hz stands in below 125 Hz), so its pressure is √(1 − α) / r.
  *

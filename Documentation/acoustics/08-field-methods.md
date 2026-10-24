@@ -77,8 +77,8 @@ the ideal +6 dB of a $2\pi$ mount (node, the engine's own test case).
 
 For each speaker, with $r = \max(\lvert\mathbf x-\mathbf x_s\rvert, 0.05)$,
 base level $L_B = L_0(f_b) + G_{\text{mount}}(f_b)$, and
-$G_{\text{mount}} = $ `MOUNTS[mount].gainDb` if $f_b \le 250$ Hz, else 0
-(`mountGainDb`):
+$G_{\text{mount}} = $ `MOUNTS[mount].gainDb` if $f_b \le$ `omniBelow`
+(250 Hz when the box gives none), else 0 (`mountGainDb`):
 
 **Direct** (no images; the real source's pattern toward the point, and the
 microphone's toward the source):
@@ -164,9 +164,9 @@ sloped ceiling. The truncated mode set is accurate below about
 $f_{\max}$. Meant for frequencies below the Schroeder frequency. The compute
 job stops using it above 1 kHz (chapter 16).
 
-Height coordinate: in `modalDb` the receiver's $w$ is
-$z - z_{\text{floor}}$. In `prepareModal` the source's $w$ is its raw $z$.
-For a flat room ($z_{\text{floor}} = 0$) the two agree.
+Height coordinate: the source's and the receiver's $w$ are both measured
+from the floor, $w = z - z_{\text{floor}}$ (`prepareModal` and `modalDb`), so
+a room with a raised or sloped floor puts both on the same datum.
 
 ## 8.4 Worked comparison
 

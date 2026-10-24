@@ -48,8 +48,9 @@ export function prepare(room, speakers, opts) {
   });
 }
 
-function mountGainDb(spk, freq) {
-  return freq <= 250 ? (MOUNTS[spk.mount]?.gainDb ?? 0) : 0;
+/** The boundary gain of a flush or corner mount: only where the box radiates as a point source, below its omniBelow (devices.js). */
+export function mountGainDb(spk, freq) {
+  return freq <= (spk.omniBelow ?? 250) ? (MOUNTS[spk.mount]?.gainDb ?? 0) : 0;
 }
 
 /** Complex pressure sum at `pt` for one frequency: { re, im } in pascals re 20 µPa scale. */
@@ -153,7 +154,8 @@ export function prepareModal(room, speakers, freq) {
         let si = 0;
         for (const s of speakers) {
           const q = toBox(room, s);
-          const psi = Math.cos((nx * Math.PI * q.u) / L) * Math.cos((ny * Math.PI * q.v) / W) * Math.cos((nz * Math.PI * s.z) / H);
+          // heights from the floor, as modalDb measures the receiver's
+          const psi = Math.cos((nx * Math.PI * q.u) / L) * Math.cos((ny * Math.PI * q.v) / W) * Math.cos((nz * Math.PI * (s.z - (room.zFloor ?? 0))) / H);
           const A = 10 ** (sourceDb(s, freq) / 20);
           const ph = -w * ((s.delayMs || 0) / 1000);
           sr += A * psi * Math.cos(ph);

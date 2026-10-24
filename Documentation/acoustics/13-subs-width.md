@@ -52,8 +52,9 @@ $$
 
 Seat weights are as in § 13.1.
 
-`SUB_FREQS` are $20\cdot2^{i/12}$ for $i = 0\ldots30$: 31 points at
-1/12 octave, from 20 Hz to 113.1 Hz. The `≤ 120` filter removes none of them.
+`SUB_FREQS` are $20\cdot2^{i/12}$ for $i = 0\ldots31$: 32 points at
+1/12 octave, from 20 Hz to 119.9 Hz, inside the 20–120 Hz the crawl
+promises.
 
 `subGrid(room, step = 0.25, margin = 0.2)` lays the candidate points on a
 square grid over the plan's bounding box, inset by `margin` and kept inside

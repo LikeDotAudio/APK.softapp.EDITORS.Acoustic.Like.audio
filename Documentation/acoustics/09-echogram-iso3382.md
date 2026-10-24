@@ -46,6 +46,10 @@ $$
 The exponential is referenced to $t_D$ but begins at $t_{\text{tail}}$, so
 the tail starts where the images stop. Its total energy is
 $E_{\text{rev}}\,e^{-k(t_{\text{tail}}-t_D)}$, not the full $E_{\text{rev}}$.
+That is deliberate: the decay is the reverberant field's own, counted from
+the direct sound, and the image arrivals up to $t_{\text{tail}}$ are its
+early part. Starting it afresh at $t_{\text{tail}}$ would count that early
+energy twice.
 
 The echogram length is $\min\big(4\ \text{s},\ t_D + 1.4T + 0.05\big)$.
 
@@ -90,8 +94,10 @@ The comment calls this the "secondary sources / diffuse rain" idea of hybrid
 ray tracers, made statistical.
 
 **Assumptions.** Image arrivals add as energy (no phase). The diffuse
-parts are exponential with the single Eyring rate of the band. No mounting
-gain is applied (the energy method adds one below 250 Hz; chapter 8). $r$ is
+parts are exponential with the single Eyring rate of the band. The discrete
+arrivals carry no mounting gain (their images supply the boundary); the late
+tail carries it, below the box's `omniBelow`, as the energy method's
+reverberant field does (chapter 8). $r$ is
 floored at 5 cm.
 
 ## 9.2 ISO 3382-1 parameters
