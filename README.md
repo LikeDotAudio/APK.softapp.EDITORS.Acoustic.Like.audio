@@ -52,7 +52,7 @@ The CAD only publishes; it never reads this app's state. The overlay is saved in
 
 ## Hosting
 
-Published on GitHub Pages by `.github/workflows/deploy.yml` on every push to `main` and nightly. The CAD's tracked `dist/` is copied in beside the page at `EDITORS.CAD.Like.audio/dist/`, the path the iframe names, so the bridge stays same-origin; a CAD change shows up here on the next run.
+Published on GitHub Pages by `.github/workflows/deploy.yml` on every push to `main` and nightly. The CAD's tracked `dist/` is copied into the site as `cad/` and the published page's iframe is pointed there (the tree's `../EDITORS.CAD.Like.audio/dist/` would climb out of a github.io project site), so the bridge stays same-origin; a CAD change shows up here on the next run.
 
 **Live now:** https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/
 
