@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { ELEVATION_FACES, ELEVATION_LAYER, heightsAtXY } from '../acoustics/elevations.js';
-import { boxSize, isListener } from '../acoustics/devices.js';
+import { boxSize, isListener, MOUNTS } from '../acoustics/devices.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
 import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
@@ -316,6 +316,15 @@ export function arrangementMarks(room, settings, mix, state = null) {
     const label = prod?.name?.split(/[,(]/)[0]?.trim() ?? 'Desk';
     texts.push({ text: label, x: r3(dx - 0.2), y: r3(dy), height: 0.07 });
   }
+  // and what the CAD has placed — the furnished room's desks, the producer desk, couch and rack — that is not one of those
+  for (const f of furnitureOf(room)) {
+    if ((state?.furniture ?? []).some((g) => g.cadId === f.id)) continue;
+    f.corners.forEach((p, i) => {
+      const q = f.corners[(i + 1) % f.corners.length];
+      lines.push([r3(p.x - seat.x), r3(p.y - seat.y), r3(q.x - seat.x), r3(q.y - seat.y)]);
+    });
+    texts.push({ text: f.name, x: r3(f.x - seat.x - 0.2), y: r3(f.y - seat.y), height: 0.07 });
+  }
 
   return [{ kind: 'drawing', layer: LAYOUT_LAYER, layerColor: '#fde047', name: 'arrangement', at: [seat.x, seat.y], lines, texts }];
 }
@@ -404,7 +413,7 @@ function cutaway(room, state, camAz, has, rays = [], mix = null) {
     }
   }
   for (const s of state.speakers) {
-    const z1 = cabinet(s, seg, layerOr(LAYOUT_LAYER));
+    const z1 = cabinet(s, seg, layerOr(LAYOUT_LAYER), room);
     const p = P(s, z1);
     texts.push({ text: s.role || s.name, x: r3(p.X), y: r3(p.Y + 0.05), height: 0.05 });
   }
@@ -460,9 +469,10 @@ function cutaway(room, state, camAz, has, rays = [], mix = null) {
 
 /**
  * A speaker's cabinet in 3-D line work: its size (litres), turned to where it
- * aims, the acoustic centre in its middle. Returns the top of the box.
+ * aims, the acoustic centre in its middle, and what holds it up (mountOf).
+ * Returns the top of the box.
  */
-function cabinet(s, seg, layer) {
+function cabinet(s, seg, layer, room = null) {
   const size = boxSize(s);
   const f = { x: Math.cos((s.aim ?? 0) * DEG), y: Math.sin((s.aim ?? 0) * DEG) };
   const rt = { x: f.y, y: -f.x };
@@ -476,7 +486,85 @@ function cabinet(s, seg, layer) {
     seg(a, z1, b, z1, layer);
     seg(a, z0, a, z1, layer);
   }
+  if (room) drawMount(s, mountOf(s, room), { size, f, z0, z1 }, seg, layer);
   return z1;
+}
+
+/** How near a wall must be for a high box to hang on it, and a ceiling for one to drop from it, metres. */
+const BRACKET_REACH = 0.6;
+const DROP_REACH = 1.0;
+/** Below this its bottom is on the floor (a pad or a riser, not a stand); above HUNG_ABOVE too high for a stand: the box is hung. */
+const ON_FLOOR_BELOW = 0.15;
+const HUNG_ABOVE = 1.6;
+
+/**
+ * What holds a speaker up: { kind, label, wall?, foot?, floor, ceiling }.
+ * A flush or corner mount is built into a SOFFIT; a free box whose bottom is
+ * on the floor stands ON THE FLOOR; one hung high goes on a WALL BRACKET when
+ * a wall is within reach behind or beside it, else on a CEILING MOUNT when the
+ * ceiling is, else on a tall stand; anything between is on a FLOOR STAND.
+ */
+export function mountOf(s, room) {
+  const size = boxSize(s);
+  const z0 = s.z - size.h / 2;
+  const z1 = s.z + size.h / 2;
+  const { floor, ceiling } = heightsAtXY(room, s.x, s.y);
+  if (s.mount && s.mount !== 'free') return { kind: 'soffit', label: `soffit · ${MOUNTS[s.mount]?.label ?? s.mount}`, floor, ceiling };
+  if (z0 - floor < ON_FLOOR_BELOW) return { kind: 'floor', label: 'on the floor', floor, ceiling };
+  if (z0 - floor > HUNG_ABOVE) {
+    let best = null;
+    for (const w of room.walls ?? []) {
+      const off = { x: s.x - w.a.x, y: s.y - w.a.y };
+      const along = off.x * w.t.x + off.y * w.t.y;
+      const dist = off.x * w.nIn.x + off.y * w.nIn.y;
+      if (along < 0 || along > w.len || dist < 0) continue;
+      if (!best || dist < best.dist) best = { w, dist, foot: { x: w.a.x + w.t.x * along, y: w.a.y + w.t.y * along } };
+    }
+    if (best && best.dist <= BRACKET_REACH + size.d / 2) return { kind: 'bracket', label: 'wall bracket', wall: best.w, foot: best.foot, floor, ceiling };
+    if (ceiling - z1 <= DROP_REACH) return { kind: 'ceiling', label: 'ceiling mount', floor, ceiling };
+  }
+  return { kind: 'stand', label: `floor stand · ${mm(z0 - floor)} mm`, floor, ceiling };
+}
+
+/** The mount's line work under, behind or over the box. */
+function drawMount(s, m, { size, f, z0, z1 }, seg, layer) {
+  const c = { x: s.x, y: s.y };
+  const at = (fwd, side) => ({ x: s.x + f.x * fwd + f.y * side, y: s.y + f.y * fwd - f.x * side });
+  if (m.kind === 'stand') {
+    // a pole from the box's bottom to a tripod, its feet a stand's spread apart
+    const knee = m.floor + Math.min(0.35, (z0 - m.floor) / 2);
+    seg(c, z0, c, knee, layer);
+    for (const a of [0, 120, 240]) {
+      const r = (a * Math.PI) / 180;
+      seg(c, knee, at(0.3 * Math.cos(r), 0.3 * Math.sin(r)), m.floor, layer);
+    }
+    // the top plate the box sits on
+    const plate = [at(-0.1, -0.1), at(-0.1, 0.1), at(0.1, 0.1), at(0.1, -0.1)];
+    plate.forEach((p, i) => seg(p, z0, plate[(i + 1) % 4], z0, layer));
+  } else if (m.kind === 'bracket') {
+    // an arm from the wall plate to the box's back, braced from below
+    const back = at(-size.d / 2, 0);
+    const n = { x: m.wall.t.x, y: m.wall.t.y };
+    const plate = [-0.12, 0.12].map((k) => ({ x: m.foot.x + n.x * k, y: m.foot.y + n.y * k }));
+    for (const z of [s.z + 0.15, z0 - 0.25]) seg(plate[0], z, plate[1], z, layer);
+    for (const p of plate) seg(p, s.z + 0.15, p, z0 - 0.25, layer);
+    seg(m.foot, s.z, back, s.z, layer);
+    seg(m.foot, z0 - 0.25, back, z0, layer);
+  } else if (m.kind === 'ceiling') {
+    // a drop rod from the box's top to a plate on the ceiling
+    seg(c, z1, c, m.ceiling, layer);
+    const plate = [at(-0.12, -0.12), at(-0.12, 0.12), at(0.12, 0.12), at(0.12, -0.12)];
+    plate.forEach((p, i) => seg(p, m.ceiling, plate[(i + 1) % 4], m.ceiling, layer));
+  } else if (m.kind === 'soffit') {
+    // the baffle the box is built into: its front face, a hand's width round the box
+    const e = 0.15;
+    const face = [at(size.d / 2, -size.w / 2 - e), at(size.d / 2, size.w / 2 + e)];
+    const [b0, b1] = [Math.max(m.floor, z0 - e), Math.min(m.ceiling, z1 + e)];
+    seg(face[0], b0, face[1], b0, layer);
+    seg(face[0], b1, face[1], b1, layer);
+    seg(face[0], b0, face[0], b1, layer);
+    seg(face[1], b0, face[1], b1, layer);
+  }
 }
 
 /**
@@ -521,9 +609,10 @@ const BT = 0.07;
 /** One room's blow-up: { items, top } — `top` where the tower ends, for what stands on it. */
 function blowupMarks(room, name, has, state = null) {
   if (!room) return { items: [], top: 0 };
-  // who stands in this room: drawn into the floor plan and every wall's elevation, each its own block
+  // who and what stands in this room: drawn into the floor plan and every wall's elevation, each its own block
   const inside = (d) => pointInPolygon(d.x, d.y, room.poly);
-  const figs = state ? [...state.speakers.filter(inside).map((d) => ({ d, kind: 'speaker' })), ...state.mics.filter(inside).map((d) => ({ d, kind: isListener(d) || d.mix ? 'listener' : 'mic' }))] : [];
+  const furniture = furnitureOf(room).map((d) => ({ d, kind: 'furniture' }));
+  const figs = [...(state ? [...state.speakers.filter(inside).map((d) => ({ d, kind: 'speaker' })), ...state.mics.filter(inside).map((d) => ({ d, kind: isListener(d) || d.mix ? 'listener' : 'mic' }))] : []), ...furniture];
   const plan = bboxOf(room.poly);
   const width = Math.max(plan.x1 - plan.x0, 6);
   const gap = 0.6;
@@ -617,7 +706,8 @@ function blowupMarks(room, name, has, state = null) {
     const h = Math.max(...rows[r].map((d) => d.h));
     for (const d of rows[r]) {
       items.push({ kind: 'drawing', layer: BLOWUP_LAYER, layerColor: '#e2e8f0', name: `${name}:${r}:${x.toFixed(2)}`, at: [r3(x), r3(y)], lines: d.lines.map((l) => l.map((v) => (typeof v === 'number' ? r3(v) : v))), texts: d.texts.map((t) => ({ ...t, x: r3(t.x), y: r3(t.y) })) });
-      if (d.proj) for (const f of figs) if (!d.shows || d.shows(f.d)) items.push(figureMark(f, d.proj, [r3(x), r3(y)], `${name}:${r}:${x.toFixed(2)}`, d.title));
+      // the floor drawing has the furniture's outlines already, among its pieces
+      if (d.proj) for (const f of figs) if ((!d.shows || d.shows(f.d)) && !(f.kind === 'furniture' && !d.wall)) items.push(figureMark(f, d.proj, [r3(x), r3(y)], `${name}:${r}:${x.toFixed(2)}`, d.title, room));
       x += d.w + gap;
     }
     y += h + gap;
@@ -626,7 +716,22 @@ function blowupMarks(room, name, has, state = null) {
   return { items, top: y + BT * 1.5 + 1.2 };
 }
 
-const FIGURE_LAYERS = { speaker: ['Speakers', '#facc15'], listener: ['Listeners', '#a78bfa'], mic: ['Mics', '#34d399'] };
+const FIGURE_LAYERS = { speaker: ['Speakers', '#facc15'], listener: ['Listeners', '#a78bfa'], mic: ['Mics', '#34d399'], furniture: ['Furniture', '#9ca3af'] };
+
+/**
+ * The furniture standing in a room — desks, consoles, the producer desk,
+ * racks, couches, instruments: its floor pieces that have a height, each
+ * { id, paletteId, name, x, y, z: 0, h, corners } at its centre.
+ */
+export function furnitureOf(room) {
+  return (room?.patches ?? [])
+    .filter((p) => p.surface === 'floor' && furnitureHeight(p.paletteId) > 0)
+    .map((p) => {
+      const c = centre(p.points3d);
+      const name = String(PRODUCTS.find((x) => x.id === p.paletteId)?.name ?? p.paletteId).split(/[,(]/)[0].trim();
+      return { id: p.id, paletteId: p.paletteId, name, x: c.x, y: c.y, z: 0, h: furnitureHeight(p.paletteId), corners: p.points3d };
+    });
+}
 
 /**
  * One speaker, listener or mic drawn into a blow-up drawing, through `proj`
@@ -634,14 +739,27 @@ const FIGURE_LAYERS = { speaker: ['Speakers', '#facc15'], listener: ['Listeners'
  * (Speakers / Listeners / Mics), its attributes naming the object it is —
  * id, role, where it stands — so the CAD can say what each one is.
  */
-function figureMark({ d, kind }, proj, at, drawing, title) {
+function figureMark({ d, kind }, proj, at, drawing, title, room = null) {
   const lines = [];
   const seg = (a, za, b, zb) => lines.push([...proj(a, za), ...proj(b, zb)].map(r3));
   let label = d.name;
   let top = d.z;
+  let mount = null;
   if (kind === 'speaker') {
-    top = cabinet(d, seg);
+    top = cabinet(d, seg, undefined, room);
     label = d.role || d.name;
+    if (room) mount = mountOf(d, room).label;
+  } else if (kind === 'furniture') {
+    // a box from its floor outline up to its height
+    const pts = d.corners;
+    const floorAt = (p) => p.z ?? 0;
+    pts.forEach((p, i) => {
+      const q = pts[(i + 1) % pts.length];
+      seg(p, floorAt(p), q, floorAt(q));
+      seg(p, floorAt(p) + d.h, q, floorAt(q) + d.h);
+      seg(p, floorAt(p), p, floorAt(p) + d.h);
+    });
+    top = d.h;
   } else if (kind === 'listener') {
     person(d, seg);
     top = d.z + 0.15;
@@ -661,6 +779,8 @@ function figureMark({ d, kind }, proj, at, drawing, title) {
     ...(d.kind ? { type: String(d.kind) } : {}),
     position: `${mm(d.x)}, ${mm(d.y)}, ${mm(d.z)} mm`,
     ...(d.aim != null ? { aim: `${Math.round(d.aim)}°` } : {}),
+    ...(mount ? { mount } : {}),
+    ...(d.paletteId ? { product: String(d.paletteId), height: `${mm(d.h)} mm` } : {}),
     drawing: title,
   };
   return { kind: 'drawing', layer, layerColor, name: `${drawing}:${kind}:${d.id}`, at, lines, texts: [{ text: label, x: r3(lx), y: r3(ly + 0.05), height: BT * 0.8 }], attributes };

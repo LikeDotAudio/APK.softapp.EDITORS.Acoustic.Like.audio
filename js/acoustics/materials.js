@@ -118,7 +118,8 @@ export const MATERIALS = [
 const p = (id, name, mat, size) => ({ id, name, material: mat, size });
 
 export const PRODUCTS = [
-  p('desk-1800x900', 'Producer desk 1800×900', 'desk-top', [1.8, 0.9]),
+  p('desk-1800x900', 'Desk 1800×900', 'desk-top', [1.8, 0.9]),
+  p('producer-desk-1800x600', 'Producer desk 1800×600', 'desk-top', [1.8, 0.6]),
   p('console-2400x1000', 'Mixing console 2400×1000', 'desk-top', [2.4, 1.0]),
   p('console-3200x1200', 'Large-format console 3200×1200', 'desk-top', [3.2, 1.2]),
   p('couch-2000x900', 'Couch 2000×900', 'upholstered', [2.0, 0.9]),
@@ -162,7 +163,7 @@ export function lookup(id) {
   return byId.get(id) ?? byId.get(productById.get(id)?.material) ?? null;
 }
 
-const FURNITURE_HEIGHT = { desk: 0.75, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3 };
+const FURNITURE_HEIGHT = { desk: 0.75, 'producer-desk': 0.8, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3 };
 
 /** How tall a thing laid on the floor stands, metres: 0 for a finish (a rug, a floor build), a height for furniture and instruments. */
 export function furnitureHeight(paletteId) {

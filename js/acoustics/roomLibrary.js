@@ -173,9 +173,11 @@ export function planArea(poly) {
  * +Y, as the plans are), from what kind of room it is and how big:
  *
  *   mix rooms (control, home, ratio, immersive)
- *        the desk at the mix seat — a producer desk under 4 m wide, a 2.4 m
+ *        the desk at the mix seat — a plain desk under 4 m wide, a 2.4 m
  *        console under 6.5 m, a 3.2 m large-format above — the MIXER at 38 %
- *        of the length from the front, the PRODUCER a metre behind, a CONSOLE
+ *        of the length from the front; behind a console, where it fits, the
+ *        PRODUCER DESK just behind the mixer's chair and the PRODUCER seated
+ *        at it (a metre behind the mixer, no desk, otherwise), a CONSOLE
  *        CLIENT at the desk's end; in a room deep enough, a couch at the back
  *        with the ENTOURAGE on it, and a rack beside the desk where it fits.
  *   podcast and radio
@@ -222,14 +224,20 @@ export function furnish(room) {
   const deskY = mixY + NOSE_M + 2 * PERSON_M + desk.d / 2;
   furniture.push({ paletteId: desk.id, x: cx, y: deskY, rotation: 0 });
   seats.push({ kind: 'mixer', x: cx, y: mixY, z: ear, aim: face, mix: true });
-  if (mixY - 1.0 > y0 + 0.5) seats.push({ kind: 'producer', x: cx, y: mixY - 1.0, z: ear + 0.1, aim: face });
+  // where the console is the mixer's, the producer has a desk of their own: just behind the mixer's chair, the producer one person behind it
+  const pDesk = { id: 'producer-desk-1800x600', d: 0.6 };
+  const pDeskY = mixY - PERSON_M - pDesk.d / 2;
+  const withDesk = desk.id !== 'desk-1800x900' && pDeskY - pDesk.d / 2 - NOSE_M - PERSON_M > y0 + 0.5;
+  const producerY = withDesk ? pDeskY - pDesk.d / 2 - NOSE_M - PERSON_M : mixY - 1.0;
+  if (withDesk) furniture.push({ paletteId: pDesk.id, x: cx, y: pDeskY, rotation: 0 });
+  if (producerY > y0 + 0.5) seats.push({ kind: 'producer', x: cx, y: producerY, z: ear + 0.1, aim: face });
   if (W >= 3.6) seats.push({ kind: 'client', x: cx + desk.w / 2 - 0.2, y: mixY + 0.05, z: ear, aim: face });
   if (W - desk.w >= 1.6) furniture.push({ paletteId: 'rack-600x800', x: cx - desk.w / 2 - 0.5, y: deskY - 0.3, rotation: 0 });
   // a couch at the back, if there is room behind the producer for it — and beside the door, which comes first
   const couch = W < 5 ? { id: 'couch-2000x900', w: 2.0, d: 0.9 } : { id: 'couch-2400x1000', w: 2.4, d: 1.0 };
   const couchY = y0 + 0.25 + couch.d / 2;
   const clearOfDoor = !door || Math.abs(door.x - cx) >= couch.w / 2 + door.w / 2;
-  if (mixY - 1.0 - couchY > 1.0 && W >= couch.w + 0.6 && clearOfDoor) {
+  if (producerY - couchY > 1.0 && W >= couch.w + 0.6 && clearOfDoor) {
     furniture.push({ paletteId: couch.id, x: cx, y: couchY, rotation: 0 });
     for (const dx of [-couch.w / 4, couch.w / 4]) seats.push({ kind: 'entourage', x: cx + dx, y: couchY, z: 1.0, aim: face });
   }

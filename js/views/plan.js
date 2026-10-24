@@ -7,7 +7,7 @@ import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, noseMarks, snapNos
 import { fromFrame } from '../acoustics/room.js';
 import { roomGrowth } from '../acoustics/roomFit.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
-import { PRODUCTS } from '../acoustics/materials.js';
+import { PRODUCTS, furnitureHeight } from '../acoustics/materials.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { boxSize, MIC_PRESETS, isListener } from '../acoustics/devices.js';
 import { mirrorName } from '../acoustics/symmetry.js';
@@ -483,8 +483,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     }
     for (const p of room.patches ?? []) {
       if (p.surface !== 'floor') continue;
-      const isFurn = p.paletteId.startsWith('desk') || p.paletteId.startsWith('console') || p.paletteId.startsWith('couch') || p.paletteId.startsWith('rack') || p.paletteId.startsWith('drum') || p.paletteId.startsWith('guitar');
-      if (!isFurn) continue;
+      if (!furnitureHeight(p.paletteId)) continue;
       if (placedFurniture.some((f) => f.cadId === p.id)) continue;
       ctx.save();
       ctx.fillStyle = 'rgba(38, 38, 45, 0.75)';
