@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { angleDiff, DEG } from './geometry.js';
+import { clampInside, CLEAR_M } from './inRoom.js';
 
 /**
  * IMMERSIVE LAYOUTS
@@ -178,27 +179,54 @@ export function layoutCentre(seat, frontDeg, offset = {}) {
  * Speaker positions for `layout` around the mix position. Bearings are world
  * degrees CCW from +x; the listener faces `frontDeg`. Heights clamp under the
  * ceiling, and the check table reports the elevation the room actually allows.
+ * When `room` is provided, speakers are clamped inside the walls with clearance.
  */
-export function layoutPositions(layout, mix, frontDeg, radius, ceiling) {
+export function layoutPositions(layout, mix, frontDeg, radius, ceiling, room = null) {
   const out = [];
   for (const s of LAYOUTS[layout].speakers) {
     const bearing = frontDeg + s.az;
     const rh = radius * Math.cos(s.el * DEG);
-    const z = Math.max(0.1, Math.min(mix.z + radius * Math.sin(s.el * DEG), ceiling - 0.15));
+    let x = mix.x + rh * Math.cos(bearing * DEG);
+    let y = mix.y + rh * Math.sin(bearing * DEG);
+    let z = Math.max(0.1, Math.min(mix.z + radius * Math.sin(s.el * DEG), ceiling - 0.15));
+    let aim = bearing + 180;
+    let tilt = -Math.atan2(z - mix.z, rh) / DEG;
+    if (room) {
+      const c = clampInside(room, { x, y, z }, CLEAR_M, mix);
+      x = c.x;
+      y = c.y;
+      z = c.z;
+      const dx = x - mix.x;
+      const dy = y - mix.y;
+      const distH = Math.hypot(dx, dy);
+      aim = (Math.atan2(mix.y - y, mix.x - x) / DEG + 360) % 360;
+      tilt = -Math.atan2(z - mix.z, distH || 1e-6) / DEG;
+    }
     out.push({
       role: s.name,
       side: s.side,
-      x: mix.x + rh * Math.cos(bearing * DEG),
-      y: mix.y + rh * Math.sin(bearing * DEG),
+      x,
+      y,
       z,
-      aim: bearing + 180,
-      tilt: -Math.atan2(z - mix.z, rh) / DEG,
+      aim,
+      tilt,
     });
   }
   for (const sub of LAYOUTS[layout].lfe ?? []) {
     const bearing = frontDeg + sub.az;
     const r = radius * (sub.under ? 1 : 0.9);
-    out.push({ role: sub.name, side: 'C', x: mix.x + r * Math.cos(bearing * DEG), y: mix.y + r * Math.sin(bearing * DEG), z: 0.3, aim: bearing + 180, tilt: 0, sub: true });
+    let x = mix.x + r * Math.cos(bearing * DEG);
+    let y = mix.y + r * Math.sin(bearing * DEG);
+    let z = 0.3;
+    let aim = bearing + 180;
+    if (room) {
+      const c = clampInside(room, { x, y, z, kind: 'sub' }, CLEAR_M, mix);
+      x = c.x;
+      y = c.y;
+      z = c.z;
+      aim = (Math.atan2(mix.y - y, mix.x - x) / DEG + 360) % 360;
+    }
+    out.push({ role: sub.name, side: 'C', x, y, z, aim, tilt: 0, sub: true });
   }
   return out;
 }
@@ -209,9 +237,10 @@ export function layoutPositions(layout, mix, frontDeg, radius, ceiling) {
  * radius ratio, turn by the change in rotation, then cross to the new centre,
  * so each keeps its bearing from the listener and keeps aiming at them. A sub
  * stays on the floor, a height speaker under the ceiling.
+ * When `room` is provided, carried speakers are clamped inside the room.
  * Returns [{ id, x, y, z, aim }] for the speakers that move; none without a seat.
  */
-export function carryArray(speakers, settings, mix, next, ceiling = Infinity) {
+export function carryArray(speakers, settings, mix, next, ceiling = Infinity, room = null) {
   if (!mix) return [];
   const layout = settings.layout;
   const turn = (next.rotate ?? 0) - (layout.rotate ?? 0);
@@ -223,11 +252,20 @@ export function carryArray(speakers, settings, mix, next, ceiling = Infinity) {
     .filter((s) => s.role)
     .map((s) => {
       const [dx, dy] = [(s.x - a.x) * k, (s.y - a.y) * k];
+      let x = b.x + dx * cos - dy * sin;
+      let y = b.y + dx * sin + dy * cos;
+      let z = s.kind === 'sub' ? s.z : Math.max(0.1, Math.min(b.z + (s.z - a.z) * k, ceiling - 0.15));
+      if (room) {
+        const c = clampInside(room, { x, y, z, kind: s.kind }, CLEAR_M, b);
+        x = c.x;
+        y = c.y;
+        z = c.z;
+      }
       return {
         id: s.id,
-        x: b.x + dx * cos - dy * sin,
-        y: b.y + dx * sin + dy * cos,
-        z: s.kind === 'sub' ? s.z : Math.max(0.1, Math.min(b.z + (s.z - a.z) * k, ceiling - 0.15)),
+        x,
+        y,
+        z,
         ...(turn && s.aim != null ? { aim: +(((s.aim + turn) % 360 + 360) % 360).toFixed(1) } : {}),
       };
     });

@@ -19,7 +19,10 @@
  * sent again whenever the CAD says `ready`, so a reloaded iframe has it too.
  *
  * POP OUT. The CAD can leave the iframe for a window of its own and come
- * back: `popOut()` blanks the iframe and opens the same address in a window,
+ * back: `popOut()` opens the same address in a window, takes the whole
+ * session from the docked CAD, then blanks the iframe and hands that session
+ * to the window the moment it says `ready` — so every drawing set (marks,
+ * elevations, blocks) is there when it opens, not one autosave behind.
  * `dockIn()` (or closing that window) closes it and reloads the iframe. Both
  * add `&resume`, so the CAD that starts restores the drawing the other one
  * autosaved — one CAD at a time, never two editing the file. Only messages
@@ -44,17 +47,28 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
   const address = iframe.getAttribute('src');
   let popup = null;
   let watch = 0;
+  // popping out: the window opened but the docked CAD still holds the drawing, and what it said meanwhile
+  let opening = null;
+  let openingReady = false;
+  let carry = null;
   const target = () => (popup && !popup.closed ? popup : iframe.contentWindow);
   const send = (type, body = {}) => target()?.postMessage({ protocol: HOST_PROTOCOL, type, ...body }, window.location.origin);
   let palette = null;
   let sessionWaiters = [];
 
   window.addEventListener('message', (e) => {
-    if (e.source !== target() || e.origin !== window.location.origin) return;
+    if (e.origin !== window.location.origin) return;
     const msg = e.data;
     if (!msg || msg.protocol !== HOST_PROTOCOL) return;
+    if (opening && e.source === opening) {
+      if (msg.type === 'ready') openingReady = true;
+      return;
+    }
+    if (e.source !== target()) return;
     if (msg.type === 'ready') {
       if (palette) send('palette', palette);
+      if (carry) send('open', { session: carry });
+      carry = null;
       onReady?.();
     }
     else if (msg.type === 'view') { if (!popup) onView?.(msg); }
@@ -69,6 +83,7 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
 
   function dockIn() {
     if (!popup) return;
+    carry = null;
     clearInterval(watch);
     if (!popup.closed) popup.close();
     popup = null;
@@ -121,13 +136,28 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
         return true;
       }
       const url = new URL(`${address}&resume`, location.href).href;
+      if (opening) return true;
+      // opened inside the click, or the browser calls it a pop-up; the drawing follows once the docked CAD hands it over
       const win = window.open(url, 'acoustic-cad', 'popup,width=1280,height=860');
       if (!win) return false;
-      popup = win;
-      iframe.src = 'about:blank';
-      iframe.hidden = true;
-      watch = setInterval(() => popup?.closed && dockIn(), 500);
-      onPopped?.(true);
+      opening = win;
+      openingReady = false;
+      this.session().then((session) => {
+        opening = null;
+        if (win.closed) return;
+        popup = win;
+        carry = session;
+        iframe.src = 'about:blank';
+        iframe.hidden = true;
+        watch = setInterval(() => popup?.closed && dockIn(), 500);
+        // it said ready while the docked CAD was still answering: hand over now
+        if (openingReady) {
+          if (palette) send('palette', palette);
+          if (carry) send('open', { session: carry });
+          carry = null;
+        }
+        onPopped?.(true);
+      });
       return true;
     },
     dockIn,

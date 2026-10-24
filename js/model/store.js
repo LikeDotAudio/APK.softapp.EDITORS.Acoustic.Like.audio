@@ -3,7 +3,9 @@
 import { makeMic, makeSpeaker, newId } from '../acoustics/devices.js';
 import { DEFAULT_ISOLATION } from '../acoustics/isolation.js';
 import { mirrorDevice, syncTwin } from '../acoustics/symmetry.js';
+import { clampInside, CLEAR_M, intoRoom, outside } from '../acoustics/inRoom.js';
 import { carryArray } from '../acoustics/layouts.js';
+import { pointInPolygon } from '../acoustics/geometry.js';
 
 const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 
@@ -61,12 +63,13 @@ export function createStore() {
   const state = {
     speakers: [],
     mics: [],
+    furniture: [],
     settings: structuredClone(DEFAULT_SETTINGS),
     selected: null,
     mode: 'cad',
     /** Which drawing the CAD is showing: 'plan', or the elevation's face. Not saved: the CAD decides where it opens. */
     sheet: 'plan',
-    placeKind: { speaker: 'dmt12', mic: 'mixer' },
+    placeKind: { speaker: 'dmt12', mic: 'mixer', furniture: 'desk-1800x900' },
     cad: { geometry: null, view: null, mirror: null, connected: false, popped: false },
     fileName: null,
   };
@@ -91,7 +94,7 @@ export function createStore() {
   };
 
   function exportDoc() {
-    return { format: 'acoustic.like.audio@1', fileName: state.fileName, settings: state.settings, speakers: state.speakers, mics: state.mics };
+    return { format: 'acoustic.like.audio@1', fileName: state.fileName, settings: state.settings, speakers: state.speakers, mics: state.mics, furniture: state.furniture };
   }
 
   function importDoc(doc) {
@@ -108,6 +111,7 @@ export function createStore() {
     };
     state.speakers = doc.speakers ?? [];
     state.mics = doc.mics ?? [];
+    state.furniture = doc.furniture ?? [];
     state.selected = null;
     changed();
   }
@@ -143,7 +147,7 @@ export function createStore() {
   /** The mirror axis in metres, or null when the CAD's Symmetrical Mode is off. */
   const axis = () => (state.cad.mirror?.enabled ? state.cad.mirror.xMetres : null);
 
-  const listOf = (kind) => (kind === 'speaker' ? 'speakers' : 'mics');
+  const listOf = (kind) => (kind === 'speaker' ? 'speakers' : kind === 'furniture' ? 'furniture' : 'mics');
 
   function add(kind, dev) {
     const key = listOf(kind);
@@ -220,6 +224,23 @@ export function createStore() {
       if (!state.mics.some((m) => m.mix)) mic.mix = true;
       add('mic', mic);
     },
+    addFurniture(paletteId, at, rotation = 0) {
+      const item = { id: newId('f'), paletteId, x: +at.x.toFixed(3), y: +at.y.toFixed(3), rotation };
+      state.furniture = [...(state.furniture ?? []), item];
+      state.selected = { kind: 'furniture', id: item.id };
+      changed();
+      return item;
+    },
+    updateFurniture(id, patch, live = false) {
+      state.furniture = (state.furniture ?? []).map((f) => (f.id === id ? { ...f, ...patch } : f));
+      if (live) emit('drag');
+      else changed();
+    },
+    removeFurniture(id) {
+      state.furniture = (state.furniture ?? []).filter((f) => f.id !== id);
+      if (state.selected?.kind === 'furniture' && state.selected.id === id) state.selected = null;
+      changed();
+    },
     /** Change one device; its mirror twin follows. `live` skips the save while dragging. */
     update(kind, id, patch, live = false) {
       const key = listOf(kind);
@@ -249,7 +270,47 @@ export function createStore() {
       if (live) emit('drag');
       else changed();
     },
+    /** A device outside or on a wall of `room` brought inside (inRoom.js) and selected. False when it was already safely inside. */
+    bringIn(kind, id, room) {
+      const dev = (kind === 'speaker' ? state.speakers : kind === 'furniture' ? state.furniture : state.mics).find((d) => d.id === id);
+      if (!dev || !outside(room, dev)) return false;
+      const mix = state.mics.find((m) => m.mix);
+      const target = clampInside(room, dev, CLEAR_M, mix?.id === id ? null : mix);
+      const dest = outside(room, target) ? intoRoom(room, dev, kind, mix?.id === id ? null : mix) : target;
+      if (kind === 'furniture') this.updateFurniture(id, dest);
+      else this.update(kind, id, dest);
+      this.select({ kind, id });
+      return true;
+    },
+    /**
+     * Nothing stands outside the rooms: every speaker, mic and piece of
+     * furniture outside all of `polys` (the plans on the sheet) or through a
+     * wall of `room` comes inside it, in one change. True when any moved.
+     */
+    keepInside(room, polys = [room.poly]) {
+      const mix = state.mics.find((m) => m.mix);
+      const elsewhere = (d) => polys.some((poly) => poly !== room.poly && pointInPolygon(d.x, d.y, poly));
+      let moved = false;
+      const fix = (list, kind) =>
+        list.map((d) => {
+          if (elsewhere(d) || !outside(room, kind === 'furniture' ? { ...d, z: 1 } : d)) return d;
+          const at = clampInside(room, kind === 'furniture' ? { ...d, z: 1 } : d, CLEAR_M, mix?.id === d.id ? null : mix);
+          const dest = outside(room, at) ? intoRoom(room, d, kind, mix?.id === d.id ? null : mix) : at;
+          if (Math.abs(dest.x - d.x) < 1e-3 && Math.abs(dest.y - d.y) < 1e-3 && (kind === 'furniture' || Math.abs(dest.z - d.z) < 1e-3)) return d;
+          moved = true;
+          return kind === 'furniture' ? { ...d, x: dest.x, y: dest.y } : { ...d, x: dest.x, y: dest.y, z: dest.z };
+        });
+      state.speakers = fix(state.speakers, 'speaker');
+      state.mics = fix(state.mics, 'mic');
+      state.furniture = fix(state.furniture ?? [], 'furniture');
+      if (moved) changed();
+      return moved;
+    },
     remove(kind, id) {
+      if (kind === 'furniture') {
+        this.removeFurniture(id);
+        return;
+      }
       if (kind !== 'speaker' && kind !== 'mic') return;
       const key = listOf(kind);
       const dev = state[key].find((d) => d.id === id);

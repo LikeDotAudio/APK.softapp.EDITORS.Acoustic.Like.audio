@@ -2,6 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { silhouette, silhouetteLoop } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
+import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
 import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
 import { gridCanvas, sampleGrid } from './paint.js';
@@ -46,9 +47,11 @@ function rightAxis(room, face) {
   return { x: -f.x, y: -f.y };
 }
 
-const TITLES = { ceiling: 'Ceiling (reflected plan)', front: 'Front elevation', back: 'Back elevation', left: 'Left elevation', right: 'Right elevation' };
+const TITLES = { plan: 'Plan', ceiling: 'Ceiling (reflected plan)', front: 'Front elevation', back: 'Back elevation', left: 'Left elevation', right: 'Right elevation' };
 
 export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPickPatch }) {
+  // looking straight down or up: the plan (the tour draws it on its own, with no CAD under it) and the ceiling
+  const top = face === 'plan' || face === 'ceiling';
   const canvas = tile.querySelector('canvas');
   const readout = tile.querySelector('.readout');
   let map = null;
@@ -57,7 +60,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
 
   function layout(w, h, room) {
     const pad = 34;
-    if (face === 'ceiling') {
+    if (top) {
       const xs = room.poly.map((p) => p.x);
       const ys = room.poly.map((p) => p.y);
       const u0 = Math.min(...xs);
@@ -96,7 +99,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     const { toS } = map;
 
     const outline = new Path2D();
-    if (face === 'ceiling') {
+    if (top) {
       room.poly.forEach((p, i) => {
         const s = toS(p.x, p.y);
         if (i) outline.lineTo(s.x, s.y);
@@ -122,9 +125,9 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       ctx.imageSmoothingEnabled = true;
       ctx.save();
       ctx.clip(outline);
-      if (face === 'ceiling') {
-        const g = out.fieldGrids.ceiling;
-        const img = gridCanvas(out.values.ceiling, g.nx, g.ny, out.scale);
+      if (top) {
+        const g = out.fieldGrids[face];
+        const img = gridCanvas(out.values[face], g.nx, g.ny, out.scale);
         const a = toS(g.x0, g.y1);
         const b = toS(g.x0 + g.nx * g.cell, g.y1 - g.ny * g.cell);
         ctx.drawImage(img, a.x, a.y, b.x - a.x, b.y - a.y);
@@ -148,7 +151,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       }
       ctx.restore();
     }
-    ctx.strokeStyle = FACE_COLOURS[face];
+    ctx.strokeStyle = FACE_COLOURS[face] ?? '#d4d4d4';
     ctx.lineWidth = 1.5;
     ctx.stroke(outline);
 
@@ -158,24 +161,24 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     drawPatches(ctx, room, state, outline);
     drawDevices(ctx, state);
 
-    ctx.fillStyle = FACE_COLOURS[face];
+    ctx.fillStyle = FACE_COLOURS[face] ?? '#d4d4d4';
     ctx.font = '600 11px system-ui, sans-serif';
     ctx.fillText(TITLES[face], 10, 16);
-    const mat = face === 'ceiling' ? room.ceiling : room.walls.find((x) => x.face === face)?.material;
+    const mat = face === 'ceiling' ? room.ceiling : face === 'plan' ? room.floor : room.walls.find((x) => x.face === face)?.material;
     ctx.fillStyle = '#9aa4b2';
     ctx.font = '10px system-ui';
     if (mat) ctx.fillText(fitText(ctx, mat.name, w / 2 - 16), 10, 29);
     const drawn = face !== 'ceiling' && room.profiles?.some((p) => p.face === face);
     ctx.fillStyle = state.sheet === face ? FACE_COLOURS[face] : '#64748b';
     ctx.textAlign = 'right';
-    ctx.fillText(face === 'ceiling' ? (state.sheet === 'ceiling' ? '✎ in the CAD' : 'click to treat in the CAD') : state.sheet === face ? '✎ in the CAD' : drawn ? 'drawn in the CAD · click to edit' : 'click to draw in the CAD', w - 10, 29);
+    ctx.fillText(face === 'plan' ? '' : face === 'ceiling' ? (state.sheet === 'ceiling' ? '✎ in the CAD' : 'click to treat in the CAD') : state.sheet === face ? '✎ in the CAD' : drawn ? 'drawn in the CAD · click to edit' : 'click to draw in the CAD', w - 10, 29);
     ctx.textAlign = 'left';
   }
 
   /** This face's treatments: the ceiling's on the RCP, a wall face's on its elevation. The selected one last, so it sits on top. */
   function drawPatches(ctx, room, state, outline) {
     const sel = state.selected?.kind === 'patch' ? state.selected.id : null;
-    const mine = (room.patches ?? []).filter((p) => p.face === face);
+    const mine = (room.patches ?? []).filter((p) => p.face === (face === 'plan' ? 'floor' : face));
     mine.sort((a, b) => (a.id === sel) - (b.id === sel));
     drawn = [];
     ctx.save();
@@ -197,7 +200,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
 
   function drawGuides(ctx, room, show) {
     const { toS } = map;
-    if (face === 'ceiling') {
+    if (top) {
       if (show.nulls) {
         const { f, r } = room.frame;
         for (const { n, f: fr, colour } of nullLines(3)) {
@@ -248,20 +251,20 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     ctx.moveTo(a.x, a.y - 12);
     ctx.lineTo(b.x, b.y - 12);
     ctx.stroke();
-    const horiz = face === 'ceiling' ? 'X' : face === 'front' || face === 'back' ? 'Width' : 'Length';
+    const horiz = top ? 'X' : face === 'front' || face === 'back' ? 'Width' : 'Length';
     ctx.textAlign = 'center';
     ctx.fillText(`${horiz} ${(map.u1 - map.u0).toFixed(2)} m`, (a.x + b.x) / 2, a.y - 16);
     const c = toS(map.u1, map.v0);
     ctx.save();
     ctx.translate(c.x + 14, (c.y + b.y) / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillText(`${face === 'ceiling' ? 'Y' : 'Height'} ${(map.v1 - map.v0).toFixed(2)} m`, 0, 0);
+    ctx.fillText(`${top ? 'Y' : 'Height'} ${(map.v1 - map.v0).toFixed(2)} m`, 0, 0);
     ctx.restore();
     ctx.restore();
   }
 
   function screenAngle(dev) {
-    if (face === 'ceiling') return -dev.aim * DEG;
+    if (top) return -dev.aim * DEG;
     const fx = Math.cos(dev.aim * DEG) * Math.cos(dev.tilt * DEG);
     const fy = Math.sin(dev.aim * DEG) * Math.cos(dev.tilt * DEG);
     const fz = Math.sin(dev.tilt * DEG);
@@ -314,6 +317,8 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       } else onJump?.();
       return;
     }
+    // lost outside the room: the touch brings it to the middle instead of dragging it further off
+    if (store.bringIn(hit.kind, hit.dev.id, engine.out.room)) return;
     store.select({ kind: hit.kind, id: hit.dev.id });
     const dev0 = hit.dev;
     dragFrom(
@@ -322,7 +327,9 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       (ev) => {
         const { u, v } = map.toUV(ev.clientX - r.left, ev.clientY - r.top);
         const p = map.unproject(u, v, dev0);
-        store.update(hit.kind, dev0.id, face === 'ceiling' ? { x: p.x, y: p.y } : { x: p.x, y: p.y, z: +p.z.toFixed(3) }, true);
+        const raw = top ? { x: p.x, y: p.y, z: dev0.z, kind: dev0.kind } : { x: p.x, y: p.y, z: +p.z.toFixed(3), kind: dev0.kind };
+        const clamped = engine.out.room ? clampInside(engine.out.room, raw, CLEAR_M) : raw;
+        store.update(hit.kind, dev0.id, top ? { x: clamped.x, y: clamped.y } : { x: clamped.x, y: clamped.y, z: clamped.z }, true);
         onDrag(true);
       },
       () => {
@@ -345,9 +352,9 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       return;
     }
     let value = NaN;
-    if (face === 'ceiling') {
-      const g = out.fieldGrids.ceiling;
-      value = sampleGrid(out.values.ceiling, g.nx, g.ny, (u - g.x0) / (g.nx * g.cell), (g.y1 - v) / (g.ny * g.cell));
+    if (top) {
+      const g = out.fieldGrids[face];
+      value = sampleGrid(out.values[face], g.nx, g.ny, (u - g.x0) / (g.nx * g.cell), (g.y1 - v) / (g.ny * g.cell));
     } else {
       out.fieldGrids.walls.forEach((g, i) => {
         if (g.face !== face) return;

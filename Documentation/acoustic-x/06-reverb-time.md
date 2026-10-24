@@ -16,7 +16,7 @@ How long does the room take to decay by 60 dB, band by band, and how does that c
 
 ## Surfaces and materials
 
-Each of the six surfaces has a **base** material and up to eight further materials **laid on it** by area. The base covers whatever the laid materials leave; **Unspecified** shows how much that is, and turns red if the laid areas add up to more than the surface. In the formulas, each laid material is a surface of its own on the same face (`classicRoom`). That keeps the per-axis split Fitzroy needs. Select a material in the **Absorber Edit Manager** and double-click it, or press **Attach to surface**. Its α per octave is charted, with its category as the source.
+Each of the six surfaces has a **base** material and up to eight further materials **laid on it** by area. The base covers whatever the laid materials leave; **Unspecified** shows how much that is, and turns red if the laid areas add up to more than the surface. In the formulas, each laid material is a surface of its own on the same face (`classicRoom`). That keeps the per-axis split Fitzroy needs. Select a material in the **Absorber Edit Manager** (the 148 materials and commercial treatments from the 1997 Acoustic X database in `js/acoustx/database.js` `ACOUSTX_ABSORBERS`, plus the CAD palette) and double-click it, or press **Attach to surface**. Its α per octave is charted, with its manufacturer or source as the edit readout.
 
 ## The formulas
 

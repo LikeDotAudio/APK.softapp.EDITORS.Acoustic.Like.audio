@@ -1,5 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+import { ACOUSTX_ABSORBERS } from '../acoustx/database.js';
+
 /**
  * SURFACES
  *
@@ -108,6 +110,8 @@ export const MATERIALS = [
   m('door-acoustic', 'Acoustic door, sealed, solid core', 'Wood', [0.12, 0.08, 0.05, 0.05, 0.05, 0.05], 45, 0.05, 'flat', '#5c3b1e'),
   // nothing there
   m('opening', 'Opening / void', 'Opening', [1, 1, 1, 1, 1, 1], 0, 0, 'flat', '#202020'),
+  // Acoustic X classic room treatment absorbers & materials
+  ...ACOUSTX_ABSORBERS,
 ];
 
 /** Things that come in a size: [w, h] in metres, as the CAD block is drawn. Ids never collide with a material's. */
@@ -147,11 +151,24 @@ export const PRODUCTS = [
 export const DEFAULT_WALL = 'gypsum';
 
 const byId = new Map(MATERIALS.map((x) => [x.id, x]));
+for (const a of ACOUSTX_ABSORBERS) {
+  byId.set(a.id1, a);
+  byId.set(a.name.toLowerCase(), a);
+}
 const productById = new Map(PRODUCTS.map((x) => [x.id, x]));
 
 /** A material by its id or a product's id; null when it is neither — for patches, where an unknown id must not quietly become drywall. */
 export function lookup(id) {
   return byId.get(id) ?? byId.get(productById.get(id)?.material) ?? null;
+}
+
+const FURNITURE_HEIGHT = { desk: 0.75, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3 };
+
+/** How tall a thing laid on the floor stands, metres: 0 for a finish (a rug, a floor build), a height for furniture and instruments. */
+export function furnitureHeight(paletteId) {
+  const id = String(paletteId ?? '');
+  for (const [k, h] of Object.entries(FURNITURE_HEIGHT)) if (id.startsWith(k)) return h;
+  return lookup(id)?.category === 'Furniture' ? 0.8 : 0;
 }
 
 /** A material by its id or a product's id, falling back to the default wall so a stale saved id still builds a room. */

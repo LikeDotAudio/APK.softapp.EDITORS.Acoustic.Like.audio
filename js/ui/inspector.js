@@ -3,6 +3,7 @@
 import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
 import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
+import { outside } from '../acoustics/inRoom.js';
 import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
 import { arrangedSpeakers, arrayFront, isMain, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from '../acoustics/roomFit.js';
@@ -105,6 +106,17 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
   const set = (patch) => store.setSettings(patch);
 
   // ------------------------------------------------------------------ Inspect
+  // The list is rebuilt on every selection, so a double click never reaches the same button twice: clicks are counted here.
+  let lastClick = { id: null, at: 0 };
+  function listClick(kind, id) {
+    const now = performance.now();
+    const again = lastClick.id === id && now - lastClick.at < 450;
+    lastClick = { id, at: now };
+    // a second (or third) click on one outside the room brings it to the middle
+    if (again && store.bringIn(kind, id, engine.out.room)) return;
+    store.select({ kind, id });
+  }
+
   function inspectPane() {
     const { speakers, mics, selected } = S();
     const dev = selectedDevice(S());
@@ -115,7 +127,14 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       ...mics.map((d) => item('mic', d, `${d.mix ? '🎧' : '🎤'} ${d.name}`, d.mix ? '#ff3b3b' : '#ddd')),
     );
     function item(kind, d, label, colour) {
-      return h('button', { class: `dev ${selected?.id === d.id ? 'on' : ''}`, style: `--c:${colour}`, onclick: () => store.select({ kind, id: d.id }) }, label, d.pairId ? h('i', { title: 'Mirrored pair' }, '⇋') : '');
+      const lost = outside(engine.out.room, d);
+      return h(
+        'button',
+        { class: `dev ${selected?.id === d.id ? 'on' : ''} ${lost ? 'lost' : ''}`, style: `--c:${colour}`, title: lost ? 'Outside the room — double-click to bring it to the middle' : '', onclick: () => listClick(kind, d.id) },
+        label,
+        d.pairId ? h('i', { title: 'Mirrored pair' }, '⇋') : '',
+        lost ? h('i', { title: 'Outside the room' }, '⇱') : '',
+      );
     }
     const add = h(
       'div',
@@ -670,7 +689,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const box = (role) => (isMain(role) ? settings.layout.mains ?? 'dmt12' : settings.layout.surround ?? 'dmt8');
     const keep = S().speakers.filter((s) => !s.role);
     const centre = layoutCentre(mix, arrayFront(settings), settings.layout.offset);
-    const placed = layoutPositions(settings.layout.preset, centre, arrayFront(settings), settings.layout.radius, room.H);
+    const placed = layoutPositions(settings.layout.preset, centre, arrayFront(settings), settings.layout.radius, room.H, room);
     const pairs = new Map();
     const speakers = placed.map((p) => {
       const s = makeSpeaker(p.sub ? 'sub' : box(p.role), p, { name: p.role, role: p.role, side: p.side, aim: +p.aim.toFixed(1), tilt: +p.tilt.toFixed(1) });

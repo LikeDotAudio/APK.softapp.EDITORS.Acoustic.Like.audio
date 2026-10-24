@@ -1,12 +1,22 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, BAND_LABELS, C, dbSum } from '../acoustics/bands.js';
-import { MATERIALS, material } from '../acoustics/materials.js';
+import { MATERIALS, material as baseMaterial } from '../acoustics/materials.js';
 import { buildRoom, fromFrame, inFrame } from '../acoustics/room.js';
 import { SPEAKER_PRESETS, boxSize } from '../acoustics/devices.js';
 import { FAVOURABLE_RATIOS, bonello, dimensionGrid, ituBs1116, keepBest, modeList, scoreDimensions, steps, thirdOctaveBands } from '../acoustics/modalDistribution.js';
 import { sbirDeviation, sbirFreqs } from '../acoustics/sbir.js';
 import { FORMULAS, RT_TARGETS, rtFormulas, rtTarget } from '../acoustics/reverbTargets.js';
+import {
+  ACOUSTX_ABSORBERS,
+  ACOUSTX_FREQ_3RD,
+  ACOUSTX_FREQ_OCTAVE,
+  ACOUSTX_SPEAKERS,
+  findAbsorber,
+  findSpeaker,
+} from './database.js';
+
+const material = (id) => findAbsorber(id) ?? baseMaterial(id);
 import {
   MODE_WEIGHTS,
   UNITS,
@@ -244,11 +254,12 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     /** The Start Screen's project lines, on every report. */
     project: { description: '', client: '', location: '' },
     /** The speaker: its cabinet, woofer height above its bottom, LF cut-off and crossover (SBIR). */
-    spkModel: 'dmt12',
-    spkSize: { w: 0.4, d: 0.38, h: 0.6 },
-    woofer: 0.2,
-    lfCut: 45,
-    xover: 80,
+    spkModel: 'acx-spk-4',
+    spkSize: { w: 0.25, d: 0.29, h: 0.393 },
+    woofer: 0.12,
+    centerHeight: 0.24,
+    lfCut: 48,
+    xover: 2200,
     /** Reverb Time: materials laid on each surface by area, { face: [{ id, area }] }; the base material covers the rest. */
     layers: {},
     /** A measured empty-room RT60 per octave, or null. */
@@ -545,8 +556,21 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
   }
 
   function matOptions() {
+    const sources = [...new Set(ACOUSTX_ABSORBERS.map((a) => a.source || 'Other'))];
+    const acxGroups = sources.map((src) =>
+      h(
+        'optgroup',
+        { label: `Acoustic X · ${src}` },
+        ACOUSTX_ABSORBERS.filter((a) => (a.source || 'Other') === src).map((a) =>
+          h('option', { value: a.id }, `${a.name}${a.comments ? ` (${a.comments})` : ''}`),
+        ),
+      ),
+    );
     const cats = [...new Set(MATERIALS.map((m) => m.category))];
-    return cats.map((c) => h('optgroup', { label: c }, MATERIALS.filter((m) => m.category === c).map((m) => h('option', { value: m.id }, m.name))));
+    const cadGroups = cats.map((c) =>
+      h('optgroup', { label: `CAD · ${c}` }, MATERIALS.filter((m) => m.category === c).map((m) => h('option', { value: m.id }, m.name))),
+    );
+    return [...acxGroups, ...cadGroups];
   }
   function matSelect(win, get, set, title) {
     const s = h('select', { class: 'list', title }, matOptions());
@@ -875,16 +899,16 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     const dbSel = h('select', {}, h('option', { value: 'octave' }, 'Octave'), h('option', { value: 'third' }, '1/3 Octave'));
     const fcSel = h('select', {});
     const fillFc = () => {
-      const list = S.dbase === 'octave' ? [16, 31.5, 63, 125, 250] : thirdOctaveBands(16, 250).map((b) => b.fc);
-      fcSel.replaceChildren(h('option', { value: '' }, 'centre…'), ...list.map((f) => h('option', { value: f }, `${f} Hz`)));
+      const list = S.dbase === 'octave' ? ACOUSTX_FREQ_OCTAVE : ACOUSTX_FREQ_3RD;
+      fcSel.replaceChildren(h('option', { value: '' }, 'centre…'), ...list.map((b) => h('option', { value: String(b.center) }, `${b.center} Hz`)));
     };
     dbSel.addEventListener('change', () => ((S.dbase = dbSel.value), fillFc()));
     fcSel.addEventListener('change', () => {
-      const fc = parseFloat(fcSel.value);
-      if (!fc) return;
-      const half = S.dbase === 'octave' ? 0.5 : 1 / 6;
-      S.lf = +(fc * 2 ** -half).toFixed(1);
-      S.hf = +(fc * 2 ** half).toFixed(1);
+      const list = S.dbase === 'octave' ? ACOUSTX_FREQ_OCTAVE : ACOUSTX_FREQ_3RD;
+      const b = list.find((x) => String(x.center) === fcSel.value);
+      if (!b) return;
+      S.lf = b.lower;
+      S.hf = b.upper;
       S.multi = true;
       win.refresh();
     });
@@ -1217,20 +1241,55 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     T.pages.Room.append(dimsGroup(win), group('Surfaces', ...FACES6.map((f) => h('div', { class: 'row' }, h('span', { class: 'lbl' }, FACE_LABEL[f]), faceMatSelect(win, f)))));
 
     // ── SPK: size (or from the database) and position
-    const dbSel = h('select', { class: 'list' }, h('option', { value: '' }, '— speaker database —'), Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub').map(([k, p]) => h('option', { value: k }, p.label)));
+    function spkOptions() {
+      const makers = [...new Set(ACOUSTX_SPEAKERS.map((s) => s.maker))];
+      return [
+        h('option', { value: '' }, '— speaker database —'),
+        ...makers.map((m) =>
+          h(
+            'optgroup',
+            { label: `Acoustic X · ${m}` },
+            ACOUSTX_SPEAKERS.filter((s) => s.maker === m).map((s) => h('option', { value: s.key }, s.label)),
+          ),
+        ),
+        h(
+          'optgroup',
+          { label: 'Modern presets' },
+          Object.entries(SPEAKER_PRESETS)
+            .filter(([k]) => k !== 'sub')
+            .map(([k, p]) => h('option', { value: `preset:${k}` }, p.label)),
+        ),
+      ];
+    }
+    const dbSel = h('select', { class: 'list' }, ...spkOptions());
     dbSel.addEventListener('change', () => {
-      const p = SPEAKER_PRESETS[dbSel.value];
-      if (!p) return;
-      const b = boxSize({ kind: dbSel.value, litres: p.litres });
-      M.spkModel = dbSel.value;
-      M.spkSize = { w: b.w, d: b.d, h: b.h };
-      M.woofer = +(b.h * 0.3).toFixed(3);
-      M.lfCut = p.fLow ?? M.lfCut;
+      const v = dbSel.value;
+      if (!v) return;
+      if (v.startsWith('preset:')) {
+        const k = v.slice(7);
+        const p = SPEAKER_PRESETS[k];
+        if (!p) return;
+        const b = boxSize({ kind: k, litres: p.litres });
+        M.spkModel = k;
+        M.spkSize = { w: b.w, d: b.d, h: b.h };
+        M.woofer = +(b.h * 0.3).toFixed(3);
+        M.centerHeight = +(b.h * 0.5).toFixed(3);
+        if (p.fLow) M.lfCut = p.fLow;
+      } else {
+        const s = findSpeaker(v);
+        if (!s) return;
+        M.spkModel = s.key;
+        M.spkSize = { w: s.w, d: s.d, h: s.h };
+        M.woofer = s.wooferHeight;
+        M.centerHeight = s.centerHeight;
+        M.lfCut = s.fLow;
+        if (s.fCross) M.xover = s.fCross;
+      }
       edited();
     });
     win.syncers.push(() => (dbSel.value = M.spkModel ?? ''));
     const sizeF = (label, k, title) => lenField(win, label, () => M.spkSize[k], (v) => (M.spkSize = { ...M.spkSize, [k]: Math.max(0.05, v) }), { title });
-    const sizePanel = h('div', {}, group('Speaker Database', dbSel), group('Size', sizeF('Depth', 'd', 'Front to back of the cabinet'), sizeF('Width', 'w'), sizeF('Height', 'h'), lenField(win, 'Woofer height', () => M.woofer, (v) => (M.woofer = Math.max(0, v)), { title: 'Centre of the woofer above the bottom of the cabinet: the boundary calculation places the woofer' })));
+    const sizePanel = h('div', {}, group('Speaker Database', dbSel), group('Size', sizeF('Depth', 'd', 'Front to back of the cabinet'), sizeF('Width', 'w'), sizeF('Height', 'h'), lenField(win, 'Center height', () => M.centerHeight ?? +(M.spkSize.h * 0.5).toFixed(3), (v) => (M.centerHeight = Math.max(0, v)), { title: 'Acoustic center height of the speaker above the bottom of the cabinet' }), lenField(win, 'Woofer height', () => M.woofer, (v) => (M.woofer = Math.max(0, v)), { title: 'Centre of the woofer above the bottom of the cabinet: the boundary calculation places the woofer' })));
     const exc = { idx: readout(), f: readout() };
     const posPanel = h('div', {}, pointGroup(win, 'Speaker1 (woofer centre)', () => M.spk1, (v) => (M.spk1 = v)), pointGroup(win, 'Speaker2 (mirror image)', spk2, () => {}, { disabled: () => true }), group('Mode Excited By Position', h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Index'), exc.idx), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'Frequency'), exc.f, 'Hz'), h('div', { class: 'small muted' }, 'The lowest mode the speaker sits on a pressure maximum of, and the listener hears. Magenta on the chart.')));
     const optR = ['size', 'position'].map((v) => {
@@ -1407,7 +1466,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         title: 'Speaker Boundary Interference Response',
         sections: [
           { heading: `Positions (${M.units}: X from the left wall, Y from the front wall, Z above the floor)`, head: ['', 'X', 'Y', 'Z'], rows: [pos('Speaker 1 (woofer)', M.spk1), pos('Speaker 2 (woofer)', spk2()), pos('Listener', M.lis), ...(M.gen.sbir.centre ? [pos('Centre', r.sur.centre)] : []), ...(M.gen.sbir.rear ? [pos('Rear left', r.sur.rearLeft), pos('Rear right', r.sur.rearRight)] : [])] },
-          { heading: 'Speaker', rows: [['Model', SPEAKER_PRESETS[M.spkModel]?.label ?? 'entered by size'], ['Size (w × d × h)', `${fmt(toU(M.spkSize.w))} × ${fmt(toU(M.spkSize.d))} × ${fmt(toU(M.spkSize.h))} ${M.units}`], ['LF cut-off', `${M.lfCut} Hz`], ['LF cross-over', `${M.xover} Hz`]] },
+          { heading: 'Speaker', rows: [['Model', findSpeaker(M.spkModel)?.label ?? SPEAKER_PRESETS[M.spkModel]?.label ?? 'entered by size'], ['Size (w × d × h)', `${fmt(toU(M.spkSize.w))} × ${fmt(toU(M.spkSize.d))} × ${fmt(toU(M.spkSize.h))} ${M.units}`], ['Center height', `${fmt(toU(M.centerHeight ?? M.spkSize.h * 0.5))} ${M.units}`], ['Woofer height', `${fmt(toU(M.woofer))} ${M.units}`], ['LF cut-off', `${M.lfCut} Hz`], ['LF cross-over', `${M.xover} Hz`]] },
           { heading: 'Result', rows: [[S.mode === 'negative' ? 'Negative deviation' : 'Absolute deviation', `${fmt(r.score, 2)} dB`], ['At the crossover', Number.isFinite(r.xo.dev) ? `${fmt(r.xo.dev, 1)} dB${r.xo.dips ? ' — dips' : ''}` : '—'], ['Angle between speakers', `${fmt(r.geo.angle, 1)}°`], ['Speaker tilt', `${fmt(r.geo.tilt, 1)}° ${r.geo.warn}`], ['Modes excited', r.excited.map((m) => `${m.nx}${m.ny}${m.nz} ${fmt(m.f, 1)} Hz`).join(', ') || 'none flagged']] },
           { heading: `Specular absorption for a ${fmt(toU(S.win))} ${M.units} listening window (u, v on the surface)`, head: ['Surface', 'u', 'v', 'Area'], rows: [surf('Left wall (u = Y, v = Z)', A.left), surf('Right wall (u = Y, v = Z)', A.right), surf('Ceiling (u = X, v = Y)', A.ceiling)] },
           { heading: 'Deviation, 1/12 octave', head: ['Hz', 'dB'], rows: thinned(r.fine, 12).map(([f, d]) => [fmt(f, 1), fmt(d, 1)]) },
@@ -2074,7 +2133,10 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
           return h('div', { class: 'row' }, h('span', { class: 'lbl', title: material(l.id).name }, material(l.id).name.slice(0, 14)), inp, h('span', { class: 'unit' }, aUnit()), h('button', { title: 'Remove', onclick: () => (layers.splice(i, 1), edited()) }, '×'));
         }),
       );
-      srcRo.textContent = `${material(S.selMat).category} — ${material(S.selMat).name}`;
+      const selM = material(S.selMat);
+      srcRo.textContent = selM.source
+        ? `${selM.source} · ${selM.name}${selM.comments ? ` (${selM.comments})` : ''}`
+        : `${selM.category} — ${selM.name}`;
       // optimise overview
       overview.replaceChildren(
         ...FACES6.flatMap((f) =>

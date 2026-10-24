@@ -45,10 +45,12 @@
     <label class="freq"><input type="range" id="freq" min="1.30103" max="4.23045" step="0.005" title="Frequency, on a log scale: 20 Hz to 17 kHz"><output id="freqOut"></output><span class="ticks" id="freqTicks"></span></label>
     <div class="group" id="play">
       <button id="sweep" title="Sweep the field from 20 Hz to 17 kHz">▶ Sweep</button>
-      <button id="tour" title="A slide show: each view of the room in turn, full size, while the frequency sweeps">🎞 Tour</button>
+      <button id="tour" title="A slide show in a window of its own — each view of the room in turn while the frequency sweeps — saved as a video">🎞 Tour</button>
+      <label class="button" title="Play a song: the field follows the frequency it excites (WAV, MP3, FLAC…)">🎵 Song<input type="file" id="songFile" accept="audio/*"></label>
     </div>
     <div id="acx"></div>
     <div class="status" id="status"></div>
+    <div id="player" class="player" hidden></div>
   </header>
 
   <main>

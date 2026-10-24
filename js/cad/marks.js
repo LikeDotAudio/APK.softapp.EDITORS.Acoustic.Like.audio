@@ -5,7 +5,7 @@ import { boxSize, isListener } from '../acoustics/devices.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
 import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
-import { lookup, material } from '../acoustics/materials.js';
+import { PRODUCTS, furnitureHeight, material } from '../acoustics/materials.js';
 import { elevationOrigin } from '../acoustics/patches.js';
 import { firstReflections, heatOf, reflectionPanels } from '../acoustics/reflectionPanels.js';
 import { fromFrame } from '../acoustics/room.js';
@@ -63,7 +63,6 @@ const LAYOUT_LAYER = 'Speaker layout';
 const CUTAWAY_LAYER = '3-D cut-aways';
 const REFLECTION_LAYER = 'Reflections';
 const SECTION_LAYER = 'Construction';
-const FURNITURE_HEIGHT = { desk: 0.75, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3 };
 
 /** A string hash: what the CAD compares to say "already on the sheet". */
 export function hashOf(value) {
@@ -89,9 +88,9 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
 
   if (on.labels) out.labels = toCad(labelMarks(room, settings, planLayer));
   if (on.panels && mix) out.panels = toCad(panelMarks(room, state, mix));
-  if (on.arrangement) out.arrangement = toCad(arrangementMarks(room, settings, mix));
+  if (on.arrangement) out.arrangement = toCad(arrangementMarks(room, settings, mix, state));
   // the tower over each plan: its blow-up, and on top of the room being designed the cut-aways
-  const towers = on.blowup ? rooms.map((r) => ({ room: r.room, ...blowupMarks(r.room, r.name, has) })) : [];
+  const towers = on.blowup ? rooms.map((r) => ({ room: r.room, ...blowupMarks(r.room, r.name, has, state) })) : [];
   if (on.blowup) out.blowup = toCad(towers.flatMap((t) => t.items));
   const plan = bboxOf(room.poly);
   if (on.cutaways) out.cutaways = toCad(cutawayMarks(room, state, plan.x0, towers.find((t) => t.room === room)?.top ?? plan.y1 + 1.2, has));
@@ -151,12 +150,65 @@ function panelMarks(room, state, mix) {
     const y1 = Math.max(...p.sheet.map((c) => c.y));
     items.push({ kind: 'text', layer, at: [x0, y1 + text * 0.5], text: `${p.name} · ${p.speaker}`, height: text });
   }
+  for (const face of ELEVATION_FACES) {
+    const mine = panels.filter((p) => p.face === face);
+    if (mine.length) items.push(panelDetails(room, face, mine, PRODUCTS.find((x) => x.id === (ap.wall ?? 'panel-1200x600x100'))?.name ?? ap.wall));
+  }
   return items;
+}
+
+/**
+ * A wall's panels set out for whoever hangs them, on its elevation: every
+ * panel's two edges dimensioned from the wall's left corner along a baseline
+ * below the floor (staggered in rows so the figures never sit on each other),
+ * each one's centre marked and its bottom's height written in it, and beside
+ * the elevation a schedule — name, the speaker it answers, its size, where its
+ * left edge and its bottom are, what it is. All in mm.
+ */
+function panelDetails(room, face, panels, product) {
+  const origin = elevationOrigin(room, face);
+  const span = face === 'left' || face === 'right' ? room.L : room.W;
+  const size = Math.max(0.035, Math.min(0.15, Math.max(room.L, room.W) / 100));
+  const lines = [];
+  const texts = [];
+  const rows = 3;
+  const base = -size * 2;
+  lines.push([0, base, r3(span), base]);
+  lines.push([0, 0, 0, r3(base - size * 0.6)]);
+  const sorted = [...panels].sort((a, b) => Math.min(...a.sheet.map((c) => c.x)) - Math.min(...b.sheet.map((c) => c.x)));
+  const rel = (p) => {
+    const xs = p.sheet.map((c) => c.x - origin.x);
+    const ys = p.sheet.map((c) => c.y - origin.y);
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  };
+  sorted.forEach((p, i) => {
+    const b = rel(p);
+    const y = base - size * 1.6 * (i % rows);
+    // the two edges dropped to the baseline, and their distance from the corner
+    for (const x of [b.x0, b.x1]) lines.push([r3(x), r3(b.y0), r3(x), r3(y - size * 0.4)]);
+    texts.push({ text: `${p.name.split('-')[1]}: ${mm(b.x0)}–${mm(b.x1)}`, x: r3(b.x0), y: r3(y - size * 1.3), height: size * 0.8 });
+    // the centre, crossed
+    const cx = (b.x0 + b.x1) / 2;
+    const cy = (b.y0 + b.y1) / 2;
+    const k = Math.min(b.x1 - b.x0, b.y1 - b.y0) * 0.15;
+    lines.push([r3(cx - k), r3(cy), r3(cx + k), r3(cy)], [r3(cx), r3(cy - k), r3(cx), r3(cy + k)]);
+    texts.push({ text: `↑ ${mm(b.y0)}`, x: r3(b.x0 + size * 0.3), y: r3(b.y0 + size * 0.3), height: size * 0.7 });
+  });
+  // the schedule beside the elevation, top down — the column of drawings above and below leaves no room under it
+  const sx = r3(span + size * 4);
+  let y = (room.Hmax ?? room.H) - size * 1.1;
+  texts.push({ text: `PANEL SCHEDULE · ${face.toUpperCase()} WALL · ${sorted.length} panel${sorted.length === 1 ? '' : 's'} · from the left corner and the floor, mm`, x: sx, y: r3(y), height: size * 1.1 });
+  for (const p of sorted) {
+    const b = rel(p);
+    y -= size * 1.5;
+    texts.push({ text: `${p.name} · answers ${p.speaker} · ${mm(b.x1 - b.x0)} × ${mm(b.y1 - b.y0)} · left edge ${mm(b.x0)} · bottom ${mm(b.y0)} · centre ${mm((b.x0 + b.x1) / 2)} / ${mm((b.y0 + b.y1) / 2)} · ${product}`, x: sx, y: r3(y), height: size * 0.85 });
+  }
+  return { kind: 'drawing', layer: ELEVATION_LAYER[face], name: `panel-details-${face}`, at: [r3(origin.x), r3(origin.y)], lines, texts };
 }
 
 // ------------------------------------------------------------------ arrangement
 
-function arrangementMarks(room, settings, mix) {
+export function arrangementMarks(room, settings, mix, state = null) {
   const layout = LAYOUTS[settings.layout?.preset];
   if (!layout) return [];
   const seat = layoutCentre(mix ?? { ...fromFrame(room, 0.38 * room.L, 0.5 * room.W), z: 1.2 }, arrayFront(settings), settings.layout.offset);
@@ -193,6 +245,78 @@ function arrangementMarks(room, settings, mix) {
     }
   }
   texts.push({ text: `${layout.label} · r ${mm(radius)} mm`, x: r3(-radius * 0.5), y: r3(-radius - 0.15), height: 0.06 });
+
+  // Room perimeter outline on the layout layer so CAD shows room alignment
+  if (room?.poly?.length) {
+    for (let i = 0; i < room.poly.length; i++) {
+      const p1 = room.poly[i];
+      const p2 = room.poly[(i + 1) % room.poly.length];
+      lines.push([r3(p1.x - seat.x), r3(p1.y - seat.y), r3(p2.x - seat.x), r3(p2.y - seat.y)]);
+    }
+  }
+
+  // Actual speakers (front mains, side surrounds, heights, subs) drawn with box dimensions and aim
+  for (const s of state?.speakers ?? []) {
+    const dx = s.x - seat.x;
+    const dy = s.y - seat.y;
+    const sz = boxSize(s);
+    const w = sz.w || 0.35;
+    const d = sz.d || 0.3;
+    const aimRad = (s.aim ?? 90) * DEG;
+    const fx = Math.cos(aimRad);
+    const fy = Math.sin(aimRad);
+    const rx = fy;
+    const ry = -fx;
+    const hw = w / 2;
+    const hd = d / 2;
+    const c1 = [dx - hw * rx - hd * fx, dy - hw * ry - hd * fy];
+    const c2 = [dx + hw * rx - hd * fx, dy + hw * ry - hd * fy];
+    const c3 = [dx + hw * rx + hd * fx, dy + hw * ry + hd * fy];
+    const c4 = [dx - hw * rx + hd * fx, dy - hw * ry + hd * fy];
+    lines.push([r3(c1[0]), r3(c1[1]), r3(c2[0]), r3(c2[1])]);
+    lines.push([r3(c2[0]), r3(c2[1]), r3(c3[0]), r3(c3[1])]);
+    lines.push([r3(c3[0]), r3(c3[1]), r3(c4[0]), r3(c4[1])]);
+    lines.push([r3(c4[0]), r3(c4[1]), r3(c1[0]), r3(c1[1])]);
+    // Aim pointer
+    lines.push([r3(dx + hd * fx), r3(dy + hd * fy), r3(dx + (hd + 0.16) * fx), r3(dy + (hd + 0.16) * fy)]);
+    const label = s.role || s.name || 'SPK';
+    texts.push({ text: label, x: r3(dx - 0.08), y: r3(dy - 0.02), height: 0.07 });
+  }
+
+  // Listener seats (MIX, producer P, client C, entourage)
+  for (const m of state?.mics ?? []) {
+    const dx = m.x - seat.x;
+    const dy = m.y - seat.y;
+    const k = 0.12;
+    lines.push([r3(dx - k), r3(dy), r3(dx + k), r3(dy)]);
+    lines.push([r3(dx), r3(dy - k), r3(dx), r3(dy + k)]);
+    const tag = m.mix ? 'MIX' : (m.kind === 'producer' ? 'P' : m.kind === 'client' ? 'C' : m.name || 'M');
+    texts.push({ text: tag, x: r3(dx - 0.08), y: r3(dy + 0.16), height: 0.07 });
+  }
+
+  // Placed furniture (desks, consoles, racks, couches)
+  for (const f of state?.furniture ?? []) {
+    const prod = PRODUCTS.find((p) => p.id === f.paletteId);
+    const [w, d] = prod?.size ?? [1.8, 0.9];
+    const dx = f.x - seat.x;
+    const dy = f.y - seat.y;
+    const rotRad = (f.rotation ?? 0) * DEG;
+    const cos = Math.cos(rotRad);
+    const sin = Math.sin(rotRad);
+    const hw = w / 2;
+    const hd = d / 2;
+    const p1 = [dx - hw * cos + hd * sin, dy - hw * sin - hd * cos];
+    const p2 = [dx + hw * cos + hd * sin, dy + hw * sin - hd * cos];
+    const p3 = [dx + hw * cos - hd * sin, dy + hw * sin + hd * cos];
+    const p4 = [dx - hw * cos - hd * sin, dy - hw * sin + hd * cos];
+    lines.push([r3(p1[0]), r3(p1[1]), r3(p2[0]), r3(p2[1])]);
+    lines.push([r3(p2[0]), r3(p2[1]), r3(p3[0]), r3(p3[1])]);
+    lines.push([r3(p3[0]), r3(p3[1]), r3(p4[0]), r3(p4[1])]);
+    lines.push([r3(p4[0]), r3(p4[1]), r3(p1[0]), r3(p1[1])]);
+    const label = prod?.name?.split(/[,(]/)[0]?.trim() ?? 'Desk';
+    texts.push({ text: label, x: r3(dx - 0.2), y: r3(dy), height: 0.07 });
+  }
+
   return [{ kind: 'drawing', layer: LAYOUT_LAYER, layerColor: '#fde047', name: 'arrangement', at: [seat.x, seat.y], lines, texts }];
 }
 
@@ -280,21 +404,7 @@ function cutaway(room, state, camAz, has, rays = [], mix = null) {
     }
   }
   for (const s of state.speakers) {
-    // the cabinet at its size (litres), turned to where it aims, the acoustic centre in its middle
-    const size = boxSize(s);
-    const f = { x: Math.cos((s.aim ?? 0) * DEG), y: Math.sin((s.aim ?? 0) * DEG) };
-    const rt = { x: f.y, y: -f.x };
-    const corner = (a, b) => ({ x: s.x + rt.x * a * size.w / 2 + f.x * b * size.d / 2, y: s.y + rt.y * a * size.w / 2 + f.y * b * size.d / 2 });
-    const box = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
-    const [z0, z1] = [s.z - size.h / 2, s.z + size.h / 2];
-    const layer = layerOr(LAYOUT_LAYER);
-    for (let i = 0; i < 4; i++) {
-      const a = box[i];
-      const b = box[(i + 1) % 4];
-      seg(a, z0, b, z0, layer);
-      seg(a, z1, b, z1, layer);
-      seg(a, z0, a, z1, layer);
-    }
+    const z1 = cabinet(s, seg, layerOr(LAYOUT_LAYER));
     const p = P(s, z1);
     texts.push({ text: s.role || s.name, x: r3(p.X), y: r3(p.Y + 0.05), height: 0.05 });
   }
@@ -349,6 +459,27 @@ function cutaway(room, state, camAz, has, rays = [], mix = null) {
 }
 
 /**
+ * A speaker's cabinet in 3-D line work: its size (litres), turned to where it
+ * aims, the acoustic centre in its middle. Returns the top of the box.
+ */
+function cabinet(s, seg, layer) {
+  const size = boxSize(s);
+  const f = { x: Math.cos((s.aim ?? 0) * DEG), y: Math.sin((s.aim ?? 0) * DEG) };
+  const rt = { x: f.y, y: -f.x };
+  const corner = (a, b) => ({ x: s.x + rt.x * a * size.w / 2 + f.x * b * size.d / 2, y: s.y + rt.y * a * size.w / 2 + f.y * b * size.d / 2 });
+  const box = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+  const [z0, z1] = [s.z - size.h / 2, s.z + size.h / 2];
+  for (let i = 0; i < 4; i++) {
+    const a = box[i];
+    const b = box[(i + 1) % 4];
+    seg(a, z0, b, z0, layer);
+    seg(a, z1, b, z1, layer);
+    seg(a, z0, a, z1, layer);
+  }
+  return z1;
+}
+
+/**
  * A seated listener in 3-D line work, ears at `m.z`, facing `m.aim`: the head
  * a ring round the ears, a nose to show which way, the spine down to the
  * seat, shoulders across, thighs forward and shins to the floor.
@@ -377,12 +508,6 @@ function person(m, seg) {
   }
 }
 
-function furnitureHeight(paletteId) {
-  const id = String(paletteId ?? '');
-  for (const [k, h] of Object.entries(FURNITURE_HEIGHT)) if (id.startsWith(k)) return h;
-  return lookup(id)?.category === 'Furniture' ? 0.8 : 0;
-}
-
 // ------------------------------------------------------------------ blow-up
 
 const BLOWUP_LAYER = 'Blow-up';
@@ -394,8 +519,11 @@ const BT = 0.07;
  * outlined, with its treatments drawn on it and named, and a title line.
  */
 /** One room's blow-up: { items, top } — `top` where the tower ends, for what stands on it. */
-function blowupMarks(room, name, has) {
+function blowupMarks(room, name, has, state = null) {
   if (!room) return { items: [], top: 0 };
+  // who stands in this room: drawn into the floor plan and every wall's elevation, each its own block
+  const inside = (d) => pointInPolygon(d.x, d.y, room.poly);
+  const figs = state ? [...state.speakers.filter(inside).map((d) => ({ d, kind: 'speaker' })), ...state.mics.filter(inside).map((d) => ({ d, kind: isListener(d) || d.mix ? 'listener' : 'mic' }))] : [];
   const plan = bboxOf(room.poly);
   const width = Math.max(plan.x1 - plan.x0, 6);
   const gap = 0.6;
@@ -435,7 +563,7 @@ function blowupMarks(room, name, has) {
     drawings.push({ row: drawings.length, ...planDrawing(title, pcs, room.ceilingArea ?? room.area, has(layer) ? layer : undefined) });
   }
   const floorPieces = (room.patches ?? []).filter((p) => p.surface === 'floor');
-  drawings.push({ row: drawings.length, ...planDrawing(`FLOOR · ${room.floor?.name ?? ''}`, floorPieces, room.floorArea ?? room.area, undefined) });
+  drawings.push({ row: drawings.length, ...planDrawing(`FLOOR · ${room.floor?.name ?? ''}`, floorPieces, room.floorArea ?? room.area, undefined), title: 'FLOOR', proj: (p) => [p.x - plan.x0, p.y - plan.y0] });
 
   // every wall, as seen from inside the room: a→b runs right to left
   room.walls.forEach((w, n) => {
@@ -466,7 +594,9 @@ function blowupMarks(room, name, has) {
     const same = room.walls.filter((x) => x.face === w.face);
     const label = same.length > 1 ? `${w.face.toUpperCase()} ${same.indexOf(w) + 1}` : w.face.toUpperCase();
     texts.push({ text: `WALL ${n + 1} · ${label} · ${mm(w.len)} × ${mm(top)} mm · ${w.material?.name ?? ''}${treated(pcs, w.area)}`, x: 0, y: top + 0.12, height: BT });
-    drawings.push({ wall: true, lines, texts, w: w.len, h: top + 0.3 });
+    // seen from inside: only what stands in front of this wall's length
+    const along = (p) => (p.x - w.a.x) * w.t.x + (p.y - w.a.y) * w.t.y;
+    drawings.push({ wall: true, lines, texts, w: w.len, h: top + 0.3, title: `WALL ${n + 1} · ${label}`, proj: (p, z) => [X(along(p)), z], shows: (d) => along(d) >= 0 && along(d) <= w.len });
   });
 
   // stack: ceiling layers and the floor one per row, the walls in rows `width` wide; bottom row just above the plan
@@ -487,12 +617,53 @@ function blowupMarks(room, name, has) {
     const h = Math.max(...rows[r].map((d) => d.h));
     for (const d of rows[r]) {
       items.push({ kind: 'drawing', layer: BLOWUP_LAYER, layerColor: '#e2e8f0', name: `${name}:${r}:${x.toFixed(2)}`, at: [r3(x), r3(y)], lines: d.lines.map((l) => l.map((v) => (typeof v === 'number' ? r3(v) : v))), texts: d.texts.map((t) => ({ ...t, x: r3(t.x), y: r3(t.y) })) });
+      if (d.proj) for (const f of figs) if (!d.shows || d.shows(f.d)) items.push(figureMark(f, d.proj, [r3(x), r3(y)], `${name}:${r}:${x.toFixed(2)}`, d.title));
       x += d.w + gap;
     }
     y += h + gap;
   }
   if (name) items.push({ kind: 'text', layer: BLOWUP_LAYER, layerColor: '#e2e8f0', at: [r3(plan.x0), r3(y)], text: `BLOW-UP · ${name} · top to bottom: ceiling, floor, walls`, height: BT * 1.5 });
   return { items, top: y + BT * 1.5 + 1.2 };
+}
+
+const FIGURE_LAYERS = { speaker: ['Speakers', '#facc15'], listener: ['Listeners', '#a78bfa'], mic: ['Mics', '#34d399'] };
+
+/**
+ * One speaker, listener or mic drawn into a blow-up drawing, through `proj`
+ * ((x, y), z) → that drawing's [x, y]: a block of its own on its layer
+ * (Speakers / Listeners / Mics), its attributes naming the object it is —
+ * id, role, where it stands — so the CAD can say what each one is.
+ */
+function figureMark({ d, kind }, proj, at, drawing, title) {
+  const lines = [];
+  const seg = (a, za, b, zb) => lines.push([...proj(a, za), ...proj(b, zb)].map(r3));
+  let label = d.name;
+  let top = d.z;
+  if (kind === 'speaker') {
+    top = cabinet(d, seg);
+    label = d.role || d.name;
+  } else if (kind === 'listener') {
+    person(d, seg);
+    top = d.z + 0.15;
+    if (d.mix) label = 'MIX';
+  } else {
+    const c = 0.08;
+    seg({ x: d.x - c, y: d.y }, d.z - c, { x: d.x + c, y: d.y }, d.z + c);
+    seg({ x: d.x - c, y: d.y }, d.z + c, { x: d.x + c, y: d.y }, d.z - c);
+  }
+  const [lx, ly] = proj(d, top);
+  const [layer, layerColor] = FIGURE_LAYERS[kind];
+  const attributes = {
+    object: kind,
+    id: String(d.id),
+    name: String(d.name ?? ''),
+    ...(d.role ? { role: d.role } : {}),
+    ...(d.kind ? { type: String(d.kind) } : {}),
+    position: `${mm(d.x)}, ${mm(d.y)}, ${mm(d.z)} mm`,
+    ...(d.aim != null ? { aim: `${Math.round(d.aim)}°` } : {}),
+    drawing: title,
+  };
+  return { kind: 'drawing', layer, layerColor, name: `${drawing}:${kind}:${d.id}`, at, lines, texts: [{ text: label, x: r3(lx), y: r3(ly + 0.05), height: BT * 0.8 }], attributes };
 }
 
 const centre = (pts) => ({ x: pts.reduce((t, p) => t + p.x, 0) / pts.length, y: pts.reduce((t, p) => t + p.y, 0) / pts.length });

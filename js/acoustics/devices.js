@@ -30,6 +30,8 @@
  * shows its SBIR notch there and a flush one does not.
  */
 
+import { ACOUSTX_SPEAKERS } from '../acoustx/database.js';
+
 // The library. First the real boxes, by maker and model — `litres` is the
 // cabinet's internal volume, which sets the size it is drawn (boxSize), and
 // `driver` how it is built; a figure not read off the maker's datasheet is
@@ -48,20 +50,92 @@ export const SPEAKER_PRESETS = {
   sub: { label: 'Subwoofer', litres: 60, pattern: 'omni', hCov: 360, vCov: 360, sensitivity: 100, watts: 1, maxSpl: 128, fLow: 30, fHigh: 0, omniBelow: 0, lowpass: 100, color: '#b388ff' },
 };
 
+/** Acoustic X classic studio reference monitor presets (Genelec, Dynaudio, Meyer Sound). */
+export const ACOUSTX_SPEAKER_PRESETS = Object.fromEntries(
+  ACOUSTX_SPEAKERS.flatMap((s) => {
+    const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const preset = {
+      label: s.label,
+      name: s.name,
+      maker: s.maker,
+      driver: `${s.maker} monitor`,
+      w: s.w,
+      d: s.d,
+      h: s.h,
+      centerHeight: s.centerHeight,
+      wooferHeight: s.wooferHeight,
+      sensitivity: s.sensitivity || 88,
+      watts: 4,
+      maxSpl: 112,
+      fLow: s.fLow,
+      fHigh: s.fHigh,
+      fCross: s.fCross,
+      nearField: s.nearField,
+      midField: s.midField,
+      mainMonitor: s.mainMonitor,
+      metric: s.metric,
+      tag: s.tag,
+      pattern: 'cardioid',
+      hCov: 90,
+      vCov: 60,
+      omniBelow: 300,
+      lowpass: 0,
+      color: s.mainMonitor ? '#e0b04a' : s.midField ? '#38bdf8' : '#5aa9ff',
+      litres: +(s.w * s.d * s.h * 600).toFixed(1),
+    };
+    return [
+      [s.key, preset],
+      [slug, preset],
+      [s.id, preset],
+    ];
+  }),
+);
+
+export const ALL_SPEAKER_PRESETS = { ...SPEAKER_PRESETS, ...ACOUSTX_SPEAKER_PRESETS };
+
 /**
  * A box's outside size from its litres, metres { w, h, d }: a monitor stands
- * 1.6 tall to 1 wide to 1.2 deep, a sub is near a cube. Litres are inside
- * volume, so this is the size it is drawn, not a cut list.
+ * 1.6 tall to 1 wide to 1.2 deep, a sub is near a cube. If exact cabinet dimensions
+ * { w, h, d } are specified on the speaker or preset, those are returned directly.
  */
 export function boxSize(spk) {
-  const litres = spk.litres ?? SPEAKER_PRESETS[spk.kind]?.litres ?? 12;
+  if (spk.w && spk.h && spk.d) return { w: spk.w, h: spk.h, d: spk.d };
+  const p = SPEAKER_PRESETS[spk.kind] ?? ACOUSTX_SPEAKER_PRESETS[spk.kind];
+  if (p?.w && p?.h && p?.d) return { w: p.w, h: p.h, d: p.d };
+  const litres = spk.litres ?? p?.litres ?? 12;
   const [h, w, d] = spk.kind === 'sub' ? [1, 1.15, 1.1] : [1.6, 1, 1.2];
   const k = Math.cbrt(litres / 1000 / (h * w * d));
   return { w: w * k, h: h * k, d: d * k };
 }
 
 /** The fields a preset sets on a speaker — what choosing a preset copies. */
-export const SPEAKER_SPEC = ['litres', 'driver', 'pattern', 'hCov', 'vCov', 'sensitivity', 'watts', 'maxSpl', 'fLow', 'fHigh', 'omniBelow', 'lowpass', 'color'];
+export const SPEAKER_SPEC = [
+  'litres',
+  'driver',
+  'pattern',
+  'hCov',
+  'vCov',
+  'sensitivity',
+  'watts',
+  'maxSpl',
+  'fLow',
+  'fHigh',
+  'omniBelow',
+  'lowpass',
+  'color',
+  'w',
+  'd',
+  'h',
+  'centerHeight',
+  'wooferHeight',
+  'fCross',
+  'nearField',
+  'midField',
+  'mainMonitor',
+  'maker',
+  'metric',
+  'tag',
+];
 
 /**
  * Mics are mostly PEOPLE: the listening spots of the room, in tiers. The mixer
@@ -97,7 +171,7 @@ export function newId(prefix) {
 }
 
 export function makeSpeaker(kind, at, extra = {}) {
-  const p = SPEAKER_PRESETS[kind] ?? SPEAKER_PRESETS.monitor;
+  const p = SPEAKER_PRESETS[kind] ?? ACOUSTX_SPEAKER_PRESETS[kind] ?? SPEAKER_PRESETS.monitor;
   const spec = Object.fromEntries(SPEAKER_SPEC.map((k) => [k, p[k]]));
   return {
     id: newId('s'),

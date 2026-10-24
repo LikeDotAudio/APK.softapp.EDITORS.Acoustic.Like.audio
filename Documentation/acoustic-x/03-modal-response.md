@@ -116,7 +116,7 @@ Each Bonello failure costs 2, more than any spacing can win back. So the rooms t
 
 **Mode 1** picks what to show:
 - **A single mode:** enter its index $n_x, n_y, n_z$. One non-zero index gives an axial mode, two a tangential mode, three an oblique one. Its frequency is shown.
-- **Multi-mode summation:** every mode between an **LF cut-off** and an **HF cut-off**. Fill the cut-offs from the octave or ⅓-octave database, or with **Get freq.** from the mode picked on the chart (±0.05 Hz round it).
+- **Multi-mode summation:** every mode between an **LF cut-off** and an **HF cut-off**. Fill the cut-offs from the octave or ⅓-octave database (`js/acoustx/database.js` `ACOUSTX_FREQ_OCTAVE`, `ACOUSTX_FREQ_3RD`), or with **Get freq.** from the mode picked on the chart (±0.05 Hz round it).
 
 **Display res.** is the grid spacing. The original's 12 in is 0.3048 m.
 

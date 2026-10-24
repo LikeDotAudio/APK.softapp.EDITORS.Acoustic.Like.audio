@@ -6,6 +6,8 @@ import { DEG, mirrorPoint, segmentCross } from '../acoustics/geometry.js';
 import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, noseMarks, snapNose } from '../acoustics/layouts.js';
 import { fromFrame } from '../acoustics/room.js';
 import { roomGrowth } from '../acoustics/roomFit.js';
+import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
+import { PRODUCTS } from '../acoustics/materials.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { boxSize, MIC_PRESETS, isListener } from '../acoustics/devices.js';
 import { mirrorName } from '../acoustics/symmetry.js';
@@ -35,10 +37,26 @@ import { gridCanvas } from './paint.js';
  * same overlay on top — speakers and mics still go down and move here.
  */
 
-export function createPlanView({ tile, iframe, store, engine, onDrag }) {
+export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null }) {
   const canvas = tile.querySelector('canvas.overlay');
   const capture = tile.querySelector('.capture');
   const hits = tile.querySelector('.hits');
+
+  let hoverPos = null;
+
+  capture.addEventListener('pointermove', (e) => {
+    if (store.state.mode === 'place-furniture' || store.state.mode === 'place-speaker' || store.state.mode === 'place-mic') {
+      hoverPos = toWorld(e.clientX, e.clientY);
+      render();
+    }
+  });
+
+  capture.addEventListener('pointerleave', () => {
+    if (hoverPos) {
+      hoverPos = null;
+      render();
+    }
+  });
 
   /** The CAD's own transform, or — popped out — one that fits the room to this tile. */
   function view() {
@@ -86,15 +104,35 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       store.select(w ? { kind: 'wall', id: w.key } : null);
       return;
     }
-    if (mode === 'place-speaker') store.addSpeaker(placeKind.speaker, { x: p.x, y: p.y, z: placeKind.speaker === 'sub' ? 0.3 : 1.2 }, { aim: store.state.settings.frontDeg + 180 });
-    else if (mode === 'place-mic') store.addMic(placeKind.mic, { x: p.x, y: p.y, z: room ? +(room.H * 0.4).toFixed(2) : 1.2 }, { aim: store.state.settings.frontDeg });
-    if (!e.shiftKey) store.setMode('cad');
+    if (mode === 'place-speaker') {
+      const at = room ? clampInside(room, p, CLEAR_M) : p;
+      store.addSpeaker(placeKind.speaker, { x: at.x, y: at.y, z: placeKind.speaker === 'sub' ? 0.3 : 1.2 }, { aim: store.state.settings.frontDeg + 180 });
+    } else if (mode === 'place-mic') {
+      const at = room ? clampInside(room, p, CLEAR_M) : p;
+      store.addMic(placeKind.mic, { x: at.x, y: at.y, z: room ? +(room.H * 0.4).toFixed(2) : 1.2 }, { aim: store.state.settings.frontDeg });
+    } else if (mode === 'place-furniture') {
+      const at = room ? clampInside(room, p, CLEAR_M) : p;
+      const paletteId = placeKind.furniture || 'desk-1800x900';
+      store.addFurniture(paletteId, { x: at.x, y: at.y, z: 0 }, 0);
+      if (cad?.link) {
+        cad.link.place('Furniture', [{ paletteId, at: [+(at.x / k()).toFixed(4), +(at.y / k()).toFixed(4)], rotation: 0 }]);
+      }
+    }
+    hoverPos = null;
+    if (!e.shiftKey) {
+      store.setMode('cad');
+      if (cad?.link) cad.link.arm(null);
+    }
   });
 
   /** Hit targets: one absolutely-placed div per device, the only things here that take the mouse. */
   function syncHits() {
-    const { speakers, mics } = store.state;
-    const want = [...speakers.map((d) => ['speaker', d]), ...mics.map((d) => ['mic', d])];
+    const { speakers, mics, furniture = [] } = store.state;
+    const want = [
+      ...speakers.map((d) => ['speaker', d]),
+      ...mics.map((d) => ['mic', d]),
+      ...furniture.map((d) => ['furniture', d]),
+    ];
     const seen = new Set();
     for (const [kind, d] of want) {
       seen.add(d.id);
@@ -104,7 +142,11 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         el.className = 'hit';
         el.dataset.id = d.id;
         el.dataset.kind = kind;
-        el.title = kind === 'speaker' ? 'Drag to move · Shift-drag to aim · Ctrl-click to turn it (click to set, Esc to cancel) · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)' : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)';
+        el.title = kind === 'speaker'
+          ? 'Drag to move · Shift-drag to aim · Ctrl-click to turn it (click to set, Esc to cancel) · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)'
+          : kind === 'furniture'
+          ? 'Drag to move · Shift-drag to turn · Del / Backspace to remove'
+          : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)';
         el.addEventListener('pointerdown', (e) => startDrag(e, el));
         hits.appendChild(el);
       }
@@ -176,9 +218,12 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     const kind = el.dataset.kind;
     const id = el.dataset.id;
     if (kind === 'speaker' && (e.ctrlKey || e.metaKey) && !spinning) return startSpin(el);
+    // lost outside the room: the touch brings it to the middle instead of dragging it further off
+    if (store.bringIn(kind, id, engine.out.room)) return;
     store.select({ kind, id });
-    const list = kind === 'speaker' ? store.state.speakers : store.state.mics;
+    const list = kind === 'speaker' ? store.state.speakers : kind === 'furniture' ? (store.state.furniture ?? []) : store.state.mics;
     const dev = list.find((d) => d.id === id);
+    if (!dev) return;
     const start = toWorld(e.clientX, e.clientY);
     const origin = { x: dev.x, y: dev.y };
     const sx = e.clientX;
@@ -211,14 +256,31 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         if (held) applyOrbit(orbit, p, ev.shiftKey);
         else if (ev.shiftKey) {
           const aim = (Math.atan2(p.y - dev.y, p.x - dev.x) * 180) / Math.PI;
-          if (kind === 'mic') {
+          if (kind === 'furniture') {
+            const rot = ev.altKey ? Math.round(aim) : Math.round(aim / 15) * 15;
+            store.updateFurniture(id, { rotation: rot }, true);
+            if (cad?.link && dev.cadId) {
+              cad.link.move([{ id: dev.cadId, at: [+(dev.x / k()).toFixed(4), +(dev.y / k()).toFixed(4)], rotation: rot }]);
+            }
+          } else if (kind === 'mic') {
             // a listener's nose snaps to the room's marks (Alt turns it freely)
             const { settings } = store.state;
             const snap = ev.altKey ? { aim: Math.round(aim), mark: null } : snapNose(aim, noseMarks(engine.out.room, settings.frontDeg), settings.frontDeg);
             turning = { id, mark: snap.mark };
             store.update(kind, id, { aim: snap.aim }, true);
           } else store.update(kind, id, { aim: Math.round(aim) }, true);
-        } else store.update(kind, id, { x: origin.x + p.x - start.x, y: origin.y + p.y - start.y }, true);
+        } else {
+          const target = { x: origin.x + p.x - start.x, y: origin.y + p.y - start.y, z: dev.z ?? 0, kind: dev.kind };
+          const clamped = engine.out.room ? clampInside(engine.out.room, target, CLEAR_M) : target;
+          if (kind === 'furniture') {
+            store.updateFurniture(id, { x: clamped.x, y: clamped.y }, true);
+            if (cad?.link && dev.cadId) {
+              cad.link.move([{ id: dev.cadId, at: [+(clamped.x / k()).toFixed(4), +(clamped.y / k()).toFixed(4)], rotation: dev.rotation ?? 0 }]);
+            }
+          } else {
+            store.update(kind, id, { x: clamped.x, y: clamped.y }, true);
+          }
+        }
         onDrag(true);
       },
       () => {
@@ -253,8 +315,13 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     o.dist = Math.max(0.3, Math.round(Math.hypot(p.x - L.x, p.y - L.y) / 0.05) * 0.05);
     const place = (az, toe) => {
       const b = (o.facing + az) * DEG;
-      const x = L.x + o.dist * Math.cos(b);
-      const y = L.y + o.dist * Math.sin(b);
+      let x = L.x + o.dist * Math.cos(b);
+      let y = L.y + o.dist * Math.sin(b);
+      if (engine.out.room) {
+        const c = clampInside(engine.out.room, { x, y, z: o.z }, CLEAR_M, L);
+        x = c.x;
+        y = c.y;
+      }
       return { x: +x.toFixed(3), y: +y.toFixed(3), aim: +wrap(o.facing + az + 180 + toe).toFixed(1), tilt: +(Math.atan2(L.z - o.z, o.dist) / DEG).toFixed(1) };
     };
     const patches = [{ id: o.id, ...place(o.az, o.toe) }];
@@ -408,6 +475,36 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
         drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: Math.max(11, (boxSize(s).w * pxPerMetre()) / 2) });
       }
     }
+
+    // Placed furniture (desks, consoles, racks, couches)
+    const placedFurniture = state.furniture ?? [];
+    for (const f of placedFurniture) {
+      drawFurnitureItem(ctx, f, toScreen, pxPerMetre(), state.selected?.kind === 'furniture' && state.selected.id === f.id);
+    }
+    for (const p of room.patches ?? []) {
+      if (p.surface !== 'floor') continue;
+      const isFurn = p.paletteId.startsWith('desk') || p.paletteId.startsWith('console') || p.paletteId.startsWith('couch') || p.paletteId.startsWith('rack') || p.paletteId.startsWith('drum') || p.paletteId.startsWith('guitar');
+      if (!isFurn) continue;
+      if (placedFurniture.some((f) => f.cadId === p.id)) continue;
+      ctx.save();
+      ctx.fillStyle = 'rgba(38, 38, 45, 0.75)';
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      p.points3d.forEach((q, i) => {
+        const s = toScreen(q.x, q.y);
+        if (i) ctx.lineTo(s.x, s.y);
+        else ctx.moveTo(s.x, s.y);
+      });
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (state.mode === 'place-furniture' && hoverPos) {
+      drawFurniturePreview(ctx, state.placeKind?.furniture || 'desk-1800x900', hoverPos, room, toScreen, pxPerMetre());
+    }
+
     if (orbit) drawOrbit(ctx, orbit, toScreen, pxPerMetre());
     if (turning) drawTurning(ctx, turning, state.mics.find((m) => m.id === turning.id), toScreen, pxPerMetre());
     if (spinning) drawTurning(ctx, { mark: null }, state.speakers.find((s) => s.id === spinning.id), toScreen, pxPerMetre());
@@ -482,6 +579,72 @@ function drawWallMarks(ctx, room, state, toScreen) {
     }
   }
   ctx.restore();
+}
+
+export function drawFurnitureItem(ctx, f, toScreen, ppm, selected = false) {
+  const prod = PRODUCTS.find((p) => p.id === f.paletteId) || { name: f.paletteId, size: [1.8, 0.9] };
+  const [wMetres, dMetres] = prod.size || [1.8, 0.9];
+  const p = toScreen(f.x, f.y);
+  if (!Number.isFinite(p.x)) return;
+  const wPx = wMetres * ppm;
+  const dPx = dMetres * ppm;
+  const ang = (-(f.rotation || 0) * Math.PI) / 180;
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(ang);
+
+  ctx.fillStyle = selected ? 'rgba(251, 191, 36, 0.25)' : 'rgba(30, 34, 42, 0.88)';
+  ctx.strokeStyle = selected ? '#fbbf24' : 'rgba(251, 191, 36, 0.75)';
+  ctx.lineWidth = selected ? 2.5 : 1.5;
+  if (selected) {
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 8;
+  }
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-wPx / 2, -dPx / 2, wPx, dPx, 3);
+  else ctx.rect(-wPx / 2, -dPx / 2, wPx, dPx);
+  ctx.fill();
+  ctx.stroke();
+
+  if (wPx > 24 && dPx > 16) {
+    ctx.beginPath();
+    ctx.strokeStyle = selected ? 'rgba(251, 191, 36, 0.5)' : 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+    if (ctx.roundRect) ctx.roundRect(-wPx / 2 + 2, -dPx / 2 + 2, wPx - 4, dPx - 4, 2);
+    else ctx.rect(-wPx / 2 + 2, -dPx / 2 + 2, wPx - 4, dPx - 4);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  const label = prod.name.replace(/ \d+×\d+.*$/, '');
+  drawLabel(ctx, p.x, p.y, label, selected ? '#fbbf24' : '#e5e7eb', { force: selected });
+}
+
+export function drawFurniturePreview(ctx, paletteId, pos, room, toScreen, ppm) {
+  const at = room ? clampInside(room, pos, CLEAR_M) : pos;
+  const prod = PRODUCTS.find((p) => p.id === paletteId) || { name: paletteId, size: [1.8, 0.9] };
+  const [wMetres, dMetres] = prod.size || [1.8, 0.9];
+  const p = toScreen(at.x, at.y);
+  if (!Number.isFinite(p.x)) return;
+  const wPx = wMetres * ppm;
+  const dPx = dMetres * ppm;
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.fillStyle = 'rgba(251, 191, 36, 0.25)';
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(-wPx / 2, -dPx / 2, wPx, dPx, 4);
+  else ctx.rect(-wPx / 2, -dPx / 2, wPx, dPx);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  drawLabel(ctx, p.x, p.y + dPx / 2 + 14, `+ ${prod.name}`, '#fbbf24', { force: true });
 }
 
 function drawWalls(ctx, room, toScreen) {

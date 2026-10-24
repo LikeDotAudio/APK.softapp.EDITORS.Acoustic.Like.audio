@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 
 /**
- * FORTY-FIVE ROOMS TO PLAY WITH
+ * FIFTY-ONE ROOMS TO PLAY WITH
  *
  * Plans of the kinds of room studios are actually built in, at real sizes:
  * the spare bedroom and the garage, the rooms drawn to a published ratio, the
@@ -10,6 +10,13 @@
  * rooms from a vocal booth to a scoring stage, and the mix rooms of film and
  * broadcast. They are TYPES — the shape and size such a room usually has —
  * not surveys of any one studio, so treat a name as "a room like this".
+ *
+ * Except one studio's own rooms: TANDA in Saskatoon — control rooms Tanda A
+ * and Tanda B (B under construction), each with its live room and iso booth —
+ * traced off the studio's floor plan (`traced`). The plan has no scale, so
+ * TANDA_PX_PER_M is read off the furniture drawn in it (a mixer's chair, the
+ * consoles, the couches) and the heights are a studio's usual; set either from
+ * a survey and every Tanda room follows.
  *
  * Every plan is in metres with the listener facing +Y (the front wall at the
  * top, frontDeg 90), centred on x = 0 and starting at y = 0, wound counter-
@@ -50,6 +57,26 @@ const fan = (w, l, tip) => [[-w / 2, 0], [w / 2, 0], [w / 2, l - tip], [0, l], [
 const ell = (w, l, wn, lb) => [[-w / 2, 0], [w / 2, 0], [w / 2, lb], [-w / 2 + wn, lb], [-w / 2 + wn, l], [-w / 2, l]];
 
 const ft = (pts) => pts.map(([x, y]) => [x * FT, y * FT]);
+
+/**
+ * A plan traced off a drawing in pixels (x right, y down), `pxPerM` to the
+ * metre, turned so the drawing's `front` side ('up', 'down', 'left' or
+ * 'right') is the front wall — then centred on x = 0 from y = 0 and wound
+ * counter-clockwise like the rest.
+ */
+function traced(px, pxPerM, front) {
+  const turn = { up: ([u, v]) => [u, -v], down: ([u, v]) => [-u, v], left: ([u, v]) => [-v, -u], right: ([u, v]) => [v, u] }[front];
+  const pts = px.map((p) => turn(p).map((c) => c / pxPerM));
+  const xs = pts.map(([x]) => x);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const y0 = Math.min(...pts.map(([, y]) => y));
+  const out = pts.map(([x, y]) => [+(x - cx).toFixed(3), +(y - y0).toFixed(3)]);
+  return planArea(out) < 0 ? out.reverse() : out;
+}
+
+/** Tanda's floor plan (studio_layout_large.jpg, 700 × 1279 px): pixels to the metre, from the chairs, consoles and couches drawn in it. */
+const TANDA_PX_PER_M = 60;
+const tanda = (px, front) => traced(px, TANDA_PX_PER_M, front);
 
 export const ROOM_LIBRARY = [
   // ---------------------------------------------------------------- home and project
@@ -106,6 +133,15 @@ export const ROOM_LIBRARY = [
   // ---------------------------------------------------------------- immersive and film
   { id: 'atmos-home', group: 'Immersive & film', name: 'Home Atmos mix room', note: 'the minimum a 7.1.4 fits in', h: 2.7, poly: rect(4.5, 5.5) },
   { id: 'dub-stage', group: 'Immersive & film', name: 'Film dubbing stage', note: 'a mixing theatre: screen wall, console mid-room', h: 7, poly: rect(12, 16) },
+
+  // ---------------------------------------------------------------- Tanda, Saskatoon: the studio's own rooms, traced off its plan
+  // control rooms face the console's front wall; the live rooms and booths face their glass
+  { id: 'tanda-a', group: 'Tanda, Saskatoon', name: 'Tanda A — control room', note: 'chamfered front, the back wall a diffuser folded in two', h: 3.0, poly: tanda([[460, 187], [672, 172], [685, 237], [677, 310], [690, 370], [674, 447], [462, 427], [430, 385], [430, 247]], 'left') },
+  { id: 'tanda-a-studio-1', group: 'Tanda, Saskatoon', name: 'Tanda A — Studio 1', note: 'the live room with the grand, glass to Tanda A', h: 3.6, live: true, poly: tanda([[15, 15], [405, 20], [402, 455], [12, 502]], 'right') },
+  { id: 'tanda-a-iso-1', group: 'Tanda, Saskatoon', name: 'Tanda A — ISO 1', note: 'the booth over Tanda A, glass down into it', h: 2.7, live: true, poly: tanda([[415, 18], [692, 18], [690, 145], [420, 178]], 'down') },
+  { id: 'tanda-b', group: 'Tanda, Saskatoon', name: 'Tanda B — control room', note: 'under construction: the big angled room, couch at the back, an alcove off the glass', h: 3.2, poly: tanda([[160, 615], [277, 570], [300, 602], [377, 630], [397, 585], [500, 545], [572, 715], [572, 800], [500, 965], [400, 950], [382, 887], [290, 950], [165, 910], [130, 830], [130, 720], [165, 660]], 'left') },
+  { id: 'tanda-b-studio-2', group: 'Tanda, Saskatoon', name: 'Tanda B — Studio 2', note: 'under construction: the second live room, glass to ISO 2', h: 3.0, live: true, poly: tanda([[5, 968], [160, 912], [285, 962], [250, 1208], [5, 1208]], 'up') },
+  { id: 'tanda-b-iso-2', group: 'Tanda, Saskatoon', name: 'Tanda B — ISO 2', note: 'under construction: the booth beside Tanda B', h: 2.7, live: true, poly: tanda([[5, 762], [95, 760], [160, 912], [5, 968]], 'right') },
 ];
 
 export function roomById(id) {
@@ -170,7 +206,7 @@ export function furnish(room) {
   const ear = 1.2;
   const face = 90;
   const door = doorOf(room);
-  if (room.group === 'Live rooms') {
+  if (room.group === 'Live rooms' || room.live) {
     seats.push({ kind: 'mixer', x: cx, y: y0 + L * 0.5, z: room.id.includes('booth') || room.id.includes('iso') ? 1.6 : ear, aim: face, mix: true });
     return { furniture, seats, door };
   }

@@ -124,3 +124,27 @@ test('the cut-aways stand on the blow-up tower over the plan, in its column, the
   assert.ok(at['behind-left'] > at['behind-right'] && at['behind-right'] > at.front);
   for (const it of out.sections) if (it.at) assert.ok(it.at[1] < 0, 'a section above the plan');
 });
+
+test('the blow-up shows the speaker and the listener in the floor plan and in every wall they stand before, each a block naming its object', async () => {
+  const { buildMarks } = await import('../js/cad/marks.js');
+  const { DEFAULT_SETTINGS } = await import('../js/model/store.js');
+  const s = { ...DEFAULT_SETTINGS, ...settings, cadMarks: { blowup: true } };
+  const r = buildRoom([{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 7 }, { x: 0, y: 7 }], s);
+  const spk = makeSpeaker('nearfield', { x: 2, y: 5.5, z: 1.2 }, { role: 'L' });
+  const seat = makeMic('omni', { x: 2.5, y: 3, z: 1.2 }, { mix: true });
+  // a box left outside this room is not drawn in it
+  const stray = makeSpeaker('sub', { x: 9, y: 3, z: 0.3 });
+  const state = { settings: s, mics: [seat], speakers: [spk, stray] };
+  const out = buildMarks({ room: r, state, planLayer: 'Room', sheetBounds: null, k: 1, layers: new Set(), rooms: [{ name: 'Box', room: r }] });
+  const figs = out.blowup.filter((it) => it.attributes);
+  const of = (id) => figs.filter((f) => f.attributes.id === id);
+  // the floor and the four walls of a box room
+  assert.equal(of(spk.id).length, 5);
+  assert.equal(of(seat.id).length, 5);
+  assert.equal(of(stray.id).length, 0);
+  for (const f of of(spk.id)) assert.equal(f.layer, 'Speakers');
+  for (const f of of(seat.id)) assert.equal(f.layer, 'Listeners');
+  assert.equal(of(spk.id)[0].attributes.role, 'L');
+  assert.ok(figs.every((f) => f.lines.length && f.texts.length));
+  assert.equal(new Set(out.blowup.map((it) => it.name)).size, out.blowup.length, 'every block named once');
+});

@@ -2,7 +2,10 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { heightsAtXY } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
+import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
+import { boxSize, isListener, MIC_PRESETS } from '../acoustics/devices.js';
 import { arrangedSpeakers } from '../acoustics/layouts.js';
+import { furnitureHeight } from '../acoustics/materials.js';
 import { rayPaths } from '../acoustics/rayPaths.js';
 import { firstReflections, heatOf } from '../acoustics/reflectionPanels.js';
 import { css, colourOf, turbo } from './paint.js';
@@ -33,10 +36,79 @@ import { drawPatch } from './treatments.js';
  * direct sound, cool when the box's pattern or a treatment tames it. The
  * highlighted arrangement soloes its own speakers'; select a speaker to see
  * only its own, labelled.
+ *
+ * The things in the room stand in it as solids, shaded from over the camera's
+ * shoulder and sorted in with the cells: each speaker its cabinet at its size
+ * (litres), turned and tilted to where it aims, its drivers on the baffle;
+ * each listener a seated figure facing the way they face; the furniture and
+ * instruments laid on the floor stood up to their height.
  */
 
 export function createView3d({ canvas, store, engine }) {
   const cam = { yaw: -55, pitch: 32, dist: 1.9 };
+  /** The devices as last drawn, in screen pixels: what a click is tested against. */
+  let shown = [];
+  /** The camera as last drawn — what a screen point is turned back into a ray with. */
+  let seen = null;
+
+  /** The ray from the eye through screen point (sx, sy): { o, d }. */
+  function ray(sx, sy) {
+    const { B, focal, w, h } = seen;
+    const a = (sx - w / 2) / focal;
+    const b = -(sy - h / 2) / focal;
+    return { o: B.eye, d: norm({ x: B.fwd.x + B.right.x * a + B.up.x * b, y: B.fwd.y + B.right.y * a + B.up.y * b, z: B.fwd.z + B.right.z * a + B.up.z * b }) };
+  }
+  /** Where that ray meets the level plane at height z, or null when it runs along it or away. */
+  function onLevel(sx, sy, z) {
+    const { o, d } = ray(sx, sy);
+    if (Math.abs(d.z) < 1e-6) return null;
+    const t = (z - o.z) / d.z;
+    return t > 0 ? { x: o.x + d.x * t, y: o.y + d.y * t } : null;
+  }
+
+  /**
+   * Grab a device: it slides across the floor plan at its own height under the
+   * pointer; Shift-drag lifts or lowers it instead. One outside the room comes
+   * back to the middle first (inRoom.js), as it does in every view.
+   */
+  function grab(e, hit) {
+    if (store.bringIn(hit.kind, hit.id, engine.out.room)) return;
+    store.select({ kind: hit.kind, id: hit.id });
+    const dev = (hit.kind === 'speaker' ? store.state.speakers : store.state.mics).find((d) => d.id === hit.id);
+    if (!dev || !seen) return;
+    const r = canvas.getBoundingClientRect();
+    const start = onLevel(e.clientX - r.left, e.clientY - r.top, dev.z);
+    const off = start ? { x: dev.x - start.x, y: dev.y - start.y } : { x: 0, y: 0 };
+    const y0 = e.clientY;
+    const z0 = dev.z;
+    // metres per pixel at the device's distance, for lifting
+    const d0 = { x: dev.x - seen.B.eye.x, y: dev.y - seen.B.eye.y, z: dev.z - seen.B.eye.z };
+    const perPx = Math.max(0.001, dot(d0, seen.B.fwd) / seen.focal);
+    const H = engine.out.room?.Hmax ?? 3;
+    canvas.style.cursor = 'grabbing';
+    const move = (ev) => {
+      if (ev.shiftKey) {
+        const rawZ = Math.max(0.05, Math.min(H - 0.05, z0 - (ev.clientY - y0) * perPx));
+        const clamped = engine.out.room ? clampInside(engine.out.room, { x: dev.x, y: dev.y, z: rawZ, kind: dev.kind }, CLEAR_M) : { z: rawZ };
+        store.update(hit.kind, hit.id, { z: clamped.z }, true);
+        return;
+      }
+      const p = onLevel(ev.clientX - r.left, ev.clientY - r.top, dev.z);
+      if (p) {
+        const raw = { x: +(p.x + off.x).toFixed(3), y: +(p.y + off.y).toFixed(3), z: dev.z, kind: dev.kind };
+        const clamped = engine.out.room ? clampInside(engine.out.room, raw, CLEAR_M) : raw;
+        store.update(hit.kind, hit.id, { x: clamped.x, y: clamped.y }, true);
+      }
+    };
+    const up = () => {
+      canvas.removeEventListener('pointermove', move);
+      canvas.removeEventListener('pointerup', up);
+      canvas.style.cursor = '';
+      store.commit();
+    };
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', up);
+  }
 
   function basis(room) {
     const xs = room.poly.map((p) => p.x);
@@ -65,6 +137,7 @@ export function createView3d({ canvas, store, engine }) {
     if (!room) return;
     const B = basis(room);
     const focal = Math.min(w, h) * 1.1;
+    seen = { B, focal, w, h };
     const proj = (p) => {
       const d = { x: p.x - B.eye.x, y: p.y - B.eye.y, z: p.z - B.eye.z };
       const zc = dot(d, B.fwd);
@@ -142,6 +215,72 @@ export function createView3d({ canvas, store, engine }) {
         }
     });
 
+    // the solids: a face is drawn only when it turns toward the eye
+    const light = norm({ x: B.up.x - B.fwd.x * 0.6 - B.right.x * 0.4, y: B.up.y - B.fwd.y * 0.6 - B.right.y * 0.4, z: B.up.z - B.fwd.z * 0.6 - B.right.z * 0.4 });
+    const shade = (rgb, n) => css(rgb.map((v) => Math.round(v * (0.35 + 0.65 * Math.max(0, dot(n, light))))));
+    const facing = (q, n) => dot({ x: B.eye.x - q.x, y: B.eye.y - q.y, z: B.eye.z - q.z }, n) > 0;
+    /** A box about `c` on axes rt (width), f (depth), up (height); `front` paints its +f face, the baffle. */
+    function box(c, { rt, f, up }, w, d, h, rgb, extra = {}) {
+      const at = (a, b, k) => ({
+        x: c.x + (rt.x * a * w + f.x * b * d + up.x * k * h) / 2,
+        y: c.y + (rt.y * a * w + f.y * b * d + up.y * k * h) / 2,
+        z: c.z + (rt.z * a * w + f.z * b * d + up.z * k * h) / 2,
+      });
+      const axes = [rt, f, up];
+      for (let ax = 0; ax < 3; ax++)
+        for (const sgn of [-1, 1]) {
+          const n = { x: axes[ax].x * sgn, y: axes[ax].y * sgn, z: axes[ax].z * sgn };
+          const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => {
+            const k = [0, 0, 0];
+            k[ax] = sgn;
+            k[(ax + 1) % 3] = u;
+            k[(ax + 2) % 3] = v;
+            return at(...k);
+          });
+          if (!facing(pts[0], n)) continue;
+          const baffle = extra.front && ax === 1 && sgn === 1;
+          faces.push({ pts, fill: shade(baffle ? extra.front : rgb, n), solid: true, selected: extra.selected, baffle: baffle ? { c: at(0, 1, 0), rt, up, w, h, spk: extra.spk } : null });
+        }
+    }
+    /** A floor patch stood up to `tall`: its top, and every side that faces you. */
+    function prism(p, tall, selected) {
+      const base = p.points3d;
+      const rgb = rgbOf(p.material?.color);
+      const cx = base.reduce((a, q) => a + q.x, 0) / base.length;
+      const cy = base.reduce((a, q) => a + q.y, 0) / base.length;
+      base.forEach((a, i) => {
+        const b = base[(i + 1) % base.length];
+        const l = Math.hypot(b.x - a.x, b.y - a.y);
+        if (l < 1e-6) return;
+        let n = { x: (b.y - a.y) / l, y: -(b.x - a.x) / l, z: 0 };
+        if (n.x * ((a.x + b.x) / 2 - cx) + n.y * ((a.y + b.y) / 2 - cy) < 0) n = { x: -n.x, y: -n.y, z: 0 };
+        if (!facing(a, n)) return;
+        faces.push({ pts: [a, b, { ...b, z: b.z + tall }, { ...a, z: a.z + tall }], fill: shade(rgb, n), solid: true, selected });
+      });
+      const top = base.map((q) => ({ ...q, z: q.z + tall }));
+      if (facing(top[0], { x: 0, y: 0, z: 1 })) faces.push({ pts: top, fill: shade(rgb, { x: 0, y: 0, z: 1 }), solid: true, selected, patch: p });
+    }
+    /** A listener, seated: shins, thighs, torso and head, facing their aim; the ears at the mic. */
+    function figure(m, rgb, selected) {
+      const f = { x: Math.cos((m.aim ?? 90) * DEG), y: Math.sin((m.aim ?? 90) * DEG), z: 0 };
+      const ax = { rt: { x: f.y, y: -f.x, z: 0 }, f, up: { x: 0, y: 0, z: 1 } };
+      const at = (fwd, z) => ({ x: m.x + f.x * fwd, y: m.y + f.y * fwd, z });
+      const shoulder = m.z - 0.22;
+      const hip = Math.max(0.45, m.z - 0.75);
+      const body = rgb.map((v) => Math.round(v * 0.7));
+      box(at(0.4, hip / 2), ax, 0.3, 0.12, hip, body, { selected });
+      box(at(0.2, hip), ax, 0.34, 0.45, 0.14, body, { selected });
+      box(at(-0.05, (hip + shoulder) / 2), ax, 0.4, 0.22, shoulder - hip + 0.06, rgb, { selected });
+      box(at(0, m.z - 0.18), ax, 0.1, 0.1, 0.1, body, { selected });
+      // the head faces the eye, a disc
+      const head = Array.from({ length: 16 }, (_, i) => {
+        const a = (i / 16) * Math.PI * 2;
+        const [ca, sa] = [Math.cos(a) * 0.1, Math.sin(a) * 0.12];
+        return { x: m.x + B.right.x * ca + B.up.x * sa, y: m.y + B.right.y * ca + B.up.y * sa, z: m.z + 0.02 + B.right.z * ca + B.up.z * sa };
+      });
+      faces.push({ pts: head, fill: css([226, 196, 170]), solid: true, selected });
+    }
+
     // the treatments: inward off their surface, so they are in front of it whichever way it is cut
     const lift = B.size * 0.004;
     const sel = store.state.selected?.kind === 'patch' ? store.state.selected.id : null;
@@ -156,17 +295,36 @@ export function createView3d({ canvas, store, engine }) {
         if (!wall || (B.eye.x - wall.a.x) * wall.nIn.x + (B.eye.y - wall.a.y) * wall.nIn.y < 0) continue;
         n = { x: wall.nIn.x, y: wall.nIn.y, z: 0 };
       }
+      const tall = p.surface === 'floor' ? furnitureHeight(p.paletteId) : 0;
+      if (tall) {
+        prism(p, tall, p.id === sel);
+        continue;
+      }
       faces.push({ pts: p.points3d.map((q) => ({ x: q.x + n.x * lift, y: q.y + n.y * lift, z: q.z + n.z * lift })), patch: p, selected: p.id === sel });
     }
+
+    const { state } = store;
+    const picked = state.selected?.id;
+    for (const s of state.speakers) {
+      const f = { x: Math.cos(s.aim * DEG) * Math.cos(s.tilt * DEG), y: Math.sin(s.aim * DEG) * Math.cos(s.tilt * DEG), z: Math.sin(s.tilt * DEG) };
+      const rt = norm({ x: Math.sin(s.aim * DEG), y: -Math.cos(s.aim * DEG), z: 0 });
+      const size = boxSize(s);
+      box(s, { rt, f, up: cross(rt, f) }, size.w, size.d, size.h, rgbOf(s.color).map((v) => Math.round(v * 0.55)), { front: [24, 27, 34], spk: s, selected: s.id === picked });
+    }
+    for (const m of state.mics) if (isListener(m) || m.mix) figure(m, rgbOf(MIC_PRESETS[m.kind]?.colour ?? '#ff3b3b'), m.id === picked);
 
     for (const f of faces) {
       f.s = f.pts.map(proj);
       // a patch by its nearest corner: after every cell of the surface it lies on, never before one
-      f.depth = f.patch ? Math.min(...f.s.map((p) => p.depth)) - lift : f.s.reduce((a, p) => a + p.depth, 0) / f.s.length;
+      f.depth = f.patch && !f.solid ? Math.min(...f.s.map((p) => p.depth)) - lift : f.s.reduce((a, p) => a + p.depth, 0) / f.s.length;
     }
     faces.sort((a, b) => b.depth - a.depth);
     for (const f of faces) {
       if (f.s.some((p) => p.depth <= 0.01)) continue;
+      if (f.solid) {
+        solid(f);
+        continue;
+      }
       if (f.patch) {
         drawPatch(ctx, f.s, f.patch.material, { alpha: show ? 0.55 : 0.7, selected: f.selected });
         continue;
@@ -179,6 +337,52 @@ export function createView3d({ canvas, store, engine }) {
       if (!show) {
         ctx.strokeStyle = '#334155';
         ctx.stroke();
+      }
+    }
+
+    /** A solid's face, its edges, a furniture top's hatch, a baffle's drivers. */
+    function solid(f) {
+      ctx.beginPath();
+      f.s.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.closePath();
+      ctx.fillStyle = f.fill;
+      ctx.fill();
+      if (f.patch) drawPatch(ctx, f.s, f.patch.material, { alpha: 0.25, selected: f.selected });
+      else {
+        ctx.strokeStyle = f.selected ? '#ffffff' : 'rgba(0,0,0,.55)';
+        ctx.lineWidth = f.selected ? 1.5 : 0.75;
+        ctx.stroke();
+      }
+      if (f.baffle) drivers(f.baffle);
+    }
+    /** The drivers on a baffle, as the box is built: one cone for a sub, a coaxial's rings, else a woofer under a tweeter or a horn. */
+    function drivers({ c, rt, up, w, h, spk }) {
+      const on = (u, v) => proj({ x: c.x + rt.x * u + up.x * v, y: c.y + rt.y * u + up.y * v, z: c.z + rt.z * u + up.z * v });
+      const ring = (v0, r) => Array.from({ length: 20 }, (_, i) => on(Math.cos((i / 20) * Math.PI * 2) * r, v0 + Math.sin((i / 20) * Math.PI * 2) * r));
+      const draw = (pts, fill) => {
+        if (pts.some((q) => q.depth <= 0.01)) return;
+        ctx.beginPath();
+        pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+        ctx.strokeStyle = spk.color;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      };
+      const cone = Math.min(w, h) * 0.4;
+      if (spk.kind === 'sub') {
+        draw(ring(0, cone), '#0e1015');
+        draw(ring(0, cone * 0.3), '#2a2f3a');
+      } else if (/coax/i.test(spk.driver ?? '')) {
+        draw(ring(0, cone), '#0e1015');
+        draw(ring(0, cone * 0.35), '#2a2f3a');
+        draw(ring(0, cone * 0.12), '#c8ccd4');
+      } else {
+        draw(ring(-h * 0.17, w * 0.36), '#0e1015');
+        draw(ring(-h * 0.17, w * 0.1), '#2a2f3a');
+        if (spk.pattern !== 'horn') draw(ring(h * 0.3, w * 0.1), '#2a2f3a');
+        else draw([on(-w * 0.36, h * 0.18), on(w * 0.36, h * 0.18), on(w * 0.36, h * 0.42), on(-w * 0.36, h * 0.42)], '#0e1015');
       }
     }
 
@@ -210,7 +414,6 @@ export function createView3d({ canvas, store, engine }) {
       ctx.stroke();
     }
 
-    const { state } = store;
     const mix = state.mics.find((m) => m.mix);
     if (tracing) drawRays(ctx, proj, room, state, mix, w);
     else if (state.settings.show.rays && mix) {
@@ -266,21 +469,26 @@ export function createView3d({ canvas, store, engine }) {
         }
       }
     }
+    // what the solids do not say: the stand under a box, a measurement mic's dot and aim, every name
+    const person = (m) => isListener(m) || m.mix;
     const devices = [
-      ...state.speakers.map((d) => ({ d, colour: d.color, r: 6, label: d.role || d.name })),
-      ...state.mics.map((d) => ({ d, colour: d.mix ? '#ff3b3b' : '#e5e7eb', r: 5, label: d.mix ? 'MIX' : d.name })),
+      ...state.speakers.map((d) => ({ d, colour: d.color, label: d.role || d.name, under: d.z - boxSize(d).h / 2, top: d.z + boxSize(d).h / 2 })),
+      ...state.mics.map((d) => ({ d, colour: d.mix ? '#ff3b3b' : '#e5e7eb', r: person(d) ? 0 : 5, label: d.mix ? 'MIX' : d.name, under: person(d) ? 0 : d.z, top: d.z + (person(d) ? 0.2 : 0) })),
     ]
-      .map((o) => ({ ...o, s: proj(o.d), base: proj({ ...o.d, z: 0 }) }))
+      .map((o) => ({ ...o, s: proj(o.d), t: proj({ ...o.d, z: o.top }), u: proj({ ...o.d, z: o.under }), base: proj({ ...o.d, z: 0 }) }))
       .sort((a, b) => b.s.depth - a.s.depth);
+    shown = devices.map((o) => ({ kind: state.speakers.includes(o.d) ? 'speaker' : 'mic', id: o.d.id, x: o.s.x, y: o.s.y }));
     for (const o of devices) {
-      ctx.strokeStyle = 'rgba(255,255,255,.3)';
-      ctx.setLineDash([2, 3]);
-      ctx.beginPath();
-      ctx.moveTo(o.base.x, o.base.y);
-      ctx.lineTo(o.s.x, o.s.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      if (o.d.aim !== undefined) {
+      if (o.under > 0.02) {
+        ctx.strokeStyle = 'rgba(255,255,255,.3)';
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(o.base.x, o.base.y);
+        ctx.lineTo(o.u.x, o.u.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (o.r && o.d.aim !== undefined) {
         const L = B.size * 0.08;
         const tip = proj({
           x: o.d.x + Math.cos(o.d.aim * DEG) * Math.cos(o.d.tilt * DEG) * L,
@@ -294,24 +502,43 @@ export function createView3d({ canvas, store, engine }) {
         ctx.lineTo(tip.x, tip.y);
         ctx.stroke();
       }
-      ctx.fillStyle = o.colour;
-      ctx.strokeStyle = state.selected?.id === o.d.id ? '#fff' : '#000';
-      ctx.lineWidth = state.selected?.id === o.d.id ? 2 : 1;
-      ctx.beginPath();
-      ctx.arc(o.s.x, o.s.y, o.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
+      if (o.r) {
+        ctx.fillStyle = o.colour;
+        ctx.strokeStyle = state.selected?.id === o.d.id ? '#fff' : '#000';
+        ctx.lineWidth = state.selected?.id === o.d.id ? 2 : 1;
+        ctx.beginPath();
+        ctx.arc(o.s.x, o.s.y, o.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
       ctx.fillStyle = '#e5e7eb';
       ctx.font = '10px ui-monospace, monospace';
-      ctx.fillText(o.label, o.s.x + 8, o.s.y - 6);
+      ctx.fillText(o.label, o.t.x + 6, o.t.y - 6);
     }
     ctx.fillStyle = '#9aa4b2';
     ctx.font = '11px system-ui';
-    ctx.fillText('3-D cut-away · drag to orbit · wheel to zoom', 10, h - 10);
+    ctx.fillText('3-D cut-away · drag a device to move it (Shift: up/down) · drag elsewhere to orbit · wheel to zoom', 10, h - 10);
   }
+
+  /** The device drawn nearest a click, within a fingertip; the nearest-to-the-eye wins a tie by being drawn last. */
+  function deviceAt(e) {
+    const r = canvas.getBoundingClientRect();
+    let best = null;
+    for (const o of shown) {
+      const d = Math.hypot(o.x - (e.clientX - r.left), o.y - (e.clientY - r.top));
+      if (d <= 12 && (!best || d <= best.d)) best = { ...o, d };
+    }
+    return best;
+  }
+  canvas.addEventListener('dblclick', (e) => {
+    const hit = deviceAt(e);
+    if (hit) store.bringIn(hit.kind, hit.id, engine.out.room);
+  });
 
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
+    const hit = deviceAt(e);
+    if (hit) return grab(e, hit);
     const x0 = e.clientX;
     const y0 = e.clientY;
     const { yaw, pitch } = cam;
@@ -327,6 +554,11 @@ export function createView3d({ canvas, store, engine }) {
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
   });
+  // a hand over a device: it can be picked up
+  canvas.addEventListener('pointermove', (e) => {
+    if (e.buttons) return;
+    canvas.style.cursor = deviceAt(e) ? 'grab' : '';
+  });
   canvas.addEventListener(
     'wheel',
     (e) => {
@@ -340,6 +572,7 @@ export function createView3d({ canvas, store, engine }) {
   return { render };
 }
 
+/** '#rrggbb' → [r, g, b]; grey when it is not one. */
 /** How far below the direct sound a path is still drawn, dB. */
 const RAY_FLOOR_DB = 40;
 
@@ -389,6 +622,11 @@ function drawRays(ctx, proj, room, state, mix, w) {
   ctx.font = '9px ui-monospace, monospace';
   ctx.fillText(`−${RAY_FLOOR_DB} dB`, 10, 43);
   ctx.fillText('0 dB = direct', 10 + kw - 62, 43);
+}
+
+function rgbOf(hex) {
+  const n = parseInt(String(hex ?? '').replace('#', ''), 16);
+  return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [160, 160, 160];
 }
 
 const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;

@@ -27,6 +27,8 @@ import { FACE_COLOURS } from './views/glyphs.js';
 import { fieldScale, rampGradient } from './views/paint.js';
 import { createPlanView, planLabel } from './views/plan.js';
 import { createView3d } from './views/view3d.js';
+import { createTour } from './ui/tour.js';
+import { createPlayer } from './ui/player.js';
 
 const CEILING_LAYER = 'Ceiling';
 
@@ -63,6 +65,8 @@ const engine = createEngine(store, (out, phase) => {
   }
   status.textContent = out.error ? '⚠ field error — see console' : `${out.room.walls.length} walls · ${store.state.speakers.length} spk · ${store.state.mics.length} mic${out.virtual ? ' · virtual room' : ''}`;
   if (out.error) console.error(out.error);
+  // nothing ever stands outside the rooms: whatever left one (a layout, a carried array, a smaller plan) comes back, and this runs again
+  if (out.room && store.keepInside(out.room, (out.rooms ?? []).map((l) => l.poly))) return;
   renderAll();
   syncMarks();
   followConsole();
@@ -83,20 +87,23 @@ const onDrag = () => {};
 function jumpTo(sheet) {
   if (!cad.link) return;
   store.setSheet(sheet);
-  if (sheet === 'plan' || sheet === 'ceiling') {
-    cad.link.sheet(engine.out.planLayer ?? '0');
-    // A layer with nothing drawn on it does not move the view, so this leaves the plan in sight.
-    if (sheet === 'ceiling') cad.link.sheet(CEILING_LAYER, { color: FACE_COLOURS.ceiling });
-    return;
-  }
   const room = engine.out.room;
   const k = METRES_PER_UNIT[store.state.cad.geometry?.units ?? store.state.cad.view?.units ?? 'm'] ?? 1;
+  if (sheet === 'plan' || sheet === 'ceiling') {
+    const seed = room ? room.poly.map((p) => [+(p.x / k).toFixed(4), +(p.y / k).toFixed(4)]) : undefined;
+    cad.link.sheet(engine.out.planLayer ?? '0', { color: '#e5e7eb', seed });
+    // A layer with nothing drawn on it does not move the view, so this leaves the plan in sight.
+    if (sheet === 'ceiling') cad.link.sheet(CEILING_LAYER, { color: FACE_COLOURS.ceiling });
+    cad.link.fit();
+    return;
+  }
   const drawn = engine.out.elevations?.some((e) => e.face === sheet);
   const seed = !drawn && room ? seedOutline(room, sheet).map((p) => [+(p.x / k).toFixed(4), +(p.y / k).toFixed(4)]) : undefined;
   cad.link.sheet(ELEVATION_LAYER[sheet], { color: FACE_COLOURS[sheet], seed });
+  cad.link.fit();
 }
 
-const plan = createPlanView({ tile: document.querySelector('.tile.plan .stage'), iframe, store, engine, onDrag });
+const plan = createPlanView({ tile: document.querySelector('.tile.plan .stage'), iframe, store, engine, onDrag, cad });
 const faces = ['ceiling', 'front', 'back', 'left', 'right'].map((face) => createFaceView({ tile: document.querySelector(`.tile[data-face="${face}"]`), face, store, engine, onDrag, onJump: () => jumpTo(face), onPickPatch: (id) => inspector.showPatch(id) }));
 const view3d = createView3d({ canvas: document.querySelector('.tile.t3d canvas'), store, engine });
 const meters = createMeters({
@@ -242,10 +249,11 @@ function syncFieldScale() {
 }
 
 function syncToolbar() {
-  const { mode, settings } = store.state;
+  const { mode, settings, placeKind } = store.state;
   for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('on', b.dataset.mode === mode);
   for (const b of document.querySelectorAll('#viewmode button')) b.classList.toggle('on', b.dataset.view === settings.view);
   for (const b of document.querySelectorAll('#method button')) b.classList.toggle('on', b.dataset.method === settings.method);
+  for (const b of document.querySelectorAll('#furniture button[data-arm]')) b.classList.toggle('on', mode === 'place-furniture' && b.dataset.arm === placeKind?.furniture);
   views.className = settings.view === '3d' || settings.view === 'rays' ? 'three' : 'six';
   const { sheet } = store.state;
   document.getElementById('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
@@ -437,7 +445,7 @@ function moveArray(key, mm, live = false) {
     : key === 'rotate' ? { ...layout, rotate: ((((mm + 180) % 360) + 360) % 360) - 180 }
     : { ...layout, offset: { ...layout.offset, [key]: mm } };
   const mix = mics.find((m) => m.mix);
-  const moved = carryArray(speakers, settings, mix, next, engine.out.room?.H);
+  const moved = carryArray(speakers, settings, mix, next, engine.out.room?.H, engine.out.room);
   // mid-drag: the quick recompute (field, response, meters) on every step; the release saves and runs it in full
   if (moved.length) store.updateMany('speaker', moved, true);
   // turning the array turns the mixer with it: the listener always faces the array's front
@@ -448,10 +456,18 @@ function moveArray(key, mm, live = false) {
 // ------------------------------------------------------------------ furniture: the CAD draws it, at true size
 document.getElementById('furniture').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-arm]');
-  if (!b || !cad.link) return;
-  if (store.state.sheet !== 'plan') jumpTo('plan');
-  cad.link.arm(b.dataset.arm);
-  store.setMode('cad');
+  if (!b) return;
+  const paletteId = b.dataset.arm;
+  const inFurnitureMode = store.state.mode === 'place-furniture';
+  const currentArm = store.state.placeKind.furniture;
+  if (inFurnitureMode && currentArm === paletteId) {
+    store.setMode('cad');
+    return;
+  }
+  store.setPlaceKind('furniture', paletteId);
+  store.setMode('place-furniture');
+  jumpTo('plan');
+  if (cad.link) cad.link.arm(paletteId);
 });
 
 // ------------------------------------------------------------------ the room library
@@ -518,7 +534,7 @@ function syncMarks() {
   clearTimeout(marksTimer);
   marksTimer = setTimeout(() => {
     const g = store.state.cad.geometry;
-    if (!cad.link || !g || engine.out.virtual || !engine.out.room) return;
+    if (!cad.link || !g || !engine.out.room) return;
     const k = METRES_PER_UNIT[g.units] ?? 1;
     const xs = (g.walls ?? []).flatMap((w) => [w.a[0], w.b[0]]).map((x) => x * k);
     const ys = (g.walls ?? []).flatMap((w) => [w.a[1], w.b[1]]).map((y) => y * k);
@@ -556,17 +572,14 @@ function stopSweep() {
   sweepBtn.classList.remove('on');
   tourBtn.classList.remove('on');
   sweepBtn.textContent = '▶ Sweep';
-  if (views.classList.contains('maxed')) maximise(null);
 }
 
 /**
  * Up and down the frames the engine has painted, a lap every `seconds`
  * however many are ready — coarse at first, smoother as the gaps fill in.
- * With `slides`, each view of the room in turn takes the screen.
  */
-function startSweep({ seconds = 16, slides = null } = {}) {
+function startSweep({ seconds = 16 } = {}) {
   stopSweep();
-  const t0 = performance.now();
   if (store.state.settings.method === 'energy') store.setSettings({ method: 'wave' });
   engine.frames(true);
   sweep = {
@@ -584,42 +597,56 @@ function startSweep({ seconds = 16, slides = null } = {}) {
         }
         if (ready[i] !== at) store.setSettings({ freq: ready[i] });
       }
-      if (slides) {
-        const i = Math.floor(((now - t0) / 1000 / seconds) * slides.length) % slides.length;
-        if (sweep.slide !== i) {
-          sweep.slide = i;
-          showSlide(slides[i]);
-        }
-      }
     }, 30),
-    slide: -1,
     stepped: 0,
     dir: 1,
   };
-  (slides ? tourBtn : sweepBtn).classList.add('on');
+  sweepBtn.classList.add('on');
   sweepBtn.textContent = '■ Stop';
 }
 
-/** The tour: top, back, the sides, front, ceiling, then the room in 3-D. */
-const SLIDES = ['plan', 'back', 'left', 'right', 'front', 'ceiling', '3d'];
-function showSlide(face) {
-  if (face === '3d') {
-    if (store.state.settings.view !== '3d') store.setSettings({ view: '3d' });
-    maximise(document.querySelector('.tile.t3d'));
-    return;
-  }
-  if (store.state.settings.view !== 'six') store.setSettings({ view: 'six' });
-  maximise(document.querySelector(`.tile[data-face="${face}"]`));
-}
+// a song: the field shows the room at the frequency the music is exciting (ui/player.js); it and the sweep take turns
+const player = createPlayer({
+  root: document.getElementById('player'),
+  store,
+  engine,
+  onPlay: (on) => {
+    if (on) stopSweep();
+  },
+});
+document.getElementById('songFile').addEventListener('change', (e) => {
+  const f = e.target.files?.[0];
+  if (f) player.load(f);
+  e.target.value = '';
+});
 
-function maximise(tile) {
-  for (const t of document.querySelectorAll('.tile')) t.classList.toggle('max', t === tile);
-  views.classList.toggle('maxed', Boolean(tile));
-  requestAnimationFrame(renderGeometry);
-}
+// the tour: a window of its own plays every view in turn while the frequency sweeps, and saves it as a video
+const tour = createTour({
+  store,
+  engine,
+  // with a song loaded, the tour plays it from the top, the field following it, and records it under the pictures
+  soundtrack: () => (player.loaded ? { stream: player.stream(), duration: player.duration } : null),
+  onStart: (seconds, withSong) => {
+    if (withSong) player.restart();
+    else startSweep({ seconds });
+    tourBtn.classList.add('on');
+  },
+  onStop: () => {
+    if (player.playing) player.pause();
+    stopSweep();
+    tourBtn.classList.remove('on');
+  },
+  caption: () => {
+    const { settings } = store.state;
+    const room = engine.out.room;
+    const size = room ? `${Math.round(room.L * 1000)} × ${Math.round(room.W * 1000)} × ${Math.round(room.H * 1000)} mm` : '';
+    return [store.state.fileName, size, settings.method, settings.method === 'energy' ? '' : `${hz(settings.freq)} Hz`].filter(Boolean).join(' · ');
+  },
+  name: () => (store.state.fileName || 'room').replace(/\.[^.]+$/, ''),
+});
 
-sweepBtn.addEventListener('click', () => (sweep ? stopSweep() : startSweep()));
-tourBtn.addEventListener('click', () => (sweep ? stopSweep() : startSweep({ seconds: SLIDES.length * 5, slides: SLIDES })));
+sweepBtn.addEventListener('click', () => (tour.running ? tour.stop() : sweep ? stopSweep() : (player.pause(), startSweep())));
+tourBtn.addEventListener('click', () => (tour.running ? tour.stop() : tour.start()));
 
 // ------------------------------------------------------------------ sessions: the CAD drawing and this overlay, in one file
 const SESSION_FORMAT = 'acoustic.like.audio/session@1';

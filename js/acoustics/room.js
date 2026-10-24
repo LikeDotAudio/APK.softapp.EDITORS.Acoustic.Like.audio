@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { buildAlpha, DEFAULT_ISOLATION } from './isolation.js';
-import { BANDS, C, airM } from './bands.js';
+import { BANDS, BANDS_9, C, airM, airM9, FREQ_3RD, FREQ_OCTAVE } from './bands.js';
 import { DEG, angleDiff, ensureCCW, isConvex, signedArea, simplifyPolygon } from './geometry.js';
 import { measureSection, profileFromLoop } from './elevations.js';
 import { material } from './materials.js';
@@ -144,6 +144,30 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
     };
   });
 
+  // Extended 9-band octave series (31 Hz … 8 kHz)
+  const perBand9 = BANDS_9.map((f, band) => {
+    let S = 0;
+    let A = 0;
+    for (const s of surfaces) {
+      S += s.area;
+      const alphaVal = s.material.alpha9
+        ? s.material.alpha9[band]
+        : s.material.alpha[band <= 1 ? 0 : band >= 7 ? 5 : band - 2];
+      A += s.area * Math.min(0.99, Math.max(0, alphaVal));
+    }
+    const abar = Math.min(A / S, 0.99);
+    const m4V = 4 * airM9(band) * V;
+    return {
+      f,
+      S,
+      A,
+      abar,
+      sabine: (0.161 * V) / (A + m4V),
+      eyring: (0.161 * V) / (-S * Math.log(1 - abar) + m4V),
+      R: (S * abar) / (1 - abar),
+    };
+  });
+
   return {
     poly,
     H,
@@ -163,6 +187,11 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
     area,
     V,
     perBand,
+    perBand9,
+    bands: BANDS,
+    bands9: BANDS_9,
+    freq3rd: FREQ_3RD,
+    freqOctave: FREQ_OCTAVE,
     frame,
     L,
     W,
@@ -178,12 +207,23 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
  */
 function effective(base, area, pieces) {
   const raw = pieces.reduce((s, p) => s + p.area, 0);
-  if (!(raw > 0) || !(area > 0)) return { ...base, alpha: [...base.alpha], scatter: [...base.scatter], base: base.id, patched: 0 };
+  if (!(raw > 0) || !(area > 0)) {
+    return {
+      ...base,
+      alpha: [...base.alpha],
+      alpha9: base.alpha9 ? [...base.alpha9] : undefined,
+      scatter: [...base.scatter],
+      base: base.id,
+      patched: 0,
+    };
+  }
   const k = raw > area ? area / raw : 1;
   const patched = raw * k;
   const bare = area - patched;
   const parts = [{ mat: base, a: bare }, ...pieces.map((p) => ({ mat: p.material, a: p.area * k }))];
   const alpha = base.alpha.map((_, b) => parts.reduce((s, x) => s + x.a * x.mat.alpha[b], 0) / area);
+  const baseAlpha9 = base.alpha9 ?? BANDS_9.map((_, b) => base.alpha[b <= 1 ? 0 : b >= 7 ? 5 : b - 2]);
+  const alpha9 = baseAlpha9.map((_, b) => parts.reduce((s, x) => s + x.a * ((x.mat.alpha9 ? x.mat.alpha9[b] : x.mat.alpha[b <= 1 ? 0 : b >= 7 ? 5 : b - 2]) ?? 0), 0) / area);
   const scatter = base.scatter.map((_, b) => {
     const reflected = parts.reduce((s, x) => s + x.a * (1 - x.mat.alpha[b]), 0);
     if (reflected <= 1e-12) return parts.reduce((s, x) => s + x.a * x.mat.scatter[b], 0) / area;
@@ -196,6 +236,7 @@ function effective(base, area, pieces) {
     id: `${base.id}+patches`,
     name: `${base.name} + ${kinds} patch${kinds === 1 ? '' : 'es'}`,
     alpha,
+    alpha9,
     scatter,
     tl: +(-10 * Math.log10(tau)).toFixed(1),
     base: base.id,

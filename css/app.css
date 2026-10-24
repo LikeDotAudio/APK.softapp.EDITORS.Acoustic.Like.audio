@@ -214,3 +214,12 @@ td.ok { color: #4ade80; }
 .arrayField { display: flex; align-items: center; gap: 3px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .arrayField input { width: 64px; padding: 2px 4px; }
 .arrayFields input[type="range"] { width: 96px; }
+
+/* ---------------------------------------------------------------- the song player (ui/player.js) */
+.player { flex-basis: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.player[hidden] { display: none; }
+.player .name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player .wave { flex: 3 1 200px; height: 34px; min-width: 0; cursor: pointer; background: #0b0d12; border-radius: 3px; }
+.player .spec { flex: 2 1 160px; height: 34px; min-width: 0; cursor: ew-resize; background: #0b0d12; border-radius: 3px; }
+.player .time, .player .hz { font: 11px ui-monospace, monospace; color: #9aa4b2; white-space: nowrap; }
+.devlist .dev.lost { border-style: dashed; opacity: .75; }
