@@ -4,7 +4,7 @@ import { makeMic, makeSpeaker, newId } from '../acoustics/devices.js';
 import { DEFAULT_ISOLATION } from '../acoustics/isolation.js';
 import { mirrorDevice, syncTwin } from '../acoustics/symmetry.js';
 import { clampInside, CLEAR_M, intoRoom, outside } from '../acoustics/inRoom.js';
-import { carryArray } from '../acoustics/layouts.js';
+import { carryArray, LAYOUTS } from '../acoustics/layouts.js';
 import { pointInPolygon } from '../acoustics/geometry.js';
 
 const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
@@ -20,6 +20,17 @@ const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
  *
  * Paired devices (L/R) keep their twin across the CAD's Virtual Mirror in
  * step on every change; see symmetry.js.
+ *
+ * UNDO. Every saved change is a step (`undo`, `redo`): the devices, the
+ * furniture and the settings as they stood before it. A drag is one step —
+ * its live moves are not saved, the release is. How the field is looked at
+ * (VIEW_KEYS: the frequency, the view, what is shown) is not a step and is
+ * left as it is by an undo. The drawing has its own undo, in the CAD.
+ *
+ * A step that moves any of the highlighted arrangement's speakers by hand —
+ * not the listener carrying them, nor the array's width, centre or rotate —
+ * leaves a warning in `state.notice` naming them; any other step clears it.
+ * An arrangement of one (1.0) warns too; None has nothing to stray from.
  */
 
 export const DEFAULT_SETTINGS = {
@@ -60,6 +71,10 @@ export const DEFAULT_SETTINGS = {
 
 const KEY = 'acoustic.like.audio/v1/';
 
+/** Settings that change how the room is looked at, not the room: never an undo step. */
+const VIEW_KEYS = ['freq', 'band', 'view', 'show', 'rangeDb', 'sliceHeight', 'aWeight'];
+const HISTORY = 100;
+
 export function createStore() {
   const listeners = new Set();
   const state = {
@@ -74,8 +89,50 @@ export function createStore() {
     placeKind: { speaker: 'dmt12', mic: 'mixer', furniture: 'desk-1800x900' },
     cad: { geometry: null, view: null, mirror: null, connected: false, popped: false },
     fileName: null,
+    /** A warning about the last step, or null (see UNDO above). */
+    notice: null,
   };
   let saveTimer = 0;
+  const undoStack = [];
+  const redoStack = [];
+  const snap = () => {
+    const settings = { ...state.settings };
+    for (const k of VIEW_KEYS) delete settings[k];
+    return JSON.stringify({ settings, speakers: state.speakers, mics: state.mics, furniture: state.furniture });
+  };
+  let last = snap();
+  /** The state as it stood before this change goes on the undo stack, if anything the room is made of changed. */
+  const record = () => {
+    const now = snap();
+    if (now === last) return;
+    const before = JSON.parse(last);
+    undoStack.push(last);
+    if (undoStack.length > HISTORY) undoStack.shift();
+    redoStack.length = 0;
+    last = now;
+    state.notice = strayFromArrangement(before, state);
+  };
+  const resetHistory = () => {
+    undoStack.length = 0;
+    redoStack.length = 0;
+    last = snap();
+    state.notice = null;
+  };
+  /** Put a recorded state back, keeping how the field is looked at and what is still there selected. */
+  function restore(raw) {
+    const d = JSON.parse(raw);
+    const view = Object.fromEntries(VIEW_KEYS.filter((k) => k in state.settings).map((k) => [k, state.settings[k]]));
+    state.settings = { ...d.settings, ...view };
+    state.speakers = d.speakers;
+    state.mics = d.mics;
+    state.furniture = d.furniture;
+    const sel = state.selected;
+    if (sel && !(sel.kind === 'patch' || [...state.speakers, ...state.mics, ...(state.furniture ?? [])].some((x) => x.id === sel.id))) state.selected = null;
+    last = raw;
+    state.notice = null;
+    save();
+    emit('model');
+  }
 
   const emit = (what = 'state') => {
     for (const fn of listeners) fn(state, what);
@@ -91,6 +148,7 @@ export function createStore() {
     }, 400);
   };
   const changed = (what = 'model') => {
+    record();
     save();
     emit(what);
   };
@@ -116,6 +174,8 @@ export function createStore() {
     state.mics = doc.mics ?? [];
     state.furniture = doc.furniture ?? [];
     state.selected = null;
+    // another drawing's overlay: nothing before it to undo to
+    resetHistory();
     changed();
   }
 
@@ -373,7 +433,45 @@ export function createStore() {
     commit() {
       changed();
     },
+    canUndo: () => undoStack.length > 0,
+    canRedo: () => redoStack.length > 0,
+    undo() {
+      if (!undoStack.length) return false;
+      redoStack.push(snap());
+      restore(undoStack.pop());
+      return true;
+    },
+    redo() {
+      if (!redoStack.length) return false;
+      undoStack.push(snap());
+      restore(redoStack.pop());
+      return true;
+    },
   };
+}
+
+/**
+ * The warning for a step that pulled the highlighted arrangement out of
+ * place: the arranged speakers that moved while the listener and the array
+ * (its preset, width, centre and rotate) stayed put. Null otherwise.
+ */
+export function strayFromArrangement(before, state) {
+  const layout = LAYOUTS[state.settings.layout?.preset];
+  if (!layout || state.settings.show?.arrangement === false) return null;
+  const roles = new Set([...layout.speakers, ...(layout.lfe ?? [])].map((s) => s.name));
+  const seat = (mics) => mics.find((m) => m.mix);
+  const [a, b] = [seat(before.mics), seat(state.mics)];
+  if (a && b && (a.x !== b.x || a.y !== b.y || a.z !== b.z || a.aim !== b.aim)) return null;
+  if (JSON.stringify(before.settings.layout) !== JSON.stringify(state.settings.layout)) return null;
+  const was = new Map(before.speakers.map((s) => [s.id, s]));
+  const arranged = state.speakers.filter((s) => roles.has(s.role) && was.has(s.id));
+  const moved = arranged.filter((s) => {
+    const p = was.get(s.id);
+    return p.x !== s.x || p.y !== s.y || p.z !== s.z || p.aim !== s.aim || p.tilt !== s.tilt;
+  });
+  if (!moved.length) return null;
+  const names = moved.map((s) => s.role).join(' and ');
+  return `⚠ ${names} moved on ${moved.length === 1 ? 'its' : 'their'} own — no longer where the ${layout.label ?? state.settings.layout.preset} arrangement puts ${moved.length === 1 ? 'it' : 'them'}. Ctrl+Z puts ${moved.length === 1 ? 'it' : 'them'} back; ⤓ re-places the whole arrangement.`;
 }
 
 /** Speakers that travel with the listener: not the subs (they belong to the room's modes) and not boxes built into a wall. */

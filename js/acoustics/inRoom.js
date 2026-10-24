@@ -1,6 +1,6 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
-import { pointInPolygon, segmentCross } from './geometry.js';
+import { distToSegment, pointInPolygon, segmentCross } from './geometry.js';
 
 /**
  * A DEVICE LOST OUTSIDE THE ROOM & IN-ROOM CLAMPING
@@ -12,6 +12,11 @@ import { pointInPolygon, segmentCross } from './geometry.js';
  *
  * All placements actively clamp and bring devices into the room, keeping
  * clearance from the boundaries.
+ *
+ * Clearance is measured to each wall as the piece of wall it is, never the
+ * line it lies on: in a room with an inward corner (an alcove, a notch) a
+ * seat can be well inside yet behind the extension of that corner's walls,
+ * and measuring to the line fenced it there.
  */
 
 export const EDGE = 0.1;
@@ -23,11 +28,7 @@ export function outside(room, d, margin = 0.05) {
   const H = room.Hmax ?? room.H ?? 3;
   if (d.z < 0 || d.z > H) return true;
   if (!pointInPolygon(d.x, d.y, room.poly)) return true;
-  for (const w of room.walls ?? []) {
-    const inside = (d.x - w.a.x) * w.nIn.x + (d.y - w.a.y) * w.nIn.y;
-    if (inside < margin) return true;
-  }
-  return false;
+  return (room.walls ?? []).some((w) => distToSegment(d, w.a, w.b) < margin);
 }
 
 /** The middle of the room: the plan's centroid, or the mix seat when a re-entrant plan puts the centroid outside. */
@@ -60,19 +61,7 @@ export function clampInside(room, p, margin = CLEAR_M, mix = null) {
   let y = p.y;
   const m = Math.min(margin, (room.W ?? 5) / 4, (room.L ?? 7) / 4);
 
-  // Push inside from all walls where the point is on, through, or closer than margin
-  for (let iter = 0; iter < 2; iter++) {
-    for (const w of room.walls) {
-      const inside = (x - w.a.x) * w.nIn.x + (y - w.a.y) * w.nIn.y;
-      if (inside < m) {
-        const push = m - inside;
-        x += w.nIn.x * push;
-        y += w.nIn.y * push;
-      }
-    }
-  }
-
-  // If still outside the polygon (e.g. concave corner or irregular plan), pull along ray from inside
+  // outside the plan (or through a wall): pulled back along the ray from the middle, `m` short of the first wall it crosses
   if (!pointInPolygon(x, y, poly)) {
     const c = middleOf(room, mix);
     let minT = 1;
@@ -84,6 +73,26 @@ export function clampInside(room, p, margin = CLEAR_M, mix = null) {
     const safeD = Math.max(0, minT * totalD - m);
     x = c.x + (x - c.x) * (safeD / totalD);
     y = c.y + (y - c.y) * (safeD / totalD);
+  }
+
+  // closer than `m` to a piece of wall: pushed off it — square off its face, or straight away from the corner at its end
+  for (let iter = 0; iter < 3; iter++) {
+    for (const w of room.walls) {
+      const dx = w.b.x - w.a.x;
+      const dy = w.b.y - w.a.y;
+      const l2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((x - w.a.x) * dx + (y - w.a.y) * dy) / l2));
+      const q = { x: w.a.x + t * dx, y: w.a.y + t * dy };
+      const d = Math.hypot(x - q.x, y - q.y);
+      if (d >= m) continue;
+      const face = t > 0 && t < 1;
+      const dir = face || d < 1e-9 ? w.nIn : { x: (x - q.x) / d, y: (y - q.y) / d };
+      const push = face ? m - ((x - w.a.x) * w.nIn.x + (y - w.a.y) * w.nIn.y) : m - d;
+      const nx = x + dir.x * push;
+      const ny = y + dir.y * push;
+      // never off one wall and through another: a gap narrower than 2m keeps the point where it was
+      if (pointInPolygon(nx, ny, poly)) [x, y] = [nx, ny];
+    }
   }
 
   const H = room.Hmax ?? room.H ?? 3;

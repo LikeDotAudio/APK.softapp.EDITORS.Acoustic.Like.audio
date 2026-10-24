@@ -36,7 +36,12 @@ const BED_FRONT = [{ name: 'C', az: 0, el: 0, range: [0, 0], side: 'C', line: tr
 const UNDER_LR = [{ name: 'LFE1', az: 30, under: true }, { name: 'LFE2', az: -30, under: true }];
 const TOPS_4 = [...pair('tf', 45, 45, [30, 55]), ...pair('tr', 135, 45, [110, 150])];
 
+/** No arrangement: every speaker is placed by hand, and every one of them sounds. */
+export const NO_LAYOUT = 'none';
+
 export const LAYOUTS = {
+  // one box on the centre line, straight ahead: a mono check, a talkback, a single wedge
+  '1.0': { label: 'Mono 1.0', speakers: [{ name: 'C', az: 0, el: 0, range: [0, 0], side: 'C', line: true }] },
   '2.0': { label: 'Stereo 2.0', speakers: pair('', 30, 0, [22, 30]) },
   // floor subs right under the mains: one between them on the centre line, or one beneath each
   '2.1': { label: 'Stereo 2.1', speakers: pair('', 30, 0, [22, 30]), lfe: [{ name: 'LFE', az: 0, under: true }] },
@@ -242,7 +247,8 @@ export function layoutPositions(layout, mix, frontDeg, radius, ceiling, room = n
  * Returns [{ id, x, y, z, aim }] for the speakers that move; none without a seat.
  */
 export function carryArray(speakers, settings, mix, next, ceiling = Infinity, room = null) {
-  if (!mix) return [];
+  // with no arrangement there is no array to carry: boxes placed by hand stay where they were put
+  if (!mix || !LAYOUTS[settings.layout?.preset]) return [];
   const layout = settings.layout;
   const turn = (next.rotate ?? 0) - (layout.rotate ?? 0);
   const a = layoutCentre(mix, arrayFront(settings), layout.offset);

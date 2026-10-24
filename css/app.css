@@ -129,6 +129,9 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 /* the file end of the app: open on the top left, save and export on the bottom right */
 .foot { display: flex; min-height: 0; background: #121418; border-top: 1px solid var(--line); }
 #saves { align-self: flex-end; padding: 6px; }
+/* a warning about the last change, with its undo: one speaker of an arrangement moved on its own */
+#notice { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 40; max-width: min(720px, calc(100vw - 32px)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #2a1d0b; color: #fde68a; border: 1px solid var(--warn); border-radius: 6px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); font-size: 12px; }
+#notice[hidden] { display: none; }
 #meters { flex: 1; min-width: 0; display: flex; gap: 6px; padding: 6px; overflow-x: auto; }
 .meter { flex: 0 0 200px; display: flex; flex-direction: column; background: #0b0d12; border: 1px solid #262b36; border-radius: 6px; padding: 4px 6px; min-height: 0; }
 .meter.wide { flex-basis: 320px; }

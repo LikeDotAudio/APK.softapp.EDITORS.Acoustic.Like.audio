@@ -4,7 +4,7 @@ import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
 import { buildRoom } from './acoustics/room.js';
 import { elevationOrigin, faceCoords } from './acoustics/patches.js';
-import { arrangedSpeakers, arrayFront, carryArray, LAYOUTS } from './acoustics/layouts.js';
+import { arrangedSpeakers, arrayFront, carryArray, LAYOUTS, NO_LAYOUT } from './acoustics/layouts.js';
 import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
 import { widthSweep } from './acoustics/widthFinder.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from './acoustics/roomFit.js';
@@ -175,6 +175,30 @@ cad.link = connectCad(iframe, {
 // The finishes and products the CAD can paint onto the room; cadLink sends them again on every `ready`.
 cad.link.palette('Acoustic finishes & products', paletteItems());
 
+// ------------------------------------------------------------------ undo, and the warning that asks for it
+const undoBtn = document.getElementById('undo');
+const redoBtn = document.getElementById('redo');
+const notice = document.getElementById('notice');
+let noticeShown = null;
+function syncUndo() {
+  undoBtn.disabled = !store.canUndo();
+  redoBtn.disabled = !store.canRedo();
+  if (store.state.notice === noticeShown) return;
+  noticeShown = store.state.notice;
+  notice.hidden = !noticeShown;
+  notice.querySelector('span').textContent = noticeShown ?? '';
+}
+undoBtn.addEventListener('click', () => store.undo());
+redoBtn.addEventListener('click', () => store.redo());
+notice.addEventListener('click', (e) => {
+  const act = e.target.closest('button')?.dataset.act;
+  if (act === 'undo') store.undo();
+  if (act === 'close') notice.hidden = true;
+});
+store.subscribe((_, what) => {
+  if (what !== 'drag') syncUndo();
+});
+
 let dragFrame = 0;
 store.subscribe((state, what) => {
   if (what === 'drag') {
@@ -297,6 +321,12 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.target.closest?.('input, select, textarea')) return;
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
+    e.preventDefault();
+    if (e.key === 'y' || e.shiftKey) store.redo();
+    else store.undo();
+    return;
+  }
   if (e.key === 'Escape') store.setMode('cad');
   if ((e.key === 'Delete' || e.key === 'Backspace') && store.state.selected) store.remove(store.state.selected.kind, store.state.selected.id);
 });
@@ -317,6 +347,12 @@ new ResizeObserver(() => renderGeometry()).observe(views);
 // ------------------------------------------------------------------ speaker arrangements
 {
   const bar = document.getElementById('arrangement');
+  const none = document.createElement('button');
+  none.dataset.preset = NO_LAYOUT;
+  none.textContent = 'None';
+  none.title = 'No arrangement: place speakers by hand — every one sounds, nothing is checked against a layout';
+  none.onclick = () => store.setSettings({ layout: { ...store.state.settings.layout, preset: NO_LAYOUT } });
+  bar.append(none);
   for (const [preset, l] of Object.entries(LAYOUTS)) {
     const b = document.createElement('button');
     b.dataset.preset = preset;
@@ -329,7 +365,8 @@ new ResizeObserver(() => renderGeometry()).observe(views);
   place.textContent = '⤓';
   place.title = 'Place this arrangement around the mix seat (replaces the arranged speakers)';
   place.onclick = () => {
-    if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
+    if (!LAYOUTS[store.state.settings.layout.preset]) status.textContent = '⚠ pick an arrangement to place — None places nothing';
+    else if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
   };
   bar.append(place);
 

@@ -75,10 +75,13 @@
     <aside id="inspector"></aside>
   </main>
 
+  <div id="notice" role="alert" hidden><span></span> <button data-act="undo">↶ Undo</button> <button data-act="close" title="Keep it where it is">✕</button></div>
   <div id="fieldScale" hidden title="The one colour scale every drawing of the field is painted in"><span class="lo"></span><i class="ramp"></i><span class="hi"></span></div>
   <footer class="foot">
     <div id="meters"></div>
     <div class="group" id="saves">
+      <button id="undo" title="Undo the last change to the speakers, mics, furniture or room (Ctrl+Z) — the drawing has its own undo in the CAD" disabled>↶ Undo</button>
+      <button id="redo" title="Redo (Ctrl+Shift+Z or Ctrl+Y)" disabled>↷ Redo</button>
       <button id="saveSession" title="Save the CAD drawing, speakers, mics and settings as one file (Ctrl+S)">💾 Save</button>
     </div>
   </footer>

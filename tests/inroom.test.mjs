@@ -149,3 +149,25 @@ test('nothing stays outside the rooms: keepInside brings in every stray at once,
   assert.equal(store.state.furniture.find((f) => f.id === desk.id).x, 7.5);
   assert.equal(store.keepInside(room, [room.poly, next]), false);
 });
+
+test('in Tanda B, with its inward corners, every spot clear of the walls is free: nothing fences the seat at a wall’s extended line', async () => {
+  const { roomById } = await import('../js/acoustics/roomLibrary.js');
+  const { buildRoom } = await import('../js/acoustics/room.js');
+  const { distToSegment, pointInPolygon } = await import('../js/acoustics/geometry.js');
+  const tb = roomById('tanda-b');
+  const { DEFAULT_SETTINGS } = await import('../js/model/store.js');
+  const r = buildRoom(tb.poly.map(([x, y]) => ({ x, y })), { ...DEFAULT_SETTINGS, roomHeight: tb.h, frontDeg: 90 });
+  const xs = r.poly.map((p) => p.x);
+  const ys = r.poly.map((p) => p.y);
+  let free = 0;
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += 0.1)
+    for (let y = Math.min(...ys); y <= Math.max(...ys); y += 0.1) {
+      const p = { x, y, z: 1.2 };
+      if (!pointInPolygon(x, y, r.poly) || r.walls.some((w) => distToSegment(p, w.a, w.b) < CLEAR_M + 0.01)) continue;
+      free++;
+      assert.equal(outside(r, p), false, `(${x.toFixed(1)}, ${y.toFixed(1)}) read as outside`);
+      const c = clampInside(r, p, CLEAR_M);
+      assert.ok(Math.hypot(c.x - x, c.y - y) < 0.002, `(${x.toFixed(1)}, ${y.toFixed(1)}) pushed to (${c.x}, ${c.y})`);
+    }
+  assert.ok(free > 1000, `${free} spots`);
+});
