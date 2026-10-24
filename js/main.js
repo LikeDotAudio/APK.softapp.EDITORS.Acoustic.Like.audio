@@ -88,6 +88,10 @@ const meters = createMeters({
 });
 const inspector = createInspector({ root: document.getElementById('inspector'), store, engine, cad, jumpTo });
 document.getElementById('toPlan').addEventListener('click', () => jumpTo('plan'));
+document.getElementById('popCad').addEventListener('click', () => {
+  if (cad.link.popped) cad.link.dockIn();
+  else if (!cad.link.popOut()) status.textContent = '⚠ the browser blocked the CAD window — allow pop-ups here';
+});
 
 let frame = 0;
 function renderGeometry() {
@@ -122,6 +126,11 @@ cad.link = connectCad(iframe, {
     const k = METRES_PER_UNIT[store.state.cad.geometry?.units ?? store.state.cad.view?.units ?? 'm'] ?? 1;
     store.setCad({ mirror: { ...msg, xMetres: msg.x * k, axesMetres: (msg.axes ?? []).map((x) => x * k) } }, 'mirror');
     engine.update();
+  },
+  onPopped: (popped) => {
+    store.setCad({ popped }, 'view');
+    syncToolbar();
+    plan.render();
   },
 });
 
@@ -174,6 +183,11 @@ function syncToolbar() {
   const { sheet } = store.state;
   document.getElementById('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
   document.getElementById('toPlan').hidden = sheet === 'plan';
+  const popped = store.state.cad.popped;
+  const pop = document.getElementById('popCad');
+  pop.textContent = popped ? '⇲ Dock' : '⇱ Pop out';
+  pop.title = popped ? 'Bring the CAD back into this tile (or just close its window)' : 'Give the CAD a window of its own — the plan stays here';
+  if (popped) document.getElementById('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
   for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
   document.getElementById('freqOut').textContent = settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${settings.freq} Hz`;

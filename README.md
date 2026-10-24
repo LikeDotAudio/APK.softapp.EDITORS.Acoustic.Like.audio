@@ -46,6 +46,8 @@ The CAD is in an iframe. The CAD's `src/shell/hostBridge/` and `js/cad/cadLink.j
 | app → CAD | `sheet {layer, color?, seed?}` | jump to the drawing on that layer and make it current; draw `seed` there first if the layer is empty |
 | app → CAD | `palette {title, items}` | every finish and product (`{id, name, category, color, hatch?, size?, note?}`; `size` [w, h] m = a fixed-size block). Resent on every `ready` |
 
+**Pop out.** `⇱ Pop out` on the plan tile moves the CAD into its own window (handy on a second screen). Then the bridge runs over `window.opener` instead of the iframe. The address gains `&resume`, so the new CAD restores the drawing the old one autosaved. Only one CAD is open at a time. While the CAD is out, the plan tile draws the room's walls itself, and speakers and mics can still be placed and dragged there. `⇲ Dock`, or closing the window, brings the CAD back.
+
 The CAD only publishes; it never reads this app's state. The overlay is saved in the browser per CAD file name. It can be exported as JSON, and positions can be exported in the AcousticRooms metadata shape.
 
 ## Layout

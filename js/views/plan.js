@@ -25,6 +25,10 @@ import { drawColourBar, gridCanvas } from './paint.js';
  * The overlay takes no pointer events except on what it owns: a device can be
  * dragged (Shift-drag turns it), anywhere else the CAD gets the mouse. In a
  * placing mode a capture sheet covers the plan for the one click.
+ *
+ * With the CAD popped out into its own window there is no sheet under us,
+ * so the plan draws its own: the room's walls, fitted to the tile, with the
+ * same overlay on top — speakers and mics still go down and move here.
  */
 
 export function createPlanView({ tile, iframe, store, engine, onDrag }) {
@@ -32,26 +36,43 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
   const capture = tile.querySelector('.capture');
   const hits = tile.querySelector('.hits');
 
+  /** The CAD's own transform, or — popped out — one that fits the room to this tile. */
+  function view() {
+    if (!store.state.cad.popped) return store.state.cad.view;
+    const room = engine.out.room;
+    if (!room) return null;
+    const xs = room.poly.map((p) => p.x);
+    const ys = room.poly.map((p) => p.y);
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const width = tile.clientWidth;
+    const height = tile.clientHeight;
+    const ppm = Math.max(1, Math.min((width - 80) / Math.max(x1 - x0, 0.1), (height - 80) / Math.max(y1 - y0, 0.1)));
+    return { zoom: ppm * k(), panX: width / 2 - ((x0 + x1) / 2) * ppm, panY: height / 2 + ((y0 + y1) / 2) * ppm, rect: { left: 0, top: 0, width, height } };
+  }
+
   const k = () => METRES_PER_UNIT[store.state.cad.view?.units ?? store.state.cad.geometry?.units ?? 'm'] ?? 1;
 
   function toScreen(x, y) {
-    const v = store.state.cad.view;
+    const v = view();
     if (!v) return { x: NaN, y: NaN };
     const off = iframe.offsetLeft;
     const offY = iframe.offsetTop;
     return { x: off + v.rect.left + (x / k()) * v.zoom + v.panX, y: offY + v.rect.top - (y / k()) * v.zoom + v.panY };
   }
   function toWorld(sx, sy) {
-    const v = store.state.cad.view;
+    const v = view();
     const b = tile.getBoundingClientRect();
     const px = sx - b.left - iframe.offsetLeft - v.rect.left;
     const py = sy - b.top - iframe.offsetTop - v.rect.top;
     return { x: ((px - v.panX) / v.zoom) * k(), y: (-(py - v.panY) / v.zoom) * k() };
   }
-  const pxPerMetre = () => (store.state.cad.view ? store.state.cad.view.zoom / k() : 1);
+  const pxPerMetre = () => {
+    const v = view();
+    return v ? v.zoom / k() : 1;
+  };
 
   capture.addEventListener('pointerdown', (e) => {
-    if (!store.state.cad.view) return;
+    if (!view()) return;
     const p = toWorld(e.clientX, e.clientY);
     const room = engine.out.room;
     const { mode, placeKind } = store.state;
@@ -116,7 +137,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     const { ctx, w, h } = fitCanvas(canvas);
     const { state } = store;
     const out = engine.out;
-    const v = state.cad.view;
+    const v = view();
     capture.classList.toggle('on', state.mode !== 'cad');
     capture.dataset.mode = state.mode;
     if (!v || !out.room) {
@@ -127,7 +148,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     }
     // On an elevation the sheet under us is a wall, not the plan: our plan-frame overlay would land on it.
     // The ceiling sheet is the plan with another layer current: the overlay still fits it.
-    const onPlan = state.sheet === 'plan' || state.sheet === 'ceiling';
+    const onPlan = state.cad.popped || state.sheet === 'plan' || state.sheet === 'ceiling';
     hits.hidden = !onPlan;
     if (!onPlan) return;
     const room = out.room;
@@ -139,6 +160,8 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     ctx.beginPath();
     ctx.rect(left, top, v.rect.width, v.rect.height);
     ctx.clip();
+
+    if (state.cad.popped) drawWalls(ctx, room, toScreen);
 
     if (show.field && out.values && out.fieldGrids) {
       const g = out.fieldGrids.plan;
@@ -253,6 +276,23 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
 export function planLabel(settings) {
   if (settings.method === 'energy') return `energy ${BANDS[settings.band] >= 1000 ? `${BANDS[settings.band] / 1000}k` : BANDS[settings.band]} Hz`;
   return `${settings.method} ${settings.freq.toFixed(0)} Hz`;
+}
+
+/** The room as the CAD would show it, for when the CAD is in another window. */
+function drawWalls(ctx, room, toScreen) {
+  ctx.save();
+  ctx.strokeStyle = '#d4d4d4';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  for (const w of room.walls) {
+    const a = toScreen(w.a.x, w.a.y);
+    const b = toScreen(w.b.x, w.b.y);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawPlanGuides(ctx, room, show, toScreen) {

@@ -49,7 +49,7 @@ export function createStore() {
     /** Which drawing the CAD is showing: 'plan', or the elevation's face. Not saved: the CAD decides where it opens. */
     sheet: 'plan',
     placeKind: { speaker: 'monitor', mic: 'omni' },
-    cad: { geometry: null, view: null, mirror: null, connected: false },
+    cad: { geometry: null, view: null, mirror: null, connected: false, popped: false },
     fileName: null,
   };
   let saveTimer = 0;
