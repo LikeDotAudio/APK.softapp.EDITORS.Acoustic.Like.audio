@@ -4,7 +4,7 @@ import { heightsAtXY } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
 import { boxSize, isListener, MIC_PRESETS } from '../acoustics/devices.js';
-import { arrangedSpeakers } from '../acoustics/layouts.js';
+import { arrangedSpeakers, soundingSpeakers } from '../acoustics/layouts.js';
 import { furnitureHeight } from '../acoustics/materials.js';
 import { rayPaths } from '../acoustics/rayPaths.js';
 import { firstReflections, heatOf } from '../acoustics/reflectionPanels.js';
@@ -305,7 +305,9 @@ export function createView3d({ canvas, store, engine }) {
 
     const { state } = store;
     const picked = state.selected?.id;
-    for (const s of state.speakers) {
+    // only the highlighted arrangement's boxes stand in the room: 2.0 is two (layouts.js soundingSpeakers)
+    const sounding = soundingSpeakers(state.speakers, state.settings);
+    for (const s of sounding) {
       const f = { x: Math.cos(s.aim * DEG) * Math.cos(s.tilt * DEG), y: Math.sin(s.aim * DEG) * Math.cos(s.tilt * DEG), z: Math.sin(s.tilt * DEG) };
       const rt = norm({ x: Math.sin(s.aim * DEG), y: -Math.cos(s.aim * DEG), z: 0 });
       const size = boxSize(s);
@@ -472,7 +474,7 @@ export function createView3d({ canvas, store, engine }) {
     // what the solids do not say: the stand under a box, a measurement mic's dot and aim, every name
     const person = (m) => isListener(m) || m.mix;
     const devices = [
-      ...state.speakers.map((d) => ({ d, colour: d.color, label: d.role || d.name, under: d.z - boxSize(d).h / 2, top: d.z + boxSize(d).h / 2 })),
+      ...sounding.map((d) => ({ d, colour: d.color, label: d.role || d.name, under: d.z - boxSize(d).h / 2, top: d.z + boxSize(d).h / 2 })),
       ...state.mics.map((d) => ({ d, colour: d.mix ? '#ff3b3b' : '#e5e7eb', r: person(d) ? 0 : 5, label: d.mix ? 'MIX' : d.name, under: person(d) ? 0 : d.z, top: d.z + (person(d) ? 0.2 : 0) })),
     ]
       .map((o) => ({ ...o, s: proj(o.d), t: proj({ ...o.d, z: o.top }), u: proj({ ...o.d, z: o.under }), base: proj({ ...o.d, z: 0 }) }))

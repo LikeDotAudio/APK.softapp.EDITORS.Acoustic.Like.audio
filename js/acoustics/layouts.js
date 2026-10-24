@@ -106,13 +106,14 @@ export function arrangedSpeakers(speakers, settings) {
 }
 
 /**
- * The speakers that SOUND: the highlighted arrangement's, plus any box placed
- * by hand (no role). The field, the meters and the response all hear these,
- * so picking 2.0 out of a placed 7.1.4 shows what L and R alone do.
+ * The speakers that SOUND, and that the views draw solid: the highlighted
+ * arrangement's and nothing else — 2.0 is two boxes, whatever else is in the
+ * room. A box from another arrangement or placed by hand is muted and drawn
+ * as a ghost until the arrangement is hidden (or it is given one of its roles).
+ * The field, the meters and the response all hear these.
  */
 export function soundingSpeakers(speakers, settings) {
-  const arranged = new Set(arrangedSpeakers(speakers, settings));
-  return speakers.filter((s) => arranged.has(s) || !s.role);
+  return arrangedSpeakers(speakers, settings);
 }
 
 /**

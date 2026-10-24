@@ -24,10 +24,10 @@ test('the room is the listeners, or every mic when none listens', () => {
   assert.deepEqual(roomSeats([omni]), [omni]);
 });
 
-test('the field hears the highlighted arrangement and the hand-placed boxes', () => {
+test('the field hears the highlighted arrangement alone; hidden, every box', () => {
   const box = (role) => ({ ...makeSpeaker('monitor', { x: 1, y: 1 }), role });
   const all = [box('L'), box('R'), box('C'), box(undefined)];
-  assert.equal(soundingSpeakers(all, settings).length, 3);
+  assert.deepEqual(soundingSpeakers(all, settings).map((s) => s.role), ['L', 'R']);
   assert.equal(soundingSpeakers(all, { ...settings, show: { arrangement: false } }).length, 4);
 });
 

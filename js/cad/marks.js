@@ -4,7 +4,7 @@ import { ELEVATION_FACES, ELEVATION_LAYER, heightsAtXY } from '../acoustics/elev
 import { boxSize, isListener, MOUNTS } from '../acoustics/devices.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
-import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
+import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions, soundingSpeakers } from '../acoustics/layouts.js';
 import { PRODUCTS, furnitureHeight, material } from '../acoustics/materials.js';
 import { elevationOrigin } from '../acoustics/patches.js';
 import { firstReflections, heatOf, reflectionPanels } from '../acoustics/reflectionPanels.js';
@@ -255,8 +255,8 @@ export function arrangementMarks(room, settings, mix, state = null) {
     }
   }
 
-  // Actual speakers (front mains, side surrounds, heights, subs) drawn with box dimensions and aim
-  for (const s of state?.speakers ?? []) {
+  // the arrangement's own boxes (mains, surrounds, heights, subs) with their size and aim — not the muted ones
+  for (const s of state ? soundingSpeakers(state.speakers, settings) : []) {
     const dx = s.x - seat.x;
     const dy = s.y - seat.y;
     const sz = boxSize(s);
@@ -349,7 +349,7 @@ const TILT = 30 * DEG;
 function cutawayMarks(room, state, x0, base, has) {
   // only what stands in this room: a box or a seat left by another plan would stretch the view across the sheet to reach it
   const inside = (p) => pointInPolygon(p.x, p.y, room.poly);
-  state = { ...state, speakers: state.speakers.filter(inside), mics: state.mics.filter(inside) };
+  state = { ...state, speakers: soundingSpeakers(state.speakers, state.settings).filter(inside), mics: state.mics.filter(inside) };
   const items = [];
   const gap = Math.max(0.8, 0.1 * Math.max(room.L, room.W));
   let floor = base;
@@ -612,7 +612,7 @@ function blowupMarks(room, name, has, state = null) {
   // who and what stands in this room: drawn into the floor plan and every wall's elevation, each its own block
   const inside = (d) => pointInPolygon(d.x, d.y, room.poly);
   const furniture = furnitureOf(room).map((d) => ({ d, kind: 'furniture' }));
-  const figs = [...(state ? [...state.speakers.filter(inside).map((d) => ({ d, kind: 'speaker' })), ...state.mics.filter(inside).map((d) => ({ d, kind: isListener(d) || d.mix ? 'listener' : 'mic' }))] : []), ...furniture];
+  const figs = [...(state ? [...soundingSpeakers(state.speakers, state.settings).filter(inside).map((d) => ({ d, kind: 'speaker' })), ...state.mics.filter(inside).map((d) => ({ d, kind: isListener(d) || d.mix ? 'listener' : 'mic' }))] : []), ...furniture];
   const plan = bboxOf(room.poly);
   const width = Math.max(plan.x1 - plan.x0, 6);
   const gap = 0.6;

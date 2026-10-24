@@ -93,13 +93,16 @@ test('store manages furniture placement, updates, drag clamping, and removal', a
 
 test('arrangementMarks includes room perimeter, physical speakers, seats, and placed furniture', async () => {
   const { arrangementMarks } = await import('../js/cad/marks.js');
+  const settings = structuredClone(DEFAULT_SETTINGS);
+  settings.layout.preset = '5.1';
   const mockState = {
-    settings: structuredClone(DEFAULT_SETTINGS),
+    settings,
     speakers: [
       { id: 'spk-l', role: 'L', name: 'Left', x: 1.5, y: 5.0, z: 1.2, aim: 90, kind: 'speaker' },
       { id: 'spk-r', role: 'R', name: 'Right', x: 3.5, y: 5.0, z: 1.2, aim: 90, kind: 'speaker' },
       { id: 'spk-ls', role: 'Ls', name: 'Left Surround', x: 0.5, y: 2.0, z: 1.2, aim: 45, kind: 'speaker' },
       { id: 'spk-rs', role: 'Rs', name: 'Right Surround', x: 4.5, y: 2.0, z: 1.2, aim: 135, kind: 'speaker' },
+      { id: 'spk-x', name: 'Placed by hand', x: 2.5, y: 1.0, z: 1.2, aim: 90, kind: 'speaker' },
     ],
     mics: [
       { id: 'mic-mix', mix: true, name: 'Mixer', kind: 'tier1', x: 2.5, y: 3.5, z: 1.2, aim: 90 },
@@ -122,6 +125,7 @@ test('arrangementMarks includes room perimeter, physical speakers, seats, and pl
   assert.ok(textStrings.includes('R'));
   assert.ok(textStrings.includes('Ls'));
   assert.ok(textStrings.includes('Rs'));
+  assert.ok(!textStrings.includes('Placed by hand'), 'a box outside the arrangement is muted, not drawn');
   assert.ok(textStrings.includes('MIX'));
   assert.ok(textStrings.includes('P'));
   assert.ok(textStrings.some((t) => t.includes('Producer desk') || t.includes('Desk')));

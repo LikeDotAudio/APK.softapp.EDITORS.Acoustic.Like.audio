@@ -418,6 +418,8 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     const band = settings.band;
     const soloed = new Set(arrangedSpeakers(state.speakers, settings));
     for (const s of state.speakers) {
+      // a box outside the highlighted arrangement is muted: no coverage, R_c or rays, only its ghost below
+      if (!soloed.has(s) && state.selected?.id !== s.id) continue;
       const p = toScreen(s.x, s.y);
       if (show.coverage && s.kind !== 'sub') {
         const half = ((s.pattern === 'horn' ? s.hCov : s.pattern === 'cardioid' ? 180 : 360) / 2) * (Math.PI / 180);
@@ -456,7 +458,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
 
     if (show.devices) {
       // under the glyphs: where each one points, out to the wall it faces
-      for (const s of state.speakers) if (s.kind !== 'sub') drawAimRay(ctx, room, s, s.color, toScreen);
+      for (const s of state.speakers) if (s.kind !== 'sub' && soloed.has(s)) drawAimRay(ctx, room, s, s.color, toScreen);
       for (const m of state.mics) drawAimRay(ctx, room, m, MIC_PRESETS[m.kind].colour, toScreen);
       // names when the plan is big and uncrowded, tags (L, M3, MIX, E2) when it is not
       const roomy = pxPerMetre() >= 60 && state.speakers.length + state.mics.length <= 10;
@@ -472,7 +474,9 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       for (const s of first(state.speakers)) {
         const p = toScreen(s.x, s.y);
         // at true size: the glyph is 2·size across the front, never smaller than it always was
+        ctx.globalAlpha = soloed.has(s) || state.selected?.id === s.id ? 1 : 0.25;
         drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: Math.max(11, (boxSize(s).w * pxPerMetre()) / 2) });
+        ctx.globalAlpha = 1;
       }
     }
 
