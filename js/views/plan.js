@@ -9,6 +9,10 @@ import { roomGrowth } from '../acoustics/roomFit.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
 import { PRODUCTS, furnitureHeight } from '../acoustics/materials.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
+import { patchesFromCad } from '../compute/engine.js';
+import { elevationFaceOf } from '../acoustics/elevations.js';
+import { isCeilingLayer } from '../acoustics/patches.js';
+import { consoleOf } from '../acoustics/console.js';
 import { boxSize, MIC_PRESETS, isListener } from '../acoustics/devices.js';
 import { mirrorName } from '../acoustics/symmetry.js';
 import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, drawPerson, drawSpeaker, fitCanvas } from './glyphs.js';
@@ -125,6 +129,19 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     }
   });
 
+  /**
+   * The gear the CAD holds on the plan — a library room's console, desks, rack
+   * and couch, placed into the drawing as blocks — as { id, x, y, rotation,
+   * paletteId }: products that stand on the floor, not already one of this
+   * app's own furniture.
+   */
+  function cadGear() {
+    const own = new Set((store.state.furniture ?? []).map((f) => f.cadId).filter(Boolean));
+    return patchesFromCad(store.state.cad.geometry)
+      .filter((p) => p.at && furnitureHeight(p.paletteId) && !own.has(p.id) && !elevationFaceOf(p.layer) && !isCeilingLayer(p.layer))
+      .map((p) => ({ id: p.id, x: p.at.x, y: p.at.y, rotation: p.rotation ?? 0, paletteId: p.paletteId }));
+  }
+
   /** Hit targets: one absolutely-placed div per device, the only things here that take the mouse. */
   function syncHits() {
     const { speakers, mics, furniture = [] } = store.state;
@@ -132,6 +149,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       ...speakers.map((d) => ['speaker', d]),
       ...mics.map((d) => ['mic', d]),
       ...furniture.map((d) => ['furniture', d]),
+      ...(cad?.link ? cadGear().map((d) => ['gear', d]) : []),
     ];
     const seen = new Set();
     for (const [kind, d] of want) {
@@ -144,8 +162,8 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
         el.dataset.kind = kind;
         el.title = kind === 'speaker'
           ? 'Drag to move · Shift-drag to aim · Ctrl-click to turn it (click to set, Esc to cancel) · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)'
-          : kind === 'furniture'
-          ? 'Drag to move · Shift-drag to turn · Del / Backspace to remove'
+          : kind === 'furniture' || kind === 'gear'
+          ? `Drag to move · Shift-drag to turn${kind === 'furniture' ? ' · Del / Backspace to remove' : ' — it lives in the CAD drawing'}`
           : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)';
         el.addEventListener('pointerdown', (e) => startDrag(e, el));
         hits.appendChild(el);
@@ -217,6 +235,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     e.stopPropagation();
     const kind = el.dataset.kind;
     const id = el.dataset.id;
+    if (kind === 'gear') return startGearDrag(e, el);
     if (kind === 'speaker' && (e.ctrlKey || e.metaKey) && !spinning) return startSpin(el);
     // lost outside the room: the touch brings it to the middle instead of dragging it further off
     if (store.bringIn(kind, id, engine.out.room)) return;
@@ -292,6 +311,47 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
         store.commit();
         onDrag(false);
       },
+    );
+  }
+
+  /**
+   * Drag a piece of the CAD's gear: it moves in the drawing (the bridge's
+   * `move`), Shift turns it in 15° steps (Alt: free). The console that keeps
+   * to the mixer's nose stops following once it is dragged by hand — said in
+   * the warning, whose Undo puts it back to following.
+   */
+  function startGearDrag(e, el) {
+    const id = el.dataset.id;
+    const gear = cadGear().find((g) => g.id === id);
+    if (!gear) return;
+    store.select({ kind: 'patch', id });
+    const start = toWorld(e.clientX, e.clientY);
+    const mix = store.state.mics.find((m) => m.mix);
+    const { settings } = store.state;
+    let rotation = gear.rotation;
+    let freed = false;
+    dragFrom(
+      e,
+      el,
+      (ev) => {
+        const p = toWorld(ev.clientX, ev.clientY);
+        if (!freed && mix && settings.console?.follow !== false && consoleOf(patchesFromCad(store.state.cad.geometry), mix)?.id === id) {
+          freed = true;
+          store.setSettings({ console: { ...settings.console, follow: false } });
+          store.tell('⚠ The console no longer keeps to the mixer’s nose — you moved it by hand. Undo puts it back to following (Layout → Console at the mixer’s nose).');
+        }
+        let at = { x: gear.x, y: gear.y };
+        if (ev.shiftKey) {
+          const aim = (Math.atan2(p.y - gear.y, p.x - gear.x) * 180) / Math.PI;
+          rotation = ev.altKey ? Math.round(aim) : Math.round(aim / 15) * 15;
+        } else {
+          const target = { x: gear.x + p.x - start.x, y: gear.y + p.y - start.y, z: 0.5 };
+          at = engine.out.room ? clampInside(engine.out.room, target, CLEAR_M) : target;
+        }
+        cad.link.move([{ id, at: [+(at.x / k()).toFixed(4), +(at.y / k()).toFixed(4)], rotation }]);
+        onDrag(true);
+      },
+      () => onDrag(false),
     );
   }
 

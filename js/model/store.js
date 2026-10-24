@@ -433,6 +433,11 @@ export function createStore() {
     commit() {
       changed();
     },
+    /** Leave a warning about the step just taken, beside its Undo. */
+    tell(text) {
+      state.notice = text;
+      emit('notice');
+    },
     canUndo: () => undoStack.length > 0,
     canRedo: () => redoStack.length > 0,
     undo() {
