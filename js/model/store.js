@@ -64,7 +64,7 @@ export const DEFAULT_SETTINGS = {
   /** The glass in each plan loop's walls, by layer id (acoustics/windows.js): drawn into its elevations with their casings. */
   windows: {},
   /** What this app draws into the CAD itself (cad/marks.js): labels, reflection panels, cut-aways, construction sections. */
-  cadMarks: { labels: true, panels: true, ceilingPanels: true, cutaways: true, reflections: true, sections: true, arrangement: true, blowup: true, windows: true },
+  cadMarks: { labels: true, panels: true, finishes: true, ceilingPanels: true, cutaways: true, reflections: true, sections: true, arrangement: true, blowup: true, windows: true },
   autoPanels: { wall: 'panel-1200x600x100', ceiling: 'cloud-1200', w: 0.6, h: 1.2 },
   show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true, arrangement: true },
 };
@@ -81,6 +81,8 @@ export function createStore() {
     speakers: [],
     mics: [],
     furniture: [],
+    /** Ids held where they are (right-click → Lock): devices, furniture and the CAD's gear alike. A locked one neither drags nor deletes. */
+    locked: [],
     settings: structuredClone(DEFAULT_SETTINGS),
     selected: null,
     mode: 'cad',
@@ -98,7 +100,7 @@ export function createStore() {
   const snap = () => {
     const settings = { ...state.settings };
     for (const k of VIEW_KEYS) delete settings[k];
-    return JSON.stringify({ settings, speakers: state.speakers, mics: state.mics, furniture: state.furniture });
+    return JSON.stringify({ settings, speakers: state.speakers, mics: state.mics, furniture: state.furniture, locked: state.locked });
   };
   let last = snap();
   /** The state as it stood before this change goes on the undo stack, if anything the room is made of changed. */
@@ -126,6 +128,7 @@ export function createStore() {
     state.speakers = d.speakers;
     state.mics = d.mics;
     state.furniture = d.furniture;
+    state.locked = d.locked ?? [];
     const sel = state.selected;
     if (sel && !(sel.kind === 'patch' || [...state.speakers, ...state.mics, ...(state.furniture ?? [])].some((x) => x.id === sel.id))) state.selected = null;
     last = raw;
@@ -154,7 +157,7 @@ export function createStore() {
   };
 
   function exportDoc() {
-    return { format: 'acoustic.like.audio@1', fileName: state.fileName, settings: state.settings, speakers: state.speakers, mics: state.mics, furniture: state.furniture };
+    return { format: 'acoustic.like.audio@1', fileName: state.fileName, settings: state.settings, speakers: state.speakers, mics: state.mics, furniture: state.furniture, locked: state.locked };
   }
 
   function importDoc(doc) {
@@ -173,6 +176,7 @@ export function createStore() {
     state.speakers = doc.speakers ?? [];
     state.mics = doc.mics ?? [];
     state.furniture = doc.furniture ?? [];
+    state.locked = doc.locked ?? [];
     state.selected = null;
     // another drawing's overlay: nothing before it to undo to
     resetHistory();
@@ -369,7 +373,17 @@ export function createStore() {
       if (moved) changed();
       return moved;
     },
+    isLocked(id) {
+      return state.locked.includes(id);
+    },
+    /** Hold one in place, or let it go: one undo step. */
+    setLocked(id, on) {
+      if (on === state.locked.includes(id)) return;
+      state.locked = on ? [...state.locked, id] : state.locked.filter((x) => x !== id);
+      changed();
+    },
     remove(kind, id) {
+      if (state.locked.includes(id)) return;
       if (kind === 'furniture') {
         this.removeFurniture(id);
         return;

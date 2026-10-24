@@ -117,10 +117,10 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     } else if (mode === 'place-furniture') {
       const at = room ? clampInside(room, p, CLEAR_M) : p;
       const paletteId = placeKind.furniture || 'desk-1800x900';
-      store.addFurniture(paletteId, { x: at.x, y: at.y, z: 0 }, 0);
-      if (cad?.link) {
-        cad.link.place('Furniture', [{ paletteId, at: [+(at.x / k()).toFixed(4), +(at.y / k()).toFixed(4)], rotation: 0 }]);
-      }
+      // with the CAD there, the piece is ONE block in the drawing — gear on the plan, like a library room's; only
+      // without it is it kept here (both at once was two couches in one place, each counted in the room)
+      if (cad?.link) cad.link.place('Furniture', [{ paletteId, at: [+(at.x / k()).toFixed(4), +(at.y / k()).toFixed(4)], rotation: 0 }]);
+      else store.addFurniture(paletteId, { x: at.x, y: at.y, z: 0 }, 0);
     }
     hoverPos = null;
     if (!e.shiftKey) {
@@ -160,14 +160,19 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
         el.className = 'hit';
         el.dataset.id = d.id;
         el.dataset.kind = kind;
-        el.title = kind === 'speaker'
+        el.addEventListener('pointerdown', (e) => startDrag(e, el));
+        el.addEventListener('contextmenu', (e) => openMenu(e, el));
+        hits.appendChild(el);
+      }
+      const locked = store.isLocked(d.id);
+      el.classList.toggle('locked', locked);
+      el.title = locked
+        ? 'Locked — right-click to unlock'
+        : (kind === 'speaker'
           ? 'Drag to move · Shift-drag to aim · Ctrl-click to turn it (click to set, Esc to cancel) · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)'
           : kind === 'furniture' || kind === 'gear'
           ? `Drag to move · Shift-drag to turn${kind === 'furniture' ? ' · Del / Backspace to remove' : ' — it lives in the CAD drawing'}`
-          : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)';
-        el.addEventListener('pointerdown', (e) => startDrag(e, el));
-        hits.appendChild(el);
-      }
+          : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)') + ' · right-click to lock or remove';
       const p = toScreen(d.x, d.y);
       el.style.transform = `translate(${p.x - 12}px, ${p.y - 12}px)`;
       el.style.display = Number.isFinite(p.x) ? '' : 'none';
@@ -230,11 +235,66 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     render();
   }
 
+  /**
+   * Right-click anything on the plan — a speaker, a mic, a couch, a console:
+   * Lock holds it where it is (no drag, no Delete), Remove takes it out. The
+   * CAD's gear is removed in the drawing, one undo step there.
+   */
+  function openMenu(e, el) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    const { kind, id } = el.dataset;
+    store.select(kind === 'gear' ? { kind: 'patch', id } : { kind, id });
+    const locked = store.isLocked(id);
+    const menu = document.createElement('div');
+    menu.className = 'plan-menu';
+    const item = (label, act, disabled = false) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.disabled = disabled;
+      b.addEventListener('click', () => {
+        closeMenu();
+        act();
+      });
+      menu.appendChild(b);
+    };
+    item(locked ? '🔓 Unlock' : '🔒 Lock', () => store.setLocked(id, !locked));
+    item('✕ Remove', () => {
+      if (kind === 'gear') cad?.link?.remove([id]);
+      else store.remove(kind, id);
+    }, locked);
+    const box = hits.parentElement.getBoundingClientRect();
+    menu.style.left = `${e.clientX - box.left}px`;
+    menu.style.top = `${e.clientY - box.top}px`;
+    hits.parentElement.appendChild(menu);
+    setTimeout(() => {
+      window.addEventListener('pointerdown', outside, true);
+      window.addEventListener('keydown', escape, true);
+    });
+  }
+  const outside = (ev) => {
+    if (!ev.target.closest?.('.plan-menu')) closeMenu();
+  };
+  const escape = (ev) => {
+    if (ev.key === 'Escape') closeMenu();
+  };
+  function closeMenu() {
+    hits.parentElement.querySelector('.plan-menu')?.remove();
+    window.removeEventListener('pointerdown', outside, true);
+    window.removeEventListener('keydown', escape, true);
+  }
+
   function startDrag(e, el) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const kind = el.dataset.kind;
     const id = el.dataset.id;
+    if (store.isLocked(id)) {
+      store.select(kind === 'gear' ? { kind: 'patch', id } : { kind, id });
+      return;
+    }
     if (kind === 'gear') return startGearDrag(e, el);
     if (kind === 'speaker' && (e.ctrlKey || e.metaKey) && !spinning) return startSpin(el);
     // lost outside the room: the touch brings it to the middle instead of dragging it further off

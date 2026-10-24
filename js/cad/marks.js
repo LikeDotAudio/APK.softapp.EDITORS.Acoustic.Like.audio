@@ -1,6 +1,6 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
-import { ELEVATION_FACES, ELEVATION_LAYER, heightsAtXY } from '../acoustics/elevations.js';
+import { ELEVATION_FACES, ELEVATION_LAYER, elevationFaceOf, heightsAtXY } from '../acoustics/elevations.js';
 import { boxSize, isListener, MOUNTS } from '../acoustics/devices.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
@@ -40,6 +40,13 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  *   windows      the room's glass (acoustics/windows.js) on its elevations:
  *                each pane painted with its glass and its casing round it in
  *                wood, so the room hears both, named GLASS-1 … with its size.
+ *   finishes     what the user painted on each wall (a finish or a product
+ *                filling the bay between division lines, or blocks tiled
+ *                there): every region tagged on its elevation — F1, F2 … on
+ *                the front, B, L, R on the others — and beside it a FINISH
+ *                SCHEDULE: tag, what it is, how it was laid, its size, its
+ *                stretch from the wall's centre line, area, α at 125 / 500 /
+ *                2k and s, and the wall's base finish over what is left.
  *   sections     the wall build and the floor build as sections, layer by
  *                layer, drawn five times true size so the layers read.
  *   arrangement  the speaker layout's reference lines from the mix seat — the
@@ -61,7 +68,7 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  * Everything here works in sheet METRES; `toCad` scales to drawing units last.
  */
 
-export const MARK_KEYS = ['labels', 'panels', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup'];
+export const MARK_KEYS = ['labels', 'panels', 'finishes', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup'];
 
 const LAYOUT_LAYER = 'Speaker layout';
 const CUTAWAY_LAYER = '3-D cut-aways';
@@ -81,7 +88,7 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 const mm = (v) => Math.round(v * 1000);
 
 /** Every set of marks for this room: { key: items } in drawing units. */
-export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, rooms = [] }) {
+export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, rooms = [], wallPatches = [] }) {
   const out = Object.fromEntries(MARK_KEYS.map((key) => [key, []]));
   if (!room) return out;
   const { settings } = state;
@@ -91,7 +98,9 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
   const toCad = (items) => items.map((it) => scaleItem(it, k));
 
   if (on.labels) out.labels = toCad(labelMarks(room, settings, planLayer));
-  if (on.panels && mix) out.panels = toCad(panelMarks(room, state, mix));
+  const panels = on.panels && mix ? panelMarks(room, state, mix) : [];
+  out.panels = toCad(panels);
+  if (on.finishes !== false) out.finishes = toCad(finishMarks(room, state.settings, wallPatches, panels));
   if (on.windows !== false) out.windows = toCad(windowMarks(room, settings.windows?.[planLayer] ?? []));
   if (on.arrangement) out.arrangement = toCad(arrangementMarks(room, settings, mix, state));
   // the tower over each plan: its blow-up, and on top of the room being designed the cut-aways
@@ -209,6 +218,81 @@ function panelDetails(room, face, panels, product) {
     texts.push({ text: `${p.name} · answers ${p.speaker} · ${mm(b.x1 - b.x0)} × ${mm(b.y1 - b.y0)} · left edge ${mm(b.x0)} · bottom ${mm(b.y0)} · centre ${mm((b.x0 + b.x1) / 2)} / ${mm((b.y0 + b.y1) / 2)} · ${product}`, x: sx, y: r3(y), height: size * 0.85 });
   }
   return { kind: 'drawing', layer: ELEVATION_LAYER[face], name: `panel-details-${face}`, at: [r3(origin.x), r3(origin.y)], lines, texts };
+}
+
+// ------------------------------------------------------------------ finishes
+
+const FACE_TAG = { front: 'F', back: 'B', left: 'L', right: 'R' };
+
+const areaOf = (pts) => Math.abs(pts.reduce((s, p, i) => s + p.x * pts[(i + 1) % pts.length].y - pts[(i + 1) % pts.length].x * p.y, 0) / 2);
+
+/** A palette id's name on a drawing: the product's, else the finish's. */
+const paletteName = (id) => PRODUCTS.find((x) => x.id === id)?.name ?? material(id).name;
+
+/**
+ * Every wall's regions as the user finished them, on its elevation: a tag in
+ * each — its code and what it is, boxed — and beside the elevation, under the
+ * panel schedule when there is one, the FINISH SCHEDULE. `patches` are the
+ * user's own on the elevation layers (not this app's marks), in sheet metres.
+ */
+function finishMarks(room, settings, patches, panelItems) {
+  const items = [];
+  const size = Math.max(0.035, Math.min(0.15, Math.max(room.L, room.W) / 100));
+  for (const face of ELEVATION_FACES) {
+    const mine = patches.filter((p) => elevationFaceOf(p.layer) === face);
+    if (!mine.length) continue;
+    const origin = elevationOrigin(room, face);
+    if (!origin) continue;
+    const span = face === 'left' || face === 'right' ? room.L : room.W;
+    const top = room.Hmax ?? room.H;
+    const regions = mine
+      .map((p) => {
+        const pts = p.poly.map((q) => ({ x: q.x - origin.x, y: q.y - origin.y }));
+        const xs = pts.map((q) => q.x);
+        const ys = pts.map((q) => q.y);
+        return { p, pts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), area: areaOf(pts) };
+      })
+      // only what lies on this wall's drawing
+      .filter((r) => r.x1 > 0 && r.x0 < span && r.y1 > 0 && r.y0 < top)
+      // left to right, then top down
+      .sort((a, b) => a.x0 - b.x0 || b.y1 - a.y1);
+    if (!regions.length) continue;
+    const lines = [];
+    const texts = [];
+    regions.forEach((r, i) => {
+      r.tag = `${FACE_TAG[face]}${i + 1}`;
+      r.name = paletteName(r.p.paletteId);
+      const short = r.name.length > 18 ? `${r.name.slice(0, 17)}…` : r.name;
+      const w = Math.max(r.tag.length, short.length) * size * 0.62 + size;
+      const h = size * 2.4;
+      const cx = (r.x0 + r.x1) / 2;
+      const cy = (r.y0 + r.y1) / 2;
+      const bx = cx - w / 2;
+      const by = cy - h / 2;
+      lines.push([r3(bx), r3(by), r3(bx + w), r3(by)], [r3(bx + w), r3(by), r3(bx + w), r3(by + h)], [r3(bx + w), r3(by + h), r3(bx), r3(by + h)], [r3(bx), r3(by + h), r3(bx), r3(by)]);
+      texts.push({ text: r.tag, x: r3(bx + size * 0.5), y: r3(by + h - size * 1.05), height: size * 0.85 });
+      texts.push({ text: short, x: r3(bx + size * 0.5), y: r3(by + size * 0.35), height: size * 0.7 });
+    });
+    // beside the elevation, under the panel schedule if this wall has one
+    const panelRows = panelItems.find((it) => it.kind === 'drawing' && it.name === `panel-details-${face}`)?.texts.filter((t) => / · answers /.test(t.text)).length ?? 0;
+    const sx = r3(span + size * 4);
+    let y = top - size * 1.1 - (panelRows ? (panelRows + 1) * size * 1.5 + size * 2 : 0);
+    texts.push({ text: `FINISH SCHEDULE · ${face.toUpperCase()} WALL · ${regions.length} region${regions.length === 1 ? '' : 's'} · x from the wall's centre line, z from the floor, mm`, x: sx, y: r3(y), height: size * 1.1 });
+    const mid = span / 2;
+    const signed = (v) => (v > 0 ? `+${mm(v)}` : `${mm(v)}`);
+    for (const r of regions) {
+      const mat = material(r.p.paletteId);
+      const how = String(r.p.id).startsWith('block:') ? 'block' : PRODUCTS.some((x) => x.id === r.p.paletteId) ? 'fill' : 'finish';
+      y -= size * 1.5;
+      texts.push({ text: `${r.tag} · ${r.name} · ${how} · ${mm(r.x1 - r.x0)} × ${mm(r.y1 - r.y0)} · x ${signed(r.x0 - mid)} → ${signed(r.x1 - mid)} · z ${mm(r.y0)} → ${mm(r.y1)} · ${r.area.toFixed(2)} m² · α125 ${mat.alpha[0].toFixed(2)} α500 ${mat.alpha[2].toFixed(2)} α2k ${mat.alpha[4].toFixed(2)} · s ${mat.scatter[3].toFixed(2)}`, x: sx, y: r3(y), height: size * 0.85 });
+    }
+    const wallArea = room.walls.filter((w) => w.face === face).reduce((s, w) => s + (w.area ?? 0), 0);
+    const left = Math.max(0, wallArea - regions.reduce((s, r) => s + r.area, 0));
+    y -= size * 1.5;
+    texts.push({ text: `BASE · ${material(settings.faceMaterials[face]).name} · the rest of the wall · ${left.toFixed(2)} m²`, x: sx, y: r3(y), height: size * 0.85 });
+    items.push({ kind: 'drawing', layer: ELEVATION_LAYER[face], name: `finish-schedule-${face}`, at: [r3(origin.x), r3(origin.y)], lines, texts });
+  }
+  return items;
 }
 
 // ------------------------------------------------------------------ windows

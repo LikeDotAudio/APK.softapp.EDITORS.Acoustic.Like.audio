@@ -715,7 +715,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const products = PRODUCTS.map((p) => ({ value: p.id, label: p.name }));
     return [
       h('h4', {}, 'Drawn into the CAD'),
-      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('windows', 'windows and their casings'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('reflections', 'rays & reflection heat in the cut-aways'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout')),
+      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('finishes', 'region tags & finish schedule on each wall'), toggle('windows', 'windows and their casings'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('reflections', 'rays & reflection heat in the cut-aways'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout')),
       row('Wall panel', select(ap.wall, products, (v) => set({ autoPanels: { ...ap, wall: v } }))),
       row('Panel size', num(ap.w, (v) => set({ autoPanels: { ...ap, w: v } }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(ap.h, (v) => set({ autoPanels: { ...ap, h: v } }), { unit: 'm tall', min: 0.2, step: 0.05 })),
       row('Ceiling cloud', select(ap.ceiling, products, (v) => set({ autoPanels: { ...ap, ceiling: v } }))),

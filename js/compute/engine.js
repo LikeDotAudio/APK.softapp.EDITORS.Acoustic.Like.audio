@@ -87,6 +87,8 @@ export function patchesFromCad(geometry) {
       poly: p.points.map(([x, y]) => ({ x: x * k, y: y * k })),
       // a placed product's centre and turn, for the furniture this app keeps in place (the console)
       ...(Array.isArray(p.at) ? { at: { x: p.at[0] * k, y: p.at[1] * k }, rotation: p.rotation ?? 0 } : {}),
+      // drawn by this app's own marks (its panels, its glass), not by the user
+      ...(p.host ? { host: p.host } : {}),
     }));
 }
 

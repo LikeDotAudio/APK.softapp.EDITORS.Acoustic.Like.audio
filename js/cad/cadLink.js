@@ -43,7 +43,7 @@ export const HOST_PROTOCOL = 'cad.like.audio/host@1';
 
 export const METRES_PER_UNIT = { in: 0.0254, mm: 0.001, cm: 0.01, m: 1, ft: 0.3048 };
 
-export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPopped }) {
+export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPopped, onSelection }) {
   const address = iframe.getAttribute('src');
   let popup = null;
   let watch = 0;
@@ -74,6 +74,7 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     else if (msg.type === 'view') { if (!popup) onView?.(msg); }
     else if (msg.type === 'geometry') onGeometry?.(msg);
     else if (msg.type === 'mirror') onMirror?.(msg);
+    else if (msg.type === 'selection') onSelection?.(msg);
     else if (msg.type === 'session') {
       for (const resolve of sessionWaiters) resolve(msg.session ?? null);
       sessionWaiters = [];
@@ -113,6 +114,14 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     place: (layer, items) => send('place', { layer, items }),
     /** Set where placed products sit: [{ id: 'block:<n>', at: [x, y], rotation? }] in CAD units (the console at the mixer's nose). */
     move: (items) => send('move', { items }),
+    /** Take placed products out of the drawing: ['block:<n>', …] (right-click → Remove on the plan). One undo step in the CAD. */
+    remove: (ids) => send('remove', { ids }),
+    /** Reshape the room's lines (Walls mode): { op: 'begin' | 'vertex' | 'edge' | 'end' | 'add', … } in CAD units (hostWalls.ts). */
+    walls: (op) => send('walls', op),
+    /** Layers on or off by name: { 'Blow-up': false, … }. Hidden, nothing on them can be clicked in the CAD. */
+    layers: (visible) => send('layers', { visible }),
+    /** Select these walls (edge ids) and products ('block:<n>') in the CAD too. */
+    select: ({ edges = [], blocks = [] } = {}) => send('select', { edges, blocks }),
     arm: (paletteId) => {
       send('arm', { paletteId });
       popup?.focus();

@@ -591,7 +591,8 @@ function syncMarks() {
       name: String(names.get(loop.layerId) ?? loop.layerId).replace(/^Room · /, ''),
       room: loop.layerId === engine.out.planLayer && !engine.out.virtual ? engine.out.room : buildRoom(loop.poly, { ...settings, roomHeight: settings.roomHeights?.[loop.layerId] ?? settings.roomHeight }, [], patches),
     }));
-    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms });
+    const wallPatches = patchesFromCad(g).filter((p) => elevationFaceOf(p.layer) && !p.host);
+    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms, wallPatches });
     const onSheet = g.marks ?? {};
     for (const key of MARK_KEYS) {
       const items = sets[key];
