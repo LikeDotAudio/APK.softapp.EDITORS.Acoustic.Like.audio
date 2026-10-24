@@ -28,6 +28,11 @@ import { drawPatch, patchName, shortName } from './treatments.js';
  * Clicking anywhere else jumps the CAD to that wall's elevation (the ceiling
  * jumps it back to the plan): the walls are drawn in the same CAD file, and a
  * sloped ceiling or raked floor drawn there is the outline this view shows.
+ *
+ * The drawing fills its tile; one caption line above it says what and how
+ * big. Words go on the drawing only as it grows: the wheel zooms in on the
+ * pointer, dragging the empty room pans, and the labels (ears, nulls, the
+ * treatments' names, the devices' full names) come in once there is room.
  */
 
 /** Cut a caption to what fits in `max` pixels, so it never runs into the one on the right. */
@@ -37,6 +42,11 @@ function fitText(ctx, text, max) {
   while (s.length > 1 && ctx.measureText(`${s}…`).width > max) s = s.slice(0, -1);
   return `${s.trimEnd()}…`;
 }
+
+/** Pixels per drawing before each kind of word is allowed on it: the smaller side of the room as drawn. */
+const DETAIL = { guides: 170, patches: 130, names: 260 };
+const ZOOM_MAX = 12;
+const CAPTION = 18;
 
 /** The axis pointing right in each elevation, as seen from inside the room. */
 function rightAxis(room, face) {
@@ -57,9 +67,11 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
   let map = null;
   /** The patches drawn last frame, bottom first, as screen outlines — what a click or hover is tested against. */
   let drawn = [];
+  /** The zoom: k = 1 fits the room; above it, (uc, vc) is the drawing point at the middle of the tile. */
+  const view = { k: 1, uc: 0, vc: 0 };
 
   function layout(w, h, room) {
-    const pad = 34;
+    const pad = 8;
     if (top) {
       const xs = room.poly.map((p) => p.x);
       const ys = room.poly.map((p) => p.y);
@@ -78,14 +90,19 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
   }
 
   function fit(w, h, pad, u0, u1, v0, v1, project, unproject, ra = null) {
-    // the top keeps clear of the two caption lines and the dimension above the drawing
-    const top = pad + 22;
-    const s = Math.min((w - 2 * pad) / (u1 - u0 || 1), (h - top - pad) / (v1 - v0 || 1));
-    const ox = (w - s * (u1 - u0)) / 2;
-    const oy = pad + (h - top - pad - s * (v1 - v0)) / 2;
-    const toS = (u, v) => ({ x: ox + (u - u0) * s, y: h - oy - (v - v0) * s });
-    const toUV = (x, y) => ({ u: u0 + (x - ox) / s, v: v0 + (h - oy - y) / s });
-    return { s, u0, u1, v0, v1, toS, toUV, project, unproject, ra };
+    // the top keeps clear of the one caption line
+    const top = CAPTION + 2;
+    const s0 = Math.min((w - 2 * pad) / (u1 - u0 || 1), (h - top - pad) / (v1 - v0 || 1));
+    const s = s0 * view.k;
+    const cx = w / 2;
+    const cy = top + (h - top - pad) / 2;
+    const uc = view.k > 1 ? view.uc : (u0 + u1) / 2;
+    const vc = view.k > 1 ? view.vc : (v0 + v1) / 2;
+    const toS = (u, v) => ({ x: cx + (u - uc) * s, y: cy - (v - vc) * s });
+    const toUV = (x, y) => ({ u: uc + (x - cx) / s, v: vc - (y - cy) / s });
+    // how big the room is drawn, which decides how many words it can carry
+    const detail = Math.min((u1 - u0) * s, (v1 - v0) * s);
+    return { s, u0, u1, v0, v1, toS, toUV, project, unproject, ra, detail, cx, cy };
   }
 
   function render() {
@@ -156,23 +173,42 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     ctx.stroke(outline);
 
     drawGuides(ctx, room, show);
-    drawDimensions(ctx, room);
     // over the guides too: a panel on the wall is a thing in the room, the guides are only ideas about it
     drawPatches(ctx, room, state, outline);
     drawDevices(ctx, state);
+    drawCaption(ctx, w, room, state);
+  }
 
-    ctx.fillStyle = FACE_COLOURS[face] ?? '#d4d4d4';
-    ctx.font = '600 11px system-ui, sans-serif';
-    ctx.fillText(TITLES[face], 10, 16);
-    const mat = face === 'ceiling' ? room.ceiling : face === 'plan' ? room.floor : room.walls.find((x) => x.face === face)?.material;
-    ctx.fillStyle = '#9aa4b2';
-    ctx.font = '10px system-ui';
-    if (mat) ctx.fillText(fitText(ctx, mat.name, w / 2 - 16), 10, 29);
-    const drawn = face !== 'ceiling' && room.profiles?.some((p) => p.face === face);
-    ctx.fillStyle = state.sheet === face ? FACE_COLOURS[face] : '#64748b';
+  /** One line: the view's name, its finish, its size in mm, and ✎ when the CAD is drawing it. Zoomed past the edge, it sits on a band. */
+  function drawCaption(ctx, w, room, state) {
+    if (view.k > 1) {
+      ctx.fillStyle = 'rgba(15,18,24,.85)';
+      ctx.fillRect(0, 0, w, CAPTION);
+    }
+    ctx.textBaseline = 'middle';
+    const y = CAPTION / 2 + 1;
+    const across = (map.u1 - map.u0) * 1000;
+    const up = (map.v1 - map.v0) * 1000;
+    const size = `${Math.round(across)} × ${Math.round(up)} mm${view.k > 1 ? ` · ${view.k.toFixed(1)}×` : ''}`;
+    ctx.font = '10px ui-monospace, monospace';
+    ctx.fillStyle = '#94a3b8';
     ctx.textAlign = 'right';
-    ctx.fillText(face === 'plan' ? '' : face === 'ceiling' ? (state.sheet === 'ceiling' ? '✎ in the CAD' : 'click to treat in the CAD') : state.sheet === face ? '✎ in the CAD' : drawn ? 'drawn in the CAD · click to edit' : 'click to draw in the CAD', w - 10, 29);
+    const editing = state.sheet === face && face !== 'plan';
+    const right = editing ? `✎ ${size}` : size;
+    // clear of the tile's ⇱ button in the corner
+    ctx.fillText(right, w - 30, y);
+    const used = ctx.measureText(right).width + 38;
     ctx.textAlign = 'left';
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillStyle = FACE_COLOURS[face] ?? '#d4d4d4';
+    const title = fitText(ctx, TITLES[face], w - used - 8);
+    ctx.fillText(title, 8, y);
+    const mat = face === 'ceiling' ? room.ceiling : face === 'plan' ? room.floor : room.walls.find((x) => x.face === face)?.material;
+    const x = 8 + ctx.measureText(title).width + 8;
+    ctx.font = '10px system-ui';
+    ctx.fillStyle = '#7c8696';
+    if (mat && w - used - x > 40) ctx.fillText(fitText(ctx, mat.name, w - used - x), x, y);
+    ctx.textBaseline = 'alphabetic';
   }
 
   /** This face's treatments: the ceiling's on the RCP, a wall face's on its elevation. The selected one last, so it sits on top. */
@@ -188,7 +224,8 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
         const { u, v } = map.project(q);
         return map.toS(u, v);
       });
-      if (drawPatch(ctx, pts, p.material, { alpha: 0.55, selected: p.id === sel, label: shortName(patchName(p.paletteId, p.material), 18) })) drawn.push({ piece: p, pts });
+      const label = map.detail >= DETAIL.patches || p.id === sel ? shortName(patchName(p.paletteId, p.material), 18) : '';
+      if (drawPatch(ctx, pts, p.material, { alpha: 0.55, selected: p.id === sel, label })) drawn.push({ piece: p, pts });
     }
     ctx.restore();
   }
@@ -215,12 +252,13 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     }
     const x0 = toS(map.u0, 0).x;
     const x1 = toS(map.u1, 0).x;
+    const words = map.detail >= DETAIL.guides;
     if (show.guides) {
       const a = toS(map.u0, 0.38 * room.H);
       const b = toS(map.u1, 0.42 * room.H);
       ctx.fillStyle = 'rgba(34,197,94,.13)';
       ctx.fillRect(a.x, b.y, b.x - a.x, a.y - b.y);
-      drawLabel(ctx, x0 + 62, b.y - 9, 'ears 38–42 % H', '#22c55e');
+      if (words) drawLabel(ctx, x0 + 62, b.y - 9, 'ears 38–42 % H', '#22c55e');
     }
     if (show.nulls) {
       for (const { n, f, colour } of nullLines(3)) {
@@ -231,36 +269,12 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
         const u = map.u0 + f * (map.u1 - map.u0);
         const xs = toS(u, 0).x;
         dashedLine(ctx, { x: xs, y: toS(0, 0).y }, { x: xs, y: toS(0, room.H).y }, colour, [2, 6], n === 1 ? 1.4 : 1);
-        if (n === 1) {
+        if (n === 1 && words) {
           drawLabel(ctx, x1 - 30, y - 9, 'H/2 null', colour);
           drawLabel(ctx, xs, toS(0, room.H).y + 10, `${span}/2`, colour);
         }
       }
     }
-  }
-
-  function drawDimensions(ctx, room) {
-    const { toS } = map;
-    ctx.save();
-    ctx.strokeStyle = '#64748b';
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px ui-monospace, monospace';
-    const a = toS(map.u0, map.v1);
-    const b = toS(map.u1, map.v1);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y - 12);
-    ctx.lineTo(b.x, b.y - 12);
-    ctx.stroke();
-    const horiz = top ? 'X' : face === 'front' || face === 'back' ? 'Width' : 'Length';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${horiz} ${(map.u1 - map.u0).toFixed(2)} m`, (a.x + b.x) / 2, a.y - 16);
-    const c = toS(map.u1, map.v0);
-    ctx.save();
-    ctx.translate(c.x + 14, (c.y + b.y) / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText(`${top ? 'Y' : 'Height'} ${(map.v1 - map.v0).toFixed(2)} m`, 0, 0);
-    ctx.restore();
-    ctx.restore();
   }
 
   function screenAngle(dev) {
@@ -274,7 +288,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
   function drawDevices(ctx, state) {
     if (!state.settings.show.devices) return;
     // a small tile gets tags (L, M3, MIX); one made big — maximised, popped out — gets names
-    const roomy = ctx.canvas.clientWidth >= 600 && state.speakers.length + state.mics.length <= 10;
+    const roomy = map.detail >= DETAIL.names && state.speakers.length + state.mics.length <= 10;
     for (const s of state.speakers) {
       const { u, v } = map.project(s);
       const p = map.toS(u, v);
@@ -314,7 +328,25 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       if (patch) {
         if (onPickPatch) onPickPatch(patch.id);
         else store.select({ kind: 'patch', id: patch.id });
-      } else onJump?.();
+        return;
+      }
+      // the empty room: a drag pans a zoomed drawing, a click jumps the CAD here
+      const at = { x: e.clientX, y: e.clientY, uc: view.uc, vc: view.vc };
+      let panned = false;
+      dragFrom(
+        e,
+        canvas,
+        (ev) => {
+          if (view.k <= 1 || (!panned && Math.hypot(ev.clientX - at.x, ev.clientY - at.y) < 4)) return;
+          panned = true;
+          view.uc = at.uc - (ev.clientX - at.x) / map.s;
+          view.vc = at.vc + (ev.clientY - at.y) / map.s;
+          render();
+        },
+        () => {
+          if (!panned) onJump?.();
+        },
+      );
       return;
     }
     // lost outside the room: the touch brings it to the middle instead of dragging it further off
@@ -366,6 +398,29 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       });
     }
     readout.textContent = named + (Number.isFinite(value) ? `${value.toFixed(1)} dB · ${u.toFixed(2)} m, ${v.toFixed(2)} m` : `${u.toFixed(2)} m, ${v.toFixed(2)} m`);
+  });
+  // the wheel zooms about the pointer; all the way out, the room fits again
+  canvas.addEventListener(
+    'wheel',
+    (e) => {
+      if (!map) return;
+      e.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      const x = e.clientX - r.left;
+      const y = e.clientY - r.top;
+      const { u, v } = map.toUV(x, y);
+      const k = Math.max(1, Math.min(ZOOM_MAX, view.k * Math.exp(-e.deltaY * 0.0015)));
+      const s = (map.s / view.k) * k;
+      view.k = k;
+      view.uc = u - (x - map.cx) / s;
+      view.vc = v + (y - map.cy) / s;
+      render();
+    },
+    { passive: false },
+  );
+  canvas.addEventListener('dblclick', () => {
+    view.k = 1;
+    render();
   });
   canvas.addEventListener('pointerleave', () => {
     readout.textContent = '';
