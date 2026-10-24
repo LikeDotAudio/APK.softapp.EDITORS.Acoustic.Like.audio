@@ -33,7 +33,7 @@ import { button, check, download, h, num, row, select, slider, text } from './do
  * palette blocks stand for.
  */
 
-const TABS = ['Inspect', 'Room', 'Build', 'Treatments', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
+const TABS = ['Room', 'Inspect', 'Build', 'Treatments', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
 
 const HOW_TO_TREAT = 'Treatments are placed in the CAD: click a wall’s elevation (or the ceiling) to open its drawing, pick a finish or a product from the Acoustic palette, then drag a region to fill it or click to drop a product. Each lands on that surface and mixes into its α and s.';
 
@@ -84,7 +84,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const popBtn = root.querySelector(':scope > .popbtn');
     root.replaceChildren(
       ...(popBtn ? [popBtn] : []),
-      h('nav', { class: 'tabs' }, TABS.map((t) => h('button', { class: t === tab ? 'on' : '', onclick: () => { tab = t; render(); } }, t, t === 'Advisor' ? badge() : t === 'Treatments' ? warnBadge() : ''))),
+      h('nav', { class: 'tabs' }, TABS.map((t) => h('button', { class: [t === tab ? 'on' : '', t === 'File' ? 'file' : ''].join(' ').trim(), onclick: () => { tab = t; render(); } }, t, t === 'Advisor' ? badge() : t === 'Treatments' ? warnBadge() : ''))),
       h('div', { class: 'body' }, ...PANES[tab]()),
     );
     root.querySelector('.body').scrollTop = scroll;

@@ -11,6 +11,10 @@
 <body>
   <header class="bar">
     <div class="brand">🔊 ACOUSTIC<span>.LIKE.AUDIO</span></div>
+    <div class="group" id="opens">
+      <label class="button" title="Open a saved session file">📂 Open<input type="file" id="openSession" accept=".json,application/json"></label>
+      <button id="grabBag" title="A room from the library, picked at random, drawn into the CAD">🎲 Room</button>
+    </div>
     <div class="group" id="modes">
       <button data-mode="cad" title="Edit the drawing in the CAD (Esc)">✋ CAD</button>
       <button data-mode="place-speaker" title="Click the plan to place a speaker (Shift keeps placing)">🔊 ＋ Speaker</button>
@@ -20,6 +24,7 @@
     <div class="group" id="viewmode">
       <button data-view="six" title="Plan, ceiling and four elevations">▦ 6 views</button>
       <button data-view="3d" title="The room in 3-D, with the plan beside it">◫ 3-D</button>
+      <button data-view="rays" title="Every reflection path from the speakers to the mix seat, up to 3rd order, coloured by its level at the current frequency — sweep to watch them change">✳ Ray tracing</button>
     </div>
     <div class="group" id="method">
       <button data-method="wave" title="Image sources with phase — interference, SBIR, boundary gain">Wave</button>
@@ -39,11 +44,6 @@
       <button data-arm="rack-600x800" title="Draw an equipment rack in the CAD plan">＋ Rack</button>
       <button data-arm="drum-kit-1800x1500" title="Draw a drum kit in the CAD plan — kit, cymbals and throne">＋ Drum kit</button>
       <button data-arm="guitar-amp-600x280" title="Draw a guitar combo amp in the CAD plan">＋ Guitar amp</button>
-    </div>
-    <div class="group">
-      <button id="grabBag" title="A room from the library, picked at random, drawn into the CAD">🎲 Room</button>
-      <button id="saveSession" title="Save the CAD drawing, speakers, mics and settings as one file (Ctrl+S)">💾 Save</button>
-      <label class="button" title="Open a saved session file">📂 Open<input type="file" id="openSession" accept=".json,application/json"></label>
     </div>
     <div id="acx"></div>
     <div class="status" id="status"></div>
@@ -71,7 +71,12 @@
   </main>
 
   <div id="fieldScale" hidden title="The one colour scale every drawing of the field is painted in"><span class="lo"></span><i class="ramp"></i><span class="hi"></span></div>
-  <footer id="meters"></footer>
+  <footer class="foot">
+    <div id="meters"></div>
+    <div class="group" id="saves">
+      <button id="saveSession" title="Save the CAD drawing, speakers, mics and settings as one file (Ctrl+S)">💾 Save</button>
+    </div>
+  </footer>
 
   <script type="module" src="js/main.js"></script>
 </body>

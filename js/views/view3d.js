@@ -3,6 +3,7 @@
 import { heightsAtXY } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { arrangedSpeakers } from '../acoustics/layouts.js';
+import { rayPaths } from '../acoustics/rayPaths.js';
 import { firstReflections, heatOf } from '../acoustics/reflectionPanels.js';
 import { css, colourOf, turbo } from './paint.js';
 import { fitCanvas } from './glyphs.js';
@@ -75,7 +76,9 @@ export function createView3d({ canvas, store, engine }) {
     const grids = out.fieldGrids;
     const ok = values && grids && out.fieldRoom?.walls.length === room.walls.length;
     const scale = out.scale;
-    const show = store.state.settings.show.field && ok && store.state.speakers.length > 0;
+    // ray tracing draws the paths over plain surfaces: the field under them would only fight them
+    const tracing = store.state.settings.view === 'rays';
+    const show = !tracing && store.state.settings.show.field && ok && store.state.speakers.length > 0;
 
     const level = (kind, x, y) => (room.sloped ? heightsAtXY(room, x, y)[kind] : kind === 'floor' ? 0 : room.H);
     /** A floor or ceiling as cells; `vals` null paints them flat. Each corner sits at its surface's height. */
@@ -209,7 +212,8 @@ export function createView3d({ canvas, store, engine }) {
 
     const { state } = store;
     const mix = state.mics.find((m) => m.mix);
-    if (state.settings.show.rays && mix) {
+    if (tracing) drawRays(ctx, proj, room, state, mix, w);
+    else if (state.settings.show.rays && mix) {
       const picked = state.selected?.kind === 'speaker' ? state.selected.id : null;
       const rays = firstReflections(room, arrangedSpeakers(state.speakers, state.settings).filter((sp) => !picked || sp.id === picked), mix, state.settings.band ?? 2);
       const labelled = picked || rays.length <= 12;
@@ -334,6 +338,57 @@ export function createView3d({ canvas, store, engine }) {
   );
 
   return { render };
+}
+
+/** How far below the direct sound a path is still drawn, dB. */
+const RAY_FLOOR_DB = 40;
+
+/**
+ * Ray tracing: every specular path up to the order the field is computed to
+ * (3 at most — beyond that the picture is a haze), from each speaker of the
+ * arrangement (the selected one alone when one is) to the mix seat, at the
+ * current frequency. Colour and weight are the path's level against the
+ * direct sound, so moving the frequency or sweeping shows which bounces
+ * carry the low end and which the treatments take out at the top.
+ */
+function drawRays(ctx, proj, room, state, mix, w) {
+  const { settings } = state;
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.fillStyle = '#e5e7eb';
+  const freq = settings.freq;
+  const title = `RAY TRACING · ${freq < 1000 ? `${freq} Hz` : `${(freq / 1000).toFixed(1)} kHz`}`;
+  if (!mix) {
+    ctx.fillText(`${title} · place a mix seat to trace to`, 10, 18);
+    return;
+  }
+  const picked = state.selected?.kind === 'speaker' ? state.selected.id : null;
+  const order = Math.min(3, settings.maxOrder ?? 3);
+  const paths = rayPaths(room, arrangedSpeakers(state.speakers, settings).filter((sp) => !picked || sp.id === picked), mix, freq, order).filter((p) => p.db > -RAY_FLOOR_DB);
+  for (const p of paths) {
+    const pts = p.pts.map(proj);
+    if (pts.some((q) => q.depth <= 0.01)) continue;
+    const heat = Math.max(0, Math.min(1, 1 + p.db / RAY_FLOOR_DB));
+    const rgb = p.order ? turbo(heat) : [255, 255, 255];
+    ctx.strokeStyle = css(rgb, 0.12 + 0.8 * heat * heat);
+    ctx.lineWidth = p.order ? 0.6 + 1.6 * heat : 2;
+    ctx.beginPath();
+    pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+    ctx.stroke();
+    ctx.fillStyle = css(rgb, 0.3 + 0.6 * heat);
+    for (const q of pts.slice(1, -1)) ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3);
+  }
+  ctx.fillStyle = '#e5e7eb';
+  ctx.fillText(`${title} · ${paths.length} paths to ${order}${order === 1 ? 'st' : order === 2 ? 'nd' : 'rd'} order within ${RAY_FLOOR_DB} dB of direct`, 10, 18);
+  // the key: colour is the path's level against the direct sound
+  const kw = Math.min(160, w - 20);
+  for (let i = 0; i < kw; i++) {
+    ctx.fillStyle = css(turbo(i / kw));
+    ctx.fillRect(10 + i, 26, 1, 6);
+  }
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '9px ui-monospace, monospace';
+  ctx.fillText(`−${RAY_FLOOR_DB} dB`, 10, 43);
+  ctx.fillText('0 dB = direct', 10 + kw - 62, 43);
 }
 
 const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;

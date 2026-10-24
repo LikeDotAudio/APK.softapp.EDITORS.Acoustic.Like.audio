@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { ELEVATION_FACES, ELEVATION_LAYER, heightsAtXY } from '../acoustics/elevations.js';
 import { boxSize, isListener } from '../acoustics/devices.js';
-import { DEG } from '../acoustics/geometry.js';
+import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
 import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions } from '../acoustics/layouts.js';
 import { lookup, material } from '../acoustics/materials.js';
@@ -214,6 +214,9 @@ const TILT = 30 * DEG;
 
 /** The cut-aways in a column standing on `base`, read top to bottom in VIEWS order. */
 function cutawayMarks(room, state, x0, base, has) {
+  // only what stands in this room: a box or a seat left by another plan would stretch the view across the sheet to reach it
+  const inside = (p) => pointInPolygon(p.x, p.y, room.poly);
+  state = { ...state, speakers: state.speakers.filter(inside), mics: state.mics.filter(inside) };
   const items = [];
   const gap = Math.max(0.8, 0.1 * Math.max(room.L, room.W));
   let floor = base;

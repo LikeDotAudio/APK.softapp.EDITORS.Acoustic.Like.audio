@@ -246,7 +246,7 @@ function syncToolbar() {
   for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('on', b.dataset.mode === mode);
   for (const b of document.querySelectorAll('#viewmode button')) b.classList.toggle('on', b.dataset.view === settings.view);
   for (const b of document.querySelectorAll('#method button')) b.classList.toggle('on', b.dataset.method === settings.method);
-  views.className = settings.view === '3d' ? 'three' : 'six';
+  views.className = settings.view === '3d' || settings.view === 'rays' ? 'three' : 'six';
   const { sheet } = store.state;
   document.getElementById('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
   document.getElementById('toPlan').hidden = sheet === 'plan';
