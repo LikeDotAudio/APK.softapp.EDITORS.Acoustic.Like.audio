@@ -15,6 +15,17 @@
       <label class="button" title="Open a saved session file">📂 Open<input type="file" id="openSession" accept=".json,application/json"></label>
       <button id="grabBag" title="A room from the library, picked at random, drawn into the CAD">🎲 Room</button>
     </div>
+    <!-- the room, then its speakers (the arrangement, then its spacing — main.js puts the fields after it), then what else stands in it -->
+    <div class="group" id="arrangement" title="Speaker arrangement: shows its reference angles over the room; ⤓ places it around the mix seat"></div>
+    <div class="group" id="furniture">
+      <button data-arm="desk-1800x900" title="Draw a producer desk in the CAD plan — click where it goes">＋ Desk</button>
+      <button data-arm="console-2400x1000" title="Draw a mixing console in the CAD plan">＋ Console</button>
+      <button data-arm="couch-2000x900" title="Draw a couch in the CAD plan">＋ Couch</button>
+      <button data-arm="rack-600x800" title="Draw an equipment rack in the CAD plan">＋ Rack</button>
+      <button data-arm="drum-kit-1800x1500" title="Draw a drum kit in the CAD plan — kit, cymbals and throne">＋ Drum kit</button>
+      <button data-arm="guitar-amp-600x280" title="Draw a guitar combo amp in the CAD plan">＋ Guitar amp</button>
+    </div>
+    <i class="rowEnd"></i>
     <div class="group" id="modes">
       <button data-mode="cad" title="Edit the drawing in the CAD (Esc)">✋ CAD</button>
       <button data-mode="place-speaker" title="Click the plan to place a speaker (Shift keeps placing)">🔊 ＋ Speaker</button>
@@ -35,15 +46,6 @@
     <div class="group" id="play">
       <button id="sweep" title="Sweep the field from 20 Hz to 17 kHz">▶ Sweep</button>
       <button id="tour" title="A slide show: each view of the room in turn, full size, while the frequency sweeps">🎞 Tour</button>
-    </div>
-    <div class="group" id="arrangement" title="Speaker arrangement: shows its reference angles over the room; ⤓ places it around the mix seat"></div>
-    <div class="group" id="furniture">
-      <button data-arm="desk-1800x900" title="Draw a producer desk in the CAD plan — click where it goes">＋ Desk</button>
-      <button data-arm="console-2400x1000" title="Draw a mixing console in the CAD plan">＋ Console</button>
-      <button data-arm="couch-2000x900" title="Draw a couch in the CAD plan">＋ Couch</button>
-      <button data-arm="rack-600x800" title="Draw an equipment rack in the CAD plan">＋ Rack</button>
-      <button data-arm="drum-kit-1800x1500" title="Draw a drum kit in the CAD plan — kit, cymbals and throne">＋ Drum kit</button>
-      <button data-arm="guitar-amp-600x280" title="Draw a guitar combo amp in the CAD plan">＋ Guitar amp</button>
     </div>
     <div id="acx"></div>
     <div class="status" id="status"></div>
