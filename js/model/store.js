@@ -159,6 +159,11 @@ export function createStore() {
       state.settings = { ...state.settings, faceMaterials: { ...state.settings.faceMaterials, [face]: id } };
       changed('settings');
     },
+    /**
+     * `sel` is { kind: 'speaker' | 'mic' | 'patch', id }. A patch is the CAD's
+     * (it lives in the drawing, not in this overlay), so selecting one is a
+     * view of it only: nothing here can move or delete it.
+     */
     select(sel) {
       state.selected = sel;
       emit('selection');
@@ -183,6 +188,7 @@ export function createStore() {
       else changed();
     },
     remove(kind, id) {
+      if (kind !== 'speaker' && kind !== 'mic') return;
       const key = listOf(kind);
       const dev = state[key].find((d) => d.id === id);
       state[key] = state[key].filter((d) => d.id !== id && !(dev?.pairId && d.pairId === dev.pairId));
@@ -221,6 +227,6 @@ export function createStore() {
 
 export function selectedDevice(state) {
   const s = state.selected;
-  if (!s) return null;
+  if (!s || (s.kind !== 'speaker' && s.kind !== 'mic')) return null;
   return (s.kind === 'speaker' ? state.speakers : state.mics).find((d) => d.id === s.id) ?? null;
 }

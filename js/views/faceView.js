@@ -1,11 +1,12 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { silhouette, silhouetteLoop } from '../acoustics/elevations.js';
-import { DEG } from '../acoustics/geometry.js';
+import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { FACE_COLOURS, dashedLine, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
 import { drawColourBar, gridCanvas, sampleGrid } from './paint.js';
 import { planLabel } from './plan.js';
+import { drawPatch, patchName, shortName } from './treatments.js';
 
 /**
  * FIVE OF THE SIX DRAWINGS
@@ -20,10 +21,22 @@ import { planLabel } from './plan.js';
  * elevation moves it along the view's horizontal and sets its height — the one
  * thing the plan cannot.
  *
+ * The treatments painted in the CAD (a QRD, a panel, a cloud) are drawn on
+ * their face over the field and the guides, under the devices; clicking one selects it, so
+ * the inspector can say what it is and what it does.
+ *
  * Clicking anywhere else jumps the CAD to that wall's elevation (the ceiling
  * jumps it back to the plan): the walls are drawn in the same CAD file, and a
  * sloped ceiling or raked floor drawn there is the outline this view shows.
  */
+
+/** Cut a caption to what fits in `max` pixels, so it never runs into the one on the right. */
+function fitText(ctx, text, max) {
+  if (ctx.measureText(text).width <= max) return text;
+  let s = text;
+  while (s.length > 1 && ctx.measureText(`${s}…`).width > max) s = s.slice(0, -1);
+  return `${s.trimEnd()}…`;
+}
 
 /** The axis pointing right in each elevation, as seen from inside the room. */
 function rightAxis(room, face) {
@@ -36,10 +49,12 @@ function rightAxis(room, face) {
 
 const TITLES = { ceiling: 'Ceiling (reflected plan)', front: 'Front elevation', back: 'Back elevation', left: 'Left elevation', right: 'Right elevation' };
 
-export function createFaceView({ tile, face, store, engine, onDrag, onJump }) {
+export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPickPatch }) {
   const canvas = tile.querySelector('canvas');
   const readout = tile.querySelector('.readout');
   let map = null;
+  /** The patches drawn last frame, bottom first, as screen outlines — what a click or hover is tested against. */
+  let drawn = [];
 
   function layout(w, h, room) {
     const pad = 34;
@@ -61,9 +76,11 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump }) {
   }
 
   function fit(w, h, pad, u0, u1, v0, v1, project, unproject, ra = null) {
-    const s = Math.min((w - 2 * pad) / (u1 - u0 || 1), (h - 2 * pad) / (v1 - v0 || 1));
+    // the top keeps clear of the two caption lines and the dimension above the drawing
+    const top = pad + 22;
+    const s = Math.min((w - 2 * pad) / (u1 - u0 || 1), (h - top - pad) / (v1 - v0 || 1));
     const ox = (w - s * (u1 - u0)) / 2;
-    const oy = (h - s * (v1 - v0)) / 2;
+    const oy = pad + (h - top - pad - s * (v1 - v0)) / 2;
     const toS = (u, v) => ({ x: ox + (u - u0) * s, y: h - oy - (v - v0) * s });
     const toUV = (x, y) => ({ u: u0 + (x - ox) / s, v: v0 + (h - oy - y) / s });
     return { s, u0, u1, v0, v1, toS, toUV, project, unproject, ra };
@@ -138,6 +155,8 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump }) {
 
     drawGuides(ctx, room, show);
     drawDimensions(ctx, room);
+    // over the guides too: a panel on the wall is a thing in the room, the guides are only ideas about it
+    drawPatches(ctx, room, state, outline);
     drawDevices(ctx, state);
 
     ctx.fillStyle = FACE_COLOURS[face];
@@ -146,13 +165,36 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump }) {
     const mat = face === 'ceiling' ? room.ceiling : room.walls.find((x) => x.face === face)?.material;
     ctx.fillStyle = '#9aa4b2';
     ctx.font = '10px system-ui';
-    if (mat) ctx.fillText(mat.name, 10, 29);
+    if (mat) ctx.fillText(fitText(ctx, mat.name, w / 2 - 16), 10, 29);
     const drawn = face !== 'ceiling' && room.profiles?.some((p) => p.face === face);
-    ctx.fillStyle = state.sheet === face || (face === 'ceiling' && state.sheet === 'plan') ? FACE_COLOURS[face] : '#64748b';
+    ctx.fillStyle = state.sheet === face ? FACE_COLOURS[face] : '#64748b';
     ctx.textAlign = 'right';
-    ctx.fillText(face === 'ceiling' ? (state.sheet === 'plan' ? 'plan in the CAD' : 'click → plan in the CAD') : state.sheet === face ? '✎ in the CAD' : drawn ? 'drawn in the CAD · click to edit' : 'click to draw in the CAD', w - 10, 29);
+    ctx.fillText(face === 'ceiling' ? (state.sheet === 'ceiling' ? '✎ in the CAD' : 'click to treat in the CAD') : state.sheet === face ? '✎ in the CAD' : drawn ? 'drawn in the CAD · click to edit' : 'click to draw in the CAD', w - 10, 29);
     ctx.textAlign = 'left';
     if (show.field && out.scale && state.speakers.length) drawColourBar(ctx, w - 150, h - 26, 140, 8, out.scale, planLabel(state.settings));
+  }
+
+  /** This face's treatments: the ceiling's on the RCP, a wall face's on its elevation. The selected one last, so it sits on top. */
+  function drawPatches(ctx, room, state, outline) {
+    const sel = state.selected?.kind === 'patch' ? state.selected.id : null;
+    const mine = (room.patches ?? []).filter((p) => p.face === face);
+    mine.sort((a, b) => (a.id === sel) - (b.id === sel));
+    drawn = [];
+    ctx.save();
+    ctx.clip(outline);
+    for (const p of mine) {
+      const pts = p.points3d.map((q) => {
+        const { u, v } = map.project(q);
+        return map.toS(u, v);
+      });
+      if (drawPatch(ctx, pts, p.material, { alpha: 0.55, selected: p.id === sel, label: shortName(patchName(p.paletteId, p.material), 18) })) drawn.push({ piece: p, pts });
+    }
+    ctx.restore();
+  }
+
+  function patchAt(x, y) {
+    for (let i = drawn.length - 1; i >= 0; i--) if (pointInPolygon(x, y, drawn[i].pts)) return drawn[i].piece;
+    return null;
   }
 
   function drawGuides(ctx, room, show) {
@@ -264,7 +306,12 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump }) {
     const r = canvas.getBoundingClientRect();
     const hit = pick(e.clientX - r.left, e.clientY - r.top);
     if (!hit) {
-      onJump?.();
+      // a device sits on top of a treatment, so it wins; a treatment wins over the wall behind it
+      const patch = patchAt(e.clientX - r.left, e.clientY - r.top);
+      if (patch) {
+        if (onPickPatch) onPickPatch(patch.id);
+        else store.select({ kind: 'patch', id: patch.id });
+      } else onJump?.();
       return;
     }
     store.select({ kind: hit.kind, id: hit.dev.id });
@@ -287,9 +334,16 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump }) {
 
   canvas.addEventListener('pointermove', (e) => {
     const out = engine.out;
-    if (!map || !out.values || !out.fieldGrids) return;
+    if (!map) return;
     const r = canvas.getBoundingClientRect();
+    const patch = patchAt(e.clientX - r.left, e.clientY - r.top);
+    canvas.style.cursor = patch ? 'help' : '';
+    const named = patch ? `${patchName(patch.paletteId, patch.material)} · ` : '';
     const { u, v } = map.toUV(e.clientX - r.left, e.clientY - r.top);
+    if (!out.values || !out.fieldGrids) {
+      readout.textContent = `${named}${u.toFixed(2)} m, ${v.toFixed(2)} m`;
+      return;
+    }
     let value = NaN;
     if (face === 'ceiling') {
       const g = out.fieldGrids.ceiling;
@@ -304,7 +358,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump }) {
         if (t >= 0 && t <= 1) value = sampleGrid(out.values.walls[i], g.nu, g.nz, t, 1 - v / out.room.Hmax);
       });
     }
-    readout.textContent = Number.isFinite(value) ? `${value.toFixed(1)} dB · ${u.toFixed(2)} m, ${v.toFixed(2)} m` : `${u.toFixed(2)} m, ${v.toFixed(2)} m`;
+    readout.textContent = named + (Number.isFinite(value) ? `${value.toFixed(1)} dB · ${u.toFixed(2)} m, ${v.toFixed(2)} m` : `${u.toFixed(2)} m, ${v.toFixed(2)} m`);
   });
   canvas.addEventListener('pointerleave', () => {
     readout.textContent = '';

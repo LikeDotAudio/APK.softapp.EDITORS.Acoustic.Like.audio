@@ -3,7 +3,7 @@
 import { BANDS, C } from './bands.js';
 import { heightsAtXY } from './elevations.js';
 import { distToSegment } from './geometry.js';
-import { criticalDistance } from './analysis.js';
+import { criticalDistance, flutterRisk } from './analysis.js';
 import { axialModes, inFrame, nullFractions, schroeder } from './room.js';
 import { frame } from './patterns.js';
 
@@ -24,6 +24,8 @@ import { frame } from './patterns.js';
  *                  c / 4d; flush mounting removes it.
  *   spacing        AcousticRooms' sampling rules: sources ≥ 0.5 m from any
  *                  surface, ≥ 1 m apart, ≥ 0.5 m from a receiver.
+ *   flutter        parallel facing surfaces that keep most of a specular
+ *                  round trip at 500 Hz–1 kHz (analysis.js flutterRisk).
  */
 
 const pct = (x) => `${(x * 100).toFixed(1)} %`;
@@ -44,6 +46,8 @@ export function advise(room, speakers, mics, settings, mirror) {
   add('info', 'Room', `${room.L.toFixed(2)} × ${room.W.toFixed(2)} × ${room.H.toFixed(2)} m (L×W×H)${room.rect ? '' : ' — working-space box of a non-rectangular plan'} · ${room.V.toFixed(1)} m³ · RT60 ${room.perBand[band].eyring.toFixed(2)} s @ ${BANDS[band]} Hz · Schroeder ${schroeder(room).toFixed(0)} Hz`);
   add('info', 'Lowest axial modes', modes.slice(0, 6).map((m) => `${m.axis}${m.n} ${m.f.toFixed(0)} Hz`).join(' · '));
   if (!room.convex) add('warn', 'Re-entrant plan', 'Image sources assume a convex room; some reflections shown cannot occur in this shape.');
+  const named = (key) => (key.startsWith('wall:') ? `${room.walls[+key.slice(5)].face} wall` : key);
+  for (const f of flutterRisk(room)) add('warn', `Flutter: ${named(f.a)} / ${named(f.b)}`, `${f.distance.toFixed(2)} m apart, ${(f.score * 100).toFixed(0)} % of a round trip kept specular at ${BANDS[f.band]} Hz → repeats at ${f.rateHz.toFixed(0)} Hz. Absorb or diffuse one side.`);
 
   if (!mix) {
     add('info', 'No mix position', 'Mark a microphone as the mix position to check the listening rules.');

@@ -4,6 +4,7 @@ import { heightsAtXY } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { css, colourOf } from './paint.js';
 import { fitCanvas } from './glyphs.js';
+import { drawPatch } from './treatments.js';
 
 /**
  * THE ROOM IN 3-D
@@ -18,6 +19,10 @@ import { fitCanvas } from './glyphs.js';
  * Drag to orbit, wheel to zoom. Ceiling shows when the camera is under it.
  * A room cut by elevations drawn in the CAD is drawn as cut: every floor and
  * ceiling cell at its own height, every wall up to the ceiling above it.
+ *
+ * The treatments painted in the CAD sit on their surfaces as tinted panels,
+ * lifted a few millimetres into the room and sorted by their nearest corner,
+ * so the grid of field cells under one never paints over it.
  */
 
 export function createView3d({ canvas, store, engine }) {
@@ -125,13 +130,35 @@ export function createView3d({ canvas, store, engine }) {
         }
     });
 
+    // the treatments: inward off their surface, so they are in front of it whichever way it is cut
+    const lift = B.size * 0.004;
+    const sel = store.state.selected?.kind === 'patch' ? store.state.selected.id : null;
+    for (const p of room.patches ?? []) {
+      let n;
+      if (p.surface === 'floor') n = { x: 0, y: 0, z: 1 };
+      else if (p.surface === 'ceiling') {
+        if (B.eye.z >= room.Hmax) continue;
+        n = { x: 0, y: 0, z: -1 };
+      } else {
+        const wall = room.walls[p.wall];
+        if (!wall || (B.eye.x - wall.a.x) * wall.nIn.x + (B.eye.y - wall.a.y) * wall.nIn.y < 0) continue;
+        n = { x: wall.nIn.x, y: wall.nIn.y, z: 0 };
+      }
+      faces.push({ pts: p.points3d.map((q) => ({ x: q.x + n.x * lift, y: q.y + n.y * lift, z: q.z + n.z * lift })), patch: p, selected: p.id === sel });
+    }
+
     for (const f of faces) {
       f.s = f.pts.map(proj);
-      f.depth = f.s.reduce((a, p) => a + p.depth, 0) / f.s.length;
+      // a patch by its nearest corner: after every cell of the surface it lies on, never before one
+      f.depth = f.patch ? Math.min(...f.s.map((p) => p.depth)) - lift : f.s.reduce((a, p) => a + p.depth, 0) / f.s.length;
     }
     faces.sort((a, b) => b.depth - a.depth);
     for (const f of faces) {
       if (f.s.some((p) => p.depth <= 0.01)) continue;
+      if (f.patch) {
+        drawPatch(ctx, f.s, f.patch.material, { alpha: show ? 0.55 : 0.7, selected: f.selected });
+        continue;
+      }
       ctx.beginPath();
       f.s.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       ctx.closePath();

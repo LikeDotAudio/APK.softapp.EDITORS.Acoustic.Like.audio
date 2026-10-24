@@ -2,6 +2,9 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, seedOutline } from './acoustics/elevations.js';
+
+const CEILING_LAYER = 'Ceiling';
+import { paletteItems } from './acoustics/materials.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
 import { createEngine } from './compute/engine.js';
 import { createStore } from './model/store.js';
@@ -49,15 +52,19 @@ const onDrag = () => {};
 
 /**
  * Jump the CAD to one of the room's drawings — all in the one file, each on
- * its own layer: 'plan', or a wall's face. A wall not drawn yet is seeded
+ * its own layer: 'plan', 'ceiling', or a wall's face. The ceiling is the
+ * plan seen from below, so it shows the plan with the `Ceiling` layer
+ * current — clouds and tiles placed there land on the ceiling. A wall not drawn yet is seeded
  * with the room's current outline in that view, under the plan, so there is
  * something to drag into a slope or a vault.
  */
 function jumpTo(sheet) {
   if (!cad.link) return;
   store.setSheet(sheet);
-  if (sheet === 'plan') {
+  if (sheet === 'plan' || sheet === 'ceiling') {
     cad.link.sheet(engine.out.planLayer ?? '0');
+    // A layer with nothing drawn on it does not move the view, so this leaves the plan in sight.
+    if (sheet === 'ceiling') cad.link.sheet(CEILING_LAYER, { color: FACE_COLOURS.ceiling });
     return;
   }
   const room = engine.out.room;
@@ -68,7 +75,7 @@ function jumpTo(sheet) {
 }
 
 const plan = createPlanView({ tile: document.querySelector('.tile.plan .stage'), iframe, store, engine, onDrag });
-const faces = ['ceiling', 'front', 'back', 'left', 'right'].map((face) => createFaceView({ tile: document.querySelector(`.tile[data-face="${face}"]`), face, store, engine, onDrag, onJump: () => jumpTo(face === 'ceiling' ? 'plan' : face) }));
+const faces = ['ceiling', 'front', 'back', 'left', 'right'].map((face) => createFaceView({ tile: document.querySelector(`.tile[data-face="${face}"]`), face, store, engine, onDrag, onJump: () => jumpTo(face), onPickPatch: (id) => inspector.showPatch(id) }));
 const view3d = createView3d({ canvas: document.querySelector('.tile.t3d canvas'), store, engine });
 const meters = createMeters({
   root: document.getElementById('meters'),
@@ -118,6 +125,9 @@ cad.link = connectCad(iframe, {
   },
 });
 
+// The finishes and products the CAD can paint onto the room; cadLink sends them again on every `ready`.
+cad.link.palette('Acoustic finishes & products', paletteItems());
+
 let dragFrame = 0;
 store.subscribe((state, what) => {
   if (what === 'drag') {
@@ -162,7 +172,7 @@ function syncToolbar() {
   for (const b of document.querySelectorAll('#method button')) b.classList.toggle('on', b.dataset.method === settings.method);
   views.className = settings.view === '3d' ? 'three' : 'six';
   const { sheet } = store.state;
-  document.getElementById('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
+  document.getElementById('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
   document.getElementById('toPlan').hidden = sheet === 'plan';
   for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);

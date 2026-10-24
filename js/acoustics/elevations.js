@@ -38,6 +38,8 @@ export const alongLength = (face) => face === 'left' || face === 'right';
 /**
  * A CAD loop (metres, sheet frame) → the face's profile: points { t, z } with t
  * measured in the front frame (fromFront for a side, fromLeft for front/back).
+ * `origin` is the sheet point the frame is anchored at, kept so that patches
+ * drawn on the same layer (patches.js) read in the very same frame.
  */
 export function profileFromLoop(face, poly, L, W) {
   const minX = Math.min(...poly.map((p) => p.x));
@@ -47,7 +49,7 @@ export function profileFromLoop(face, poly, L, W) {
     const t = face === 'left' ? L - d : face === 'back' ? W - d : d;
     return { t, z: p.y - minY };
   });
-  return { face, along: alongLength(face) ? 'L' : 'W', pts };
+  return { face, along: alongLength(face) ? 'L' : 'W', pts, origin: { x: minX, y: minY } };
 }
 
 /** The vertical span of a profile at t: { lo, hi }, or null when it has no area. Clamped to its ends. */

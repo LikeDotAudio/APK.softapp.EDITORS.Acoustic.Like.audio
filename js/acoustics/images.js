@@ -20,6 +20,23 @@ import { mirrorPoint } from './geometry.js';
  * Each image carries the 2×2 mirror `M` that made it, so the field can turn
  * the direction it arrives from back into the direction the REAL box radiated
  * — a horn aimed at the audience must not light the wall behind it.
+ *
+ * SPECULAR ONLY. A surface with absorption α and scattering s splits what hits
+ * it three ways (the model EASE, ODEON and CATT share): α is absorbed,
+ * (1 − α)(1 − s) leaves as a mirror reflection, (1 − α)·s leaves diffusely.
+ * An image source IS a mirror reflection, so it carries only the first kind:
+ *
+ *   refl[b]    = Π over its bounces of (1 − α_b)(1 − s_b)   specular energy
+ *   reflAbs[b] = Π over its bounces of (1 − α_b)            what a mirror-hard
+ *                                                           path would keep
+ *   scatterLoss[b] = 1 − refl/reflAbs                       the share of the
+ *                    path's surviving energy that was scattered off it instead
+ *
+ * The scattered share is not lost — absorption alone removes energy — so the
+ * echogram (analysis.js) hands it back to the room as a diffuse tail. The wave
+ * method only sees `amp` = √refl: behind a QRD the comb filtering and the
+ * early reflection fade, which is exactly what a diffuser is bought for.
+ * With s = 0 everywhere, refl is bit-for-bit the old Π(1 − α).
  */
 
 export function planImages(room, src, maxOrder) {
@@ -63,19 +80,33 @@ export function heightImages(z, z1, maxOrder, z0 = 0) {
   return out;
 }
 
-/** Every virtual source of `src` up to total order `maxOrder`, with per-band energy reflection. */
+/** Energy a surface keeps in the mirror direction, per band: (1 − α)(1 − s). A material without `scatter` is a mirror. */
+export function specular(mat, b) {
+  return (1 - mat.alpha[b]) * (1 - (mat.scatter?.[b] ?? 0));
+}
+
+/**
+ * Every virtual source of `src` up to total order `maxOrder`, with per-band
+ * specular energy `refl` (and `amp` = √refl, what the wave sum reads), the
+ * absorption-only `reflAbs` and the scattered share `scatterLoss` — see the header.
+ */
 export function roomImages(room, src, maxOrder) {
   const plan = planImages(room, src, Math.min(maxOrder, planOrderCap(room)));
   const height = heightImages(src.z, room.zCeiling ?? room.H, maxOrder, room.zFloor ?? 0);
+  const fSpec = BANDS.map((_, b) => specular(room.floor, b));
+  const cSpec = BANDS.map((_, b) => specular(room.ceiling, b));
   const out = [];
   for (const p of plan) {
-    const wallLoss = BANDS.map((_, b) => p.walls.reduce((e, i) => e * (1 - room.walls[i].material.alpha[b]), 1));
+    const wallAbs = BANDS.map((_, b) => p.walls.reduce((e, i) => e * (1 - room.walls[i].material.alpha[b]), 1));
+    const wallSpec = BANDS.map((_, b) => p.walls.reduce((e, i) => e * specular(room.walls[i].material, b), 1));
     for (const h of height) {
       if (p.order + h.order > maxOrder) continue;
-      const refl = wallLoss.map(
+      const reflAbs = wallAbs.map(
         (e, b) => e * (1 - room.floor.alpha[b]) ** h.floor * (1 - room.ceiling.alpha[b]) ** h.ceiling,
       );
-      out.push({ x: p.x, y: p.y, z: h.z, M: p.M, zSign: h.sign, order: p.order + h.order, walls: p.walls, floor: h.floor, ceiling: h.ceiling, refl, amp: refl.map(Math.sqrt) });
+      const refl = wallSpec.map((e, b) => e * fSpec[b] ** h.floor * cSpec[b] ** h.ceiling);
+      const scatterLoss = refl.map((e, b) => (reflAbs[b] > 0 ? Math.max(0, 1 - e / reflAbs[b]) : 0));
+      out.push({ x: p.x, y: p.y, z: h.z, M: p.M, zSign: h.sign, order: p.order + h.order, walls: p.walls, floor: h.floor, ceiling: h.ceiling, refl, reflAbs, scatterLoss, amp: refl.map(Math.sqrt) });
     }
   }
   return out;

@@ -4,6 +4,7 @@ import { BANDS, C, airM } from './bands.js';
 import { DEG, angleDiff, ensureCCW, isConvex, signedArea, simplifyPolygon } from './geometry.js';
 import { measureSection, profileFromLoop } from './elevations.js';
 import { material } from './materials.js';
+import { layPatches } from './patches.js';
 
 /**
  * THE ROOM: A PLAN, EXTRUDED
@@ -22,6 +23,17 @@ import { material } from './materials.js';
  * over the real shape, and H is the MEAN height (zCeiling − zFloor) — the box
  * the image sources and the modal sum stand in with — while Hmax bounds the
  * drawings. With no elevation drawn, H = Hmax = the ceiling height setting.
+ *
+ * Patches painted in the CAD (patches.js) — a panel on the left wall, a cloud
+ * on the ceiling, carpet on part of the floor — make each surface a MIX. Every
+ * surface's material becomes the effective one: α area-weighted, so A rises by
+ * exactly area · (α_patch − α_base); s weighted by the energy each part
+ * reflects, area · (1 − α), because s is a fraction of the REFLECTED energy
+ * and an absorber's scattering hardly reaches the room; TL weighted as
+ * transmission coefficients, so one open door dominates a wall. Overlapping
+ * patches are not unioned: a surface's patched area is simply capped at its
+ * own area, scaling every patch on it down alike — good enough for design
+ * intent, and it never counts a wall twice.
  */
 
 export const FACES = ['floor', 'ceiling', 'front', 'back', 'left', 'right'];
@@ -41,8 +53,12 @@ export function frontFrame(frontDeg) {
   return { f, r: { x: f.y, y: -f.x } };
 }
 
-/** `loops`: the elevations drawn in the CAD, [{ face, poly }] in sheet metres. */
-export function buildRoom(polyMetres, settings, loops = []) {
+/**
+ * `loops`: the elevations drawn in the CAD, [{ face, poly }] in sheet metres.
+ * `patches`: what is painted on the surfaces, [{ id, paletteId, layer, poly }]
+ * in sheet metres (engine.js patchesFromCad).
+ */
+export function buildRoom(polyMetres, settings, loops = [], patches = []) {
   const poly = ensureCCW(simplifyPolygon(polyMetres));
   const Hbase = settings.roomHeight;
   const { f, r } = frontFrame(settings.frontDeg);
@@ -58,8 +74,6 @@ export function buildRoom(polyMetres, settings, loops = []) {
     return { i, a, b, len, t, nIn, face, material: material(mats[face]) };
   });
 
-  const floor = material(mats.floor);
-  const ceiling = material(mats.ceiling);
   const area = signedArea(poly);
 
   const projF = poly.map((p) => p.x * f.x + p.y * f.y);
@@ -83,12 +97,24 @@ export function buildRoom(polyMetres, settings, loops = []) {
   const H = m.zCeiling - m.zFloor;
   const V = m.V;
 
+  const laid = layPatches(room, patches);
+  const on = (surface, wall = null) => laid.pieces.filter((p) => p.surface === surface && p.wall === wall);
+  const floor = effective(material(mats.floor), m.floorArea, on('floor'));
+  const ceiling = effective(material(mats.ceiling), m.ceilingArea, on('ceiling'));
+  walls.forEach((w) => (w.material = effective(w.material, w.area, on('wall', w.i))));
+  const surfaces = [
+    { key: 'floor', face: 'floor', area: m.floorArea, material: floor },
+    { key: 'ceiling', face: 'ceiling', area: m.ceilingArea, material: ceiling },
+    ...walls.map((w) => ({ key: `wall:${w.i}`, face: w.face, area: w.area, material: w.material })),
+  ];
+
+  // summed in the same order as ever, so a room with no patches gives the same numbers to the last bit
   const perBand = BANDS.map((_, band) => {
-    let S = m.floorArea + m.ceilingArea;
-    let A = m.floorArea * floor.alpha[band] + m.ceilingArea * ceiling.alpha[band];
-    for (const w of walls) {
-      S += w.area;
-      A += w.area * w.material.alpha[band];
+    let S = 0;
+    let A = 0;
+    for (const s of surfaces) {
+      S += s.area;
+      A += s.area * s.material.alpha[band];
     }
     const abar = Math.min(A / S, 0.99);
     const m4V = 4 * airM(band) * V;
@@ -114,6 +140,9 @@ export function buildRoom(polyMetres, settings, loops = []) {
     walls,
     floor,
     ceiling,
+    surfaces,
+    patches: laid.pieces,
+    patchWarnings: laid.warnings,
     area,
     V,
     perBand,
@@ -122,6 +151,38 @@ export function buildRoom(polyMetres, settings, loops = []) {
     W,
     convex: isConvex(poly),
     rect: isRectangle(poly),
+  };
+}
+
+/**
+ * A surface's material with its patches mixed in (see the header). Plain data:
+ * { id, name, category, color, alpha, scatter, tl, base, patched } — `base` the
+ * catalogue id underneath, `patched` the m² the patches cover (after the cap).
+ */
+function effective(base, area, pieces) {
+  const raw = pieces.reduce((s, p) => s + p.area, 0);
+  if (!(raw > 0) || !(area > 0)) return { ...base, alpha: [...base.alpha], scatter: [...base.scatter], base: base.id, patched: 0 };
+  const k = raw > area ? area / raw : 1;
+  const patched = raw * k;
+  const bare = area - patched;
+  const parts = [{ mat: base, a: bare }, ...pieces.map((p) => ({ mat: p.material, a: p.area * k }))];
+  const alpha = base.alpha.map((_, b) => parts.reduce((s, x) => s + x.a * x.mat.alpha[b], 0) / area);
+  const scatter = base.scatter.map((_, b) => {
+    const reflected = parts.reduce((s, x) => s + x.a * (1 - x.mat.alpha[b]), 0);
+    if (reflected <= 1e-12) return parts.reduce((s, x) => s + x.a * x.mat.scatter[b], 0) / area;
+    return parts.reduce((s, x) => s + x.a * (1 - x.mat.alpha[b]) * x.mat.scatter[b], 0) / reflected;
+  });
+  const tau = parts.reduce((s, x) => s + x.a * 10 ** (-x.mat.tl / 10), 0) / area;
+  const kinds = new Set(pieces.map((p) => p.paletteId)).size;
+  return {
+    ...base,
+    id: `${base.id}+patches`,
+    name: `${base.name} + ${kinds} patch${kinds === 1 ? '' : 'es'}`,
+    alpha,
+    scatter,
+    tl: +(-10 * Math.log10(tau)).toFixed(1),
+    base: base.id,
+    patched,
   };
 }
 

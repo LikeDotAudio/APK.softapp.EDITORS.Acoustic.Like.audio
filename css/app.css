@@ -141,3 +141,17 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 #toPlan { margin-left: 8px; padding: 0 6px; font-size: 11px; }
 .tile.face > canvas { cursor: pointer; }
 .tile.face.editing { outline: 2px solid #7dd3fc; outline-offset: -2px; }
+
+/* Treatments: painted in the CAD, read here. The swatch is drawn the way the views draw the patch. */
+canvas.swatch { display: inline-block; vertical-align: -2px; border-radius: 2px; }
+.spark { display: inline-flex; align-items: flex-end; gap: 1px; height: 14px; vertical-align: middle; }
+.spark i { display: block; width: 4px; background: #7dd3fc; border-radius: 1px 1px 0 0; }
+table.surfaces td .sub { font: 10px system-ui, sans-serif; }
+table.surfaces tr.treated td:first-child { color: #fde047; }
+table.treat tr.name td { padding-top: 5px; border-bottom: 0; text-align: left; font: 12px system-ui, sans-serif; color: var(--text); }
+table.treat tr.vals td { color: var(--muted); }
+table.treat tr.name, table.treat tr.vals { cursor: default; }
+table.grid.treat tr[class~=on] td { background: #3a3a3d; }
+table.grid.treat tr.on td:first-child { color: var(--accent); }
+table.treat.pick tr.name, table.treat.pick tr.vals { cursor: pointer; }
+table.surfaces td, table.surfaces th { white-space: nowrap; vertical-align: top; }

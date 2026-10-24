@@ -126,8 +126,10 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       return;
     }
     // On an elevation the sheet under us is a wall, not the plan: our plan-frame overlay would land on it.
-    hits.hidden = state.sheet !== 'plan';
-    if (state.sheet !== 'plan') return;
+    // The ceiling sheet is the plan with another layer current: the overlay still fits it.
+    const onPlan = state.sheet === 'plan' || state.sheet === 'ceiling';
+    hits.hidden = !onPlan;
+    if (!onPlan) return;
     const room = out.room;
     const { settings } = state;
     const show = settings.show;
@@ -163,6 +165,27 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
       ctx.restore();
       const c = toScreen(room.poly[0].x, room.poly[0].y);
       drawLabel(ctx, c.x + 80, c.y + 14, 'virtual room — draw a closed plan in the CAD', '#7dd3fc');
+    }
+
+    // The CAD draws the floor's treatments itself; the selected one is only outlined, so the list and the sheet meet.
+    const sel = state.selected?.kind === 'patch' ? state.selected.id : null;
+    for (const p of sel ? room.patches ?? [] : []) {
+      if (p.id !== sel || p.surface !== 'floor') continue;
+      ctx.save();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.shadowColor = '#fff';
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      p.points3d.forEach((q, i) => {
+        const s = toScreen(q.x, q.y);
+        if (i) ctx.lineTo(s.x, s.y);
+        else ctx.moveTo(s.x, s.y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
     }
 
     if (show.guides || show.nulls) drawPlanGuides(ctx, room, show, toScreen);

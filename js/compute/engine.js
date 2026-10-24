@@ -41,6 +41,21 @@ export function elevationsFromCad(geometry) {
   return ELEVATION_FACES.map((face) => loops.find((r) => r.face === face)).filter(Boolean).map((r) => ({ face: r.face, poly: r.poly }));
 }
 
+/**
+ * What is painted on the surfaces: the CAD's `geometry.patches` (fills and
+ * product blocks placed from our palette), in metres, each with its layer's
+ * NAME — the name is what says which surface it lands on (patches.js).
+ * A CAD that sends no patches simply has none.
+ */
+export function patchesFromCad(geometry) {
+  if (!Array.isArray(geometry?.patches)) return [];
+  const k = METRES_PER_UNIT[geometry.units] ?? 1;
+  const names = new Map((geometry.layers ?? []).map((l) => [l.id, l.name]));
+  return geometry.patches
+    .filter((p) => p && Array.isArray(p.points) && p.points.length >= 3)
+    .map((p) => ({ id: String(p.id), paletteId: p.paletteId, layer: names.get(p.layerId) ?? p.layerId, poly: p.points.map(([x, y]) => ({ x: x * k, y: y * k })) }));
+}
+
 export function createEngine(store, onResult) {
   let worker = null;
   try {
@@ -69,7 +84,7 @@ export function createEngine(store, onResult) {
     }
     out.planLayer = picked?.layerId ?? null;
     out.elevations = elevationsFromCad(cad.geometry);
-    return buildRoom(poly, settings, out.elevations);
+    return buildRoom(poly, settings, out.elevations, patchesFromCad(cad.geometry));
   }
 
   function run(job) {

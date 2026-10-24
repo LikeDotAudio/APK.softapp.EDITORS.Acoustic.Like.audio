@@ -22,6 +22,15 @@ import { roomImages } from './images.js';
  *             the other two are least so.
  *
  * Every level is dB SPL. A speaker's `level` is its on-axis SPL at 1 m.
+ *
+ * SCATTERING (images.js) reaches the three differently. The wave sum reads
+ * img.amp, the SPECULAR part (1 − α)(1 − s) per bounce, so a diffuser takes
+ * its wall out of the interference pattern; the energy it scatters is
+ * incoherent and has no phase to add, so the wave method leaves it out (the
+ * echogram keeps it — analysis.js). The energy method's 4/R depends on
+ * absorption alone: scattering changes when energy arrives, not how much is
+ * left, so energyAt is the same with or without it. The modal sum is the
+ * rigid box's and knows no s.
  */
 
 export function nearestBand(freq) {
@@ -81,7 +90,7 @@ export function waveDb(prep, pt, freq, mic = null) {
   return 10 * Math.log10(re * re + im * im + 1e-12);
 }
 
-/** Direct + reverberant energy in one octave band: { direct, reverb, total } dB. */
+/** Direct + reverberant energy in one octave band: { direct, reverb, total } dB. R is absorption-only, so s does not enter (see the header). */
 export function energyAt(room, prep, pt, band, mic = null) {
   const freq = BANDS[band];
   const airDb = AIR_DB_PER_M[band];
