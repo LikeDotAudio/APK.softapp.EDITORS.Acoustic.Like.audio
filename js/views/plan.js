@@ -2,7 +2,8 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, C } from '../acoustics/bands.js';
 import { criticalDistance } from '../acoustics/analysis.js';
-import { mirrorPoint, segmentCross } from '../acoustics/geometry.js';
+import { DEG, mirrorPoint, segmentCross } from '../acoustics/geometry.js';
+import { LAYOUTS } from '../acoustics/layouts.js';
 import { fromFrame } from '../acoustics/room.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { FACE_COLOURS, dashedLine, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
@@ -212,8 +213,10 @@ export function createPlanView({ tile, iframe, store, engine, onDrag }) {
     }
 
     if (show.guides || show.nulls) drawPlanGuides(ctx, room, show, toScreen);
+    if (out.subs?.cells?.length) drawSubMap(ctx, out.subs, toScreen, pxPerMetre());
 
     const mix = state.mics.find((m) => m.mix);
+    if (show.arrangement !== false) drawArrangement(ctx, room, settings, mix, toScreen, pxPerMetre());
     const band = settings.band;
     for (const s of state.speakers) {
       const p = toScreen(s.x, s.y);
@@ -313,6 +316,97 @@ function drawPlanGuides(ctx, room, show, toScreen) {
     const [c, d] = seg(0, room.W / 2, room.L, room.W / 2);
     dashedLine(ctx, c, d, '#94a3b8', [14, 4, 2, 4], 1);
   }
+}
+
+/**
+ * The speaker arrangement's references from the seat: a spoke to every
+ * speaker's ideal bearing at the preset's radius, its tolerance window as a
+ * shaded wedge, and the ring at ear height joined up — for stereo, the
+ * listening triangle (±30°); for 5.1, the ring at 0, ±30° and ±110°.
+ */
+function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
+  const layout = LAYOUTS[settings.layout?.preset];
+  if (!layout) return;
+  const seat = mix ?? fromFrame(room, 0.38 * room.L, 0.5 * room.W);
+  const r = settings.layout.radius ?? 2;
+  const c = toScreen(seat.x, seat.y);
+  const at = (az, k = 1) => {
+    const b = (settings.frontDeg + az) * DEG;
+    return toScreen(seat.x + r * k * Math.cos(b), seat.y + r * k * Math.sin(b));
+  };
+  ctx.save();
+  ctx.strokeStyle = '#fde047';
+  ctx.fillStyle = 'rgba(253, 224, 71, 0.10)';
+  for (const s of layout.speakers) {
+    if (s.top) continue;
+    if (s.side !== 'C') {
+      // the window this speaker may sit in
+      const sign = Math.sign(s.az);
+      const [lo, hi] = s.range;
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y);
+      for (let a = lo; a <= hi + 1e-9; a += Math.max(1, (hi - lo) / 8)) {
+        const p = at(sign * a, 1.06);
+        ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    const p = at(s.az);
+    ctx.globalAlpha = s.el === 0 ? 0.9 : 0.45;
+    ctx.setLineDash(s.el === 0 ? [] : [4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    drawLabel(ctx, p.x, p.y - 10, `${s.name} ${Math.abs(s.az)}°`, '#fde047');
+  }
+  ctx.setLineDash([]);
+  const bed = layout.speakers.filter((s) => s.el === 0).sort((a, b) => a.az - b.az);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  bed.forEach((s, i) => {
+    const p = at(s.az);
+    if (i) ctx.lineTo(p.x, p.y);
+    else ctx.moveTo(p.x, p.y);
+  });
+  if (bed.length > 2) ctx.closePath();
+  ctx.stroke();
+  ctx.setLineDash([3, 5]);
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath();
+  ctx.arc(c.x, c.y, r * ppm, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+  drawLabel(ctx, c.x, c.y + r * ppm + 14, `${layout.label} · r ${r.toFixed(1)} m${mix ? '' : ' · no mix mic: seat at 38 %'}`, '#fde047');
+}
+
+/** The sub crawl's map: every tried position as a square, green good → red bad, the best five numbered. */
+function drawSubMap(ctx, subs, toScreen, ppm) {
+  const scores = subs.cells.map((c) => c.score);
+  const lo = Math.min(...scores);
+  const hi = Math.max(...scores);
+  const size = Math.max(3, (subs.step ?? 0.25) * ppm);
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  for (const c of subs.cells) {
+    const t = hi > lo ? (c.score - lo) / (hi - lo) : 0;
+    ctx.fillStyle = `hsl(${120 * (1 - t)}, 75%, 45%)`;
+    const p = toScreen(c.x, c.y);
+    ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+  }
+  ctx.globalAlpha = 1;
+  (subs.best ?? []).forEach((b, i) => {
+    const p = toScreen(b.x, b.y);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    drawLabel(ctx, p.x, p.y - 14, `SUB #${i + 1}`, '#bbf7d0');
+  });
+  ctx.restore();
 }
 
 function drawRings(ctx, s, p, ppm, settings) {

@@ -3,10 +3,13 @@
 import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
 import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
+import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
 import { LAYOUTS, layoutPositions } from '../acoustics/layouts.js';
 import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
 import { MIC_PATTERNS, SPEAKER_PATTERNS } from '../acoustics/patterns.js';
 import { allModes, fromFrame, inFrame, schroeder } from '../acoustics/room.js';
+import { ROOM_LIBRARY, grabBag, planArea } from '../acoustics/roomLibrary.js';
+import { subCrawl } from '../acoustics/subDesigner.js';
 import { mirrorDevice } from '../acoustics/symmetry.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { selectedDevice } from '../model/store.js';
@@ -28,7 +31,7 @@ import { button, check, download, h, num, row, select, slider, text } from './do
  * palette blocks stand for.
  */
 
-const TABS = ['Inspect', 'Room', 'Treatments', 'Materials', 'Field', 'Layout', 'Advisor', 'File'];
+const TABS = ['Inspect', 'Room', 'Build', 'Treatments', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
 
 const HOW_TO_TREAT = 'Treatments are placed in the CAD: click a wall’s elevation (or the ceiling) to open its drawing, pick a finish or a product from the Acoustic palette, then drag a region to fill it or click to drop a product. Each lands on that surface and mixes into its α and s.';
 
@@ -59,7 +62,7 @@ const surfaceKey = (piece) => (piece.surface === 'wall' ? `wall:${piece.wall}` :
 /** Which CAD sheet shows a treatment: a wall's elevation, else the plan. */
 const sheetOf = (face) => (['front', 'back', 'left', 'right', 'ceiling'].includes(face) ? face : 'plan');
 
-export function createInspector({ root, store, engine, cad, jumpTo }) {
+export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, onSubs = () => {} }) {
   let tab = 'Inspect';
   let pending = false;
 
@@ -68,13 +71,17 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
   });
 
   function render() {
-    if (root.contains(document.activeElement) && document.activeElement !== document.body && document.activeElement.tagName !== 'BUTTON') {
+    // the inspector may be in a window of its own: ask its own document what has focus
+    const active = root.ownerDocument.activeElement;
+    if (root.contains(active) && active !== root.ownerDocument.body && active.tagName !== 'BUTTON') {
       pending = true;
       return;
     }
     pending = false;
     const scroll = root.querySelector('.body')?.scrollTop ?? 0;
+    const popBtn = root.querySelector(':scope > .popbtn');
     root.replaceChildren(
+      ...(popBtn ? [popBtn] : []),
       h('nav', { class: 'tabs' }, TABS.map((t) => h('button', { class: t === tab ? 'on' : '', onclick: () => { tab = t; render(); } }, t, t === 'Advisor' ? badge() : t === 'Treatments' ? warnBadge() : ''))),
       h('div', { class: 'body' }, ...PANES[tab]()),
     );
@@ -249,7 +256,7 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
     const { settings } = S();
     const out = engine.out;
     const room = out.room;
-    const parts = [h('h3', {}, 'Room')];
+    const parts = [h('h3', {}, 'Room'), ...libraryPart()];
     const rooms = out.rooms;
     if (rooms.length)
       parts.push(row('Plan loop', select(settings.roomId ?? rooms[0].id, rooms.map((r, i) => ({ value: r.id, label: `Loop ${i + 1} · ${r.area.toFixed(1)} m² · layer ${r.layerId}` })), (v) => set({ roomId: +v }))));
@@ -339,7 +346,7 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
   // --------------------------------------------------------------- Treatments
   function treatmentsPane() {
     const room = engine.out.room;
-    const parts = [h('h3', {}, 'Treatments'), h('p', { class: 'hint' }, HOW_TO_TREAT)];
+    const parts = [h('h3', {}, 'Treatments'), h('p', { class: 'hint' }, HOW_TO_TREAT), ...cadMarksPart()];
     if (!room) return parts;
     const warnings = room.patchWarnings ?? [];
     if (warnings.length) parts.push(h('ul', { class: 'advice' }, ...warnings.map((w) => h('li', { class: 'warn' }, h('span', {}, w)))));
@@ -526,6 +533,15 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
     return parts;
   }
 
+  /** The toolbar's ⤓: place the current preset around the mix seat. False when there is no mix seat or room. */
+  function placeCurrentLayout() {
+    const mix = S().mics.find((m) => m.mix);
+    const room = engine.out.room;
+    if (!mix || !room) return false;
+    placeLayout(mix, room);
+    return true;
+  }
+
   function placeLayout(mix, room) {
     const { settings } = S();
     const ax = store.axis();
@@ -543,6 +559,155 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
       return s;
     });
     store.replaceSpeakers([...keep, ...speakers]);
+  }
+
+  /** What this app draws into the CAD file itself, and the panels it puts at the reflection points. */
+  function cadMarksPart() {
+    const { settings } = S();
+    const cm = settings.cadMarks;
+    const ap = settings.autoPanels;
+    const toggle = (key, label) => check(cm[key], (v) => set({ cadMarks: { ...cm, [key]: v } }), label);
+    const products = PRODUCTS.map((p) => ({ value: p.id, label: p.name }));
+    return [
+      h('h4', {}, 'Drawn into the CAD'),
+      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout')),
+      row('Wall panel', select(ap.wall, products, (v) => set({ autoPanels: { ...ap, wall: v } }))),
+      row('Panel size', num(ap.w, (v) => set({ autoPanels: { ...ap, w: v } }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(ap.h, (v) => set({ autoPanels: { ...ap, h: v } }), { unit: 'm tall', min: 0.2, step: 0.05 })),
+      row('Ceiling cloud', select(ap.ceiling, products, (v) => set({ autoPanels: { ...ap, ceiling: v } }))),
+      h('p', { class: 'hint' }, 'A panel goes wherever a speaker’s first reflection meets a wall on its way to the mix seat, named LEFT-1, RIGHT-2 … on the wall’s elevation. They move when the speakers or the seat move, and the room hears them like any treatment.'),
+    ];
+  }
+
+  // ------------------------------------------------------------------ Room library
+  let libraryPick = ROOM_LIBRARY[0].id;
+  function libraryPart() {
+    const groups = [...new Set(ROOM_LIBRARY.map((r) => r.group))].map((group) => ({
+      group,
+      items: ROOM_LIBRARY.filter((r) => r.group === group).map((r) => ({ value: r.id, label: `${r.name} · ${fmt(planArea(r.poly), 1)} m² · ${fmt(r.h, 2)} m` })),
+    }));
+    const picked = ROOM_LIBRARY.find((r) => r.id === libraryPick);
+    return [
+      row('Library', select(libraryPick, groups, (v) => { libraryPick = v; render(); })),
+      h('p', { class: 'hint' }, `${picked.note}. ${ROOM_LIBRARY.length} studio rooms at real sizes — types, not surveys of any one studio.`),
+      h('div', { class: 'actions' }, button('Draw it in the CAD', () => drawRoom?.(libraryPick)), button('🎲 Grab bag', () => drawRoom?.(grabBag(S().settings.lastLibraryRoom).id))),
+    ];
+  }
+
+  // ------------------------------------------------------------------ Build: floor, walls, and where the room is
+  function buildPane() {
+    const iso = { ...DEFAULT_ISOLATION, ...S().settings.isolation };
+    const setIso = (patch) => set({ isolation: { ...iso, ...patch } });
+    const room = engine.out.room;
+    const f0 = floorF0(iso);
+    const KIND_COLOUR = { board: '#d8d8d2', stud: '#a0703c', insulation: '#f4c542', air: '#334155', masonry: '#8c6f64', concrete: '#9a9a9a', isolator: '#38bdf8', wood: '#b5834c' };
+    const stack = (layers) => h('div', { class: 'build' }, ...layers.map(([name, mm, kind]) => h('div', { style: `border-color:${KIND_COLOUR[kind] ?? '#888'}` }, h('span', {}, name), h('span', {}, `${mm} mm`))));
+    const parts = [
+      h('h3', {}, 'Where the room is'),
+      row('Setting', select(iso.setting, Object.entries(SETTINGS_BUILDS).map(([value, label]) => ({ value, label })), (v) => setIso({ setting: v }))),
+    ];
+    if (iso.setting === 'attached')
+      parts.push(row('Shared with the house', h('span', { class: 'sheets' }, ...['front', 'back', 'left', 'right'].map((f) => check(iso.shared[f], (v) => setIso({ shared: { ...iso.shared, [f]: v } }), f)))));
+    parts.push(
+      h('h3', {}, 'Floor'),
+      row('Build', select(iso.floor, Object.entries(FLOOR_BUILDS).map(([value, b]) => ({ value, label: b.label })), (v) => setIso({ floor: v, f0: null }))),
+      h('p', { class: 'hint' }, FLOOR_BUILDS[iso.floor]?.note ?? ''),
+    );
+    if (FLOOR_BUILDS[iso.floor]?.f0) parts.push(row('Natural frequency f0', num(f0, (v) => setIso({ f0: v }), { unit: 'Hz', min: 2, step: 0.5 })));
+    if (FLOOR_BUILDS[iso.floor]?.layers) parts.push(stack(FLOOR_BUILDS[iso.floor].layers));
+    const isoFreqs = [16, 31.5, 63, 125, 250];
+    parts.push(
+      h(
+        'table',
+        { class: 'grid' },
+        h('tr', {}, h('th', {}, 'Hz'), ...isoFreqs.map((f) => h('th', {}, String(f)))),
+        h('tr', {}, h('td', {}, 'through the floor, dB'), ...isoFreqs.map((f) => {
+          const il = floorLoss(f, f0);
+          return h('td', { class: il < -0.5 ? 'bad' : il > 10 ? 'ok' : '' }, f0 ? fmt(il, 0) : '0');
+        })),
+      ),
+      h('p', { class: 'hint' }, f0 ? `Isolates above ${fmt(f0 * Math.SQRT2, 0)} Hz, 12 dB per octave; at ${fmt(f0, 0)} Hz it AMPLIFIES — keep it below the lowest note you care about.` : 'Tied to the structure: what the floor carries, the building carries.'),
+      h('h3', {}, 'Walls'),
+      row('Build', select(iso.walls, Object.entries(WALL_BUILDS).map(([value, b]) => ({ value, label: b.label })), (v) => setIso({ walls: v }))),
+    );
+    if (WALL_BUILDS[iso.walls]?.layers) parts.push(stack(WALL_BUILDS[iso.walls].layers));
+    const tl = wallTl(iso);
+    parts.push(h('table', { class: 'grid' }, h('tr', {}, h('th', {}, 'Hz'), ...BAND_HEADS.map((b) => h('th', {}, b))), h('tr', {}, h('td', {}, 'TL dB'), ...tl.map((v) => h('td', {}, String(v))))));
+    const shared = sharedFaces(iso);
+    const rep = engine.out.reports?.[engine.out.monitorId];
+    if (room && shared.length) {
+      const roomDb = rep ? rep.energy.map((e) => e.total) : BANDS.map(() => 100);
+      parts.push(
+        h('h4', {}, `In the house, through the shared wall${shared.length > 1 ? 's' : ''}`),
+        h(
+          'table',
+          { class: 'grid' },
+          h('tr', {}, h('th', {}, ''), ...BAND_HEADS.map((b) => h('th', {}, b))),
+          h('tr', {}, h('td', {}, 'room dB'), ...roomDb.map((v) => h('td', {}, fmt(v, 0)))),
+          ...houseLeak(room, iso, roomDb).map((r) => h('tr', {}, h('td', {}, `${r.face} · ${fmt(r.area, 1)} m²`), ...r.leak.map((v) => h('td', { class: v > 45 ? 'bad' : v < 30 ? 'ok' : '' }, fmt(v, 0))))),
+        ),
+        h('p', { class: 'hint' }, `${rep ? 'The room level is what the mix seat hears.' : 'No mic yet: the room is taken as 100 dB in every band.'} The house side is an estimate — L − TL + 10·log(S / 10 m²) — flanking through the structure not included.`),
+      );
+    }
+    parts.push(h('p', { class: 'hint' }, 'The walls and floor are drawn as sections in the CAD (layer “Construction”), and a light build adds its bass absorption to the room.'));
+    return parts;
+  }
+
+  // ------------------------------------------------------------------ Subs: the sub crawl
+  let crawl = null;
+  function subsPane() {
+    const room = engine.out.room;
+    const seats = S().mics;
+    const subs = engine.out.subs;
+    const parts = [
+      h('h3', {}, 'Subwoofer designer'),
+      h('p', { class: 'hint' }, 'Tries a sub at every point of a floor grid and hears 20–120 Hz at every mic (the mix seat counts double). Flat = how little the response swings at a seat; even = how alike the seats are. The plan shows the result as a map — green is good.'),
+    ];
+    if (!room || !seats.length) return [...parts, h('p', { class: 'stat' }, 'Place at least one mic — every listening seat you care about.')];
+    parts.push(
+      h(
+        'div',
+        { class: 'actions' },
+        button(crawl ? '■ Stop' : subs ? '↻ Run again' : '▶ Find the best spot', () => {
+          if (crawl) {
+            crawl.aborted = true;
+            crawl = null;
+            render();
+            return;
+          }
+          const signal = { aborted: false };
+          crawl = signal;
+          engine.out.subs = { running: true, progress: 0, cells: [], best: [] };
+          subCrawl(room, seats, {
+            step: Math.max(0.2, Math.max(room.L, room.W) / 24),
+            signal,
+            onProgress: (done, total) => {
+              engine.out.subs.progress = done / total;
+              render();
+            },
+          }).then((res) => {
+            if (crawl !== signal) return;
+            crawl = null;
+            engine.out.subs = res ? { ...res, running: false } : null;
+            render();
+            onSubs();
+          });
+          render();
+        }),
+        subs && !subs.running ? button('Clear map', () => { engine.out.subs = null; render(); onSubs(); }) : '',
+      ),
+    );
+    if (subs?.running) parts.push(h('p', { class: 'stat' }, `crawling… ${fmt(subs.progress * 100, 0)} %`));
+    if (subs?.best?.length)
+      parts.push(
+        h('h4', {}, 'Best places'),
+        h(
+          'table',
+          { class: 'grid' },
+          h('tr', {}, h('th', {}, ''), h('th', {}, 'x'), h('th', {}, 'y'), h('th', {}, 'flat'), h('th', {}, 'even'), h('th', {}, '')),
+          ...subs.best.map((b, i) => h('tr', {}, h('td', {}, `#${i + 1}`), h('td', {}, fmt(b.x)), h('td', {}, fmt(b.y)), h('td', {}, `${fmt(b.flat, 1)} dB`), h('td', {}, `${fmt(b.even, 1)} dB`), h('td', {}, button('Place sub', () => store.addSpeaker('sub', { x: +b.x.toFixed(3), y: +b.y.toFixed(3), z: 0.3 }, { name: `Sub #${i + 1}` }))))),
+        ),
+      );
+    return parts;
   }
 
   // ------------------------------------------------------------------ Advisor
@@ -572,6 +737,7 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
     return [
       h('h3', {}, 'File'),
       h('p', { class: 'stat' }, `Overlay saved in this browser for “${S().fileName || 'untitled'}”.`),
+      h('p', { class: 'hint' }, '💾 Save (Ctrl+S) in the toolbar writes ONE file with the CAD drawing, every speaker and mic, and every setting — open it with 📂 on any machine and the room comes back as it was.'),
       h(
         'div',
         { class: 'actions' },
@@ -597,10 +763,11 @@ export function createInspector({ root, store, engine, cad, jumpTo }) {
     ];
   }
 
-  const PANES = { Inspect: inspectPane, Room: roomPane, Treatments: treatmentsPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Advisor: advisorPane, File: filePane };
+  const PANES = { Inspect: inspectPane, Room: roomPane, Build: buildPane, Treatments: treatmentsPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Subs: subsPane, Advisor: advisorPane, File: filePane };
 
   return {
     render,
+    placeLayout: placeCurrentLayout,
     show: (t) => {
       tab = t;
       render();

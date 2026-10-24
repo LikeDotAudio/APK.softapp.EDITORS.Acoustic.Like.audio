@@ -13,11 +13,17 @@ import { gridPoints } from './grids.js';
  * page. Input and output are plain data so either side can hold them.
  */
 
-export const RESPONSE_FREQS = Array.from({ length: 73 }, (_, i) => 20 * 2 ** (i / 12)).filter((f) => f <= 1000);
+/** 1/24 octave, 20 Hz to the top of the slider: fine enough that a notch between two points is not missed. */
+export const F_MIN = 20;
+export const F_MAX = 17000;
+export const RESPONSE_FREQS = Array.from({ length: 240 }, (_, i) => F_MIN * 2 ** (i / 24)).filter((f) => f <= F_MAX);
+
+/** The modal method is a low-frequency model: above this it shows the field at this frequency instead. */
+export const MODAL_MAX = 1000;
 
 export function runJob({ room, speakers, mics, settings, grids, monitorId }) {
   const prep = prepare(room, speakers, { maxOrder: settings.maxOrder });
-  const modal = room && speakers.length ? prepareModal(room, speakers, settings.freq) : null;
+  const modal = room && speakers.length ? prepareModal(room, speakers, Math.min(settings.freq, MODAL_MAX)) : null;
   const sample = (pt) => {
     if (!speakers.length) return NaN;
     if (settings.method === 'energy') return energyAt(room, prep, pt, settings.band).total;
@@ -50,7 +56,7 @@ export function runJob({ room, speakers, mics, settings, grids, monitorId }) {
   let response = null;
   const monitor = mics.find((m) => m.id === monitorId);
   if (monitor && speakers.length) {
-    const fModalMax = Math.min(1000, Math.max(200, schroeder(room) * 1.5));
+    const fModalMax = Math.min(MODAL_MAX, Math.max(200, schroeder(room) * 1.5));
     response = {
       freqs: RESPONSE_FREQS,
       wave: RESPONSE_FREQS.map((f) => waveDb(prep, monitor, f, monitor)),

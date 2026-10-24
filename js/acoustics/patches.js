@@ -115,7 +115,7 @@ function breakpoints(extra, lo, hi) {
 // ------------------------------------------------------------------ walls
 
 /** The face's span axis t and depth d (bigger = further out through that face) of a point on the sheet. */
-function faceCoords(room, face) {
+export function faceCoords(room, face) {
   const { f, r } = room.frame;
   return (p) => {
     const fromFront = room.frame.front - (p.x * f.x + p.y * f.y);
@@ -131,7 +131,7 @@ function faceCoords(room, face) {
  * Where an elevation's frame sits on the sheet: the bottom-left of the loop
  * drawn on its layer (profile.origin), or of the seed the CAD would draw.
  */
-function elevationOrigin(room, face) {
+export function elevationOrigin(room, face) {
   const prof = room.profiles?.find((p) => p.face === face && p.origin);
   if (prof) return prof.origin;
   const seed = seedOutline(room, face);

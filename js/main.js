@@ -2,10 +2,15 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, seedOutline } from './acoustics/elevations.js';
-
-const CEILING_LAYER = 'Ceiling';
+import { LAYOUTS } from './acoustics/layouts.js';
 import { paletteItems } from './acoustics/materials.js';
+import { grabBag, roomById } from './acoustics/roomLibrary.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
+import { buildMarks, hashOf, MARK_KEYS } from './cad/marks.js';
+import { F_MAX, F_MIN } from './compute/compute.js';
+import { createAcousticX } from './acoustx/acoustx.js';
+import { makePoppable } from './ui/popout.js';
+import { hz } from './ui/meters.js';
 import { createEngine } from './compute/engine.js';
 import { createStore } from './model/store.js';
 import { createInspector } from './ui/inspector.js';
@@ -15,6 +20,8 @@ import { FACE_COLOURS } from './views/glyphs.js';
 import { fieldScale } from './views/paint.js';
 import { createPlanView } from './views/plan.js';
 import { createView3d } from './views/view3d.js';
+
+const CEILING_LAYER = 'Ceiling';
 
 /**
  * ACOUSTIC.LIKE.AUDIO
@@ -45,6 +52,8 @@ const engine = createEngine(store, (out, phase) => {
   status.textContent = out.error ? '⚠ field error — see console' : `${out.room.walls.length} walls · ${store.state.speakers.length} spk · ${store.state.mics.length} mic${out.virtual ? ' · virtual room' : ''}`;
   if (out.error) console.error(out.error);
   renderAll();
+  syncMarks();
+  pickDrawnRoom();
 });
 
 /** Views report drag start/end; the store's 'drag' events already drive the coarse recompute. */
@@ -86,7 +95,7 @@ const meters = createMeters({
     if (rep) listen(rep.echogram);
   },
 });
-const inspector = createInspector({ root: document.getElementById('inspector'), store, engine, cad, jumpTo });
+const inspector = createInspector({ root: document.getElementById('inspector'), store, engine, cad, jumpTo, drawRoom: (id) => drawRoom(roomById(id)), onSubs: () => plan.render() });
 document.getElementById('toPlan').addEventListener('click', () => jumpTo('plan'));
 document.getElementById('popCad').addEventListener('click', () => {
   if (cad.link.popped) cad.link.dockIn();
@@ -190,8 +199,9 @@ function syncToolbar() {
   if (popped) document.getElementById('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
   for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
-  document.getElementById('freqOut').textContent = settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${settings.freq} Hz`;
+  document.getElementById('freqOut').textContent = settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${hz(settings.freq)} Hz`;
   freq.disabled = settings.method === 'energy';
+  for (const b of document.querySelectorAll('#arrangement button[data-preset]')) b.classList.toggle('on', b.dataset.preset === settings.layout.preset);
 }
 
 for (const header of document.querySelectorAll('.tile header, .tile.face canvas, .tile.t3d canvas')) {
@@ -206,12 +216,237 @@ for (const header of document.querySelectorAll('.tile header, .tile.face canvas,
 }
 
 window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    saveSession();
+    return;
+  }
   if (e.target.closest?.('input, select, textarea')) return;
   if (e.key === 'Escape') store.setMode('cad');
   if ((e.key === 'Delete' || e.key === 'Backspace') && store.state.selected) store.remove(store.state.selected.kind, store.state.selected.id);
 });
 
 new ResizeObserver(() => renderGeometry()).observe(views);
+
+// ------------------------------------------------------------------ the slider, read as a log scale
+{
+  const ticks = document.getElementById('freqTicks');
+  const lo = Math.log10(F_MIN);
+  const span = Math.log10(F_MAX) - lo;
+  for (const f of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
+    const at = ((Math.log10(f) - lo) / span) * 100;
+    ticks.insertAdjacentHTML('beforeend', `<i style="left:${at}%"></i>${[20, 100, 1000, 10000].includes(f) ? `<span style="left:${at}%">${hz(f)}</span>` : ''}`);
+  }
+}
+
+// ------------------------------------------------------------------ speaker arrangements
+{
+  const bar = document.getElementById('arrangement');
+  for (const [preset, l] of Object.entries(LAYOUTS)) {
+    const b = document.createElement('button');
+    b.dataset.preset = preset;
+    b.textContent = preset;
+    b.title = `${l.label}: show its reference angles over the room`;
+    b.onclick = () => store.setSettings({ layout: { ...store.state.settings.layout, preset }, show: { ...store.state.settings.show, arrangement: true } });
+    bar.append(b);
+  }
+  const place = document.createElement('button');
+  place.textContent = '⤓';
+  place.title = 'Place this arrangement around the mix seat (replaces the arranged speakers)';
+  place.onclick = () => {
+    if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
+  };
+  bar.append(place);
+}
+
+// ------------------------------------------------------------------ furniture: the CAD draws it, at true size
+document.getElementById('furniture').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-arm]');
+  if (!b || !cad.link) return;
+  if (store.state.sheet !== 'plan') jumpTo('plan');
+  cad.link.arm(b.dataset.arm);
+  store.setMode('cad');
+});
+
+// ------------------------------------------------------------------ the room library
+let pendingRoom = null;
+
+/** Draw a library room into the CAD beside whatever is there, on a layer of its own, and make it the room. */
+function drawRoom(entry) {
+  if (!entry || !cad.link) return;
+  const g = store.state.cad.geometry;
+  const k = METRES_PER_UNIT[g?.units ?? store.state.cad.view?.units ?? 'm'] ?? 1;
+  const xs = (g?.walls ?? []).flatMap((w) => [w.a[0], w.b[0]]).map((x) => x * k);
+  const ys = (g?.walls ?? []).flatMap((w) => [w.a[1], w.b[1]]).map((y) => y * k);
+  const ox = xs.length ? Math.max(...xs) + 3 - Math.min(...entry.poly.map(([x]) => x)) : 0;
+  const oy = ys.length ? Math.min(...ys) : 0;
+  const layer = `Room · ${entry.name}`;
+  const seed = entry.poly.map(([x, y]) => [+((x + ox) / k).toFixed(4), +((y + oy) / k).toFixed(4)]);
+  pendingRoom = { layer, h: entry.h, id: entry.id };
+  store.setSheet('plan');
+  cad.link.sheet(layer, { color: '#e5e7eb', seed });
+  status.textContent = `drawing “${entry.name}” into the CAD…`;
+}
+
+/** Once the CAD has drawn it, the new loop becomes the room. */
+function pickDrawnRoom() {
+  if (!pendingRoom) return;
+  const loop = engine.out.rooms?.find((r) => r.layerId === pendingRoom.layer);
+  if (!loop) return;
+  const { h, id } = pendingRoom;
+  pendingRoom = null;
+  store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90 });
+}
+
+document.getElementById('grabBag').addEventListener('click', () => drawRoom(grabBag(store.state.settings.lastLibraryRoom)));
+
+// ------------------------------------------------------------------ what this app draws into the CAD file
+let marksTimer = 0;
+function syncMarks() {
+  clearTimeout(marksTimer);
+  marksTimer = setTimeout(() => {
+    const g = store.state.cad.geometry;
+    if (!cad.link || !g || engine.out.virtual || !engine.out.room) return;
+    const k = METRES_PER_UNIT[g.units] ?? 1;
+    const xs = (g.walls ?? []).flatMap((w) => [w.a[0], w.b[0]]).map((x) => x * k);
+    const ys = (g.walls ?? []).flatMap((w) => [w.a[1], w.b[1]]).map((y) => y * k);
+    const sheetBounds = xs.length ? { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) } : null;
+    const layers = new Set((g.layers ?? []).map((l) => l.name));
+    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers });
+    const onSheet = g.marks ?? {};
+    for (const key of MARK_KEYS) {
+      const items = sets[key];
+      const hash = hashOf(items);
+      if (onSheet[key] === hash || (onSheet[key] === undefined && !items.length)) continue;
+      cad.link.marks(key, hash, items);
+    }
+  }, 350);
+}
+
+// ------------------------------------------------------------------ sweep and tour
+const sweepBtn = document.getElementById('sweep');
+const tourBtn = document.getElementById('tour');
+let sweep = null;
+
+function stopSweep() {
+  if (!sweep) return;
+  clearInterval(sweep.timer);
+  sweep = null;
+  sweepBtn.classList.remove('on');
+  tourBtn.classList.remove('on');
+  sweepBtn.textContent = '▶ Sweep';
+  if (views.classList.contains('maxed')) maximise(null);
+}
+
+/** Up the slider, log-even, in `seconds`; with `slides`, each view of the room in turn takes the screen. */
+function startSweep({ seconds = 16, slides = null } = {}) {
+  stopSweep();
+  const t0 = performance.now();
+  const lo = Math.log10(F_MIN);
+  const span = Math.log10(F_MAX) - lo;
+  if (store.state.settings.method === 'energy') store.setSettings({ method: 'wave' });
+  sweep = {
+    timer: setInterval(() => {
+      const t = ((performance.now() - t0) / 1000) % seconds;
+      const f = Math.round(10 ** (lo + (t / seconds) * span));
+      if (f !== store.state.settings.freq) store.setSettings({ freq: f });
+      if (slides) {
+        const i = Math.floor(((performance.now() - t0) / 1000 / seconds) * slides.length) % slides.length;
+        if (sweep.slide !== i) {
+          sweep.slide = i;
+          showSlide(slides[i]);
+        }
+      }
+    }, 140),
+    slide: -1,
+  };
+  (slides ? tourBtn : sweepBtn).classList.add('on');
+  sweepBtn.textContent = '■ Stop';
+}
+
+/** The tour: top, back, the sides, front, ceiling, then the room in 3-D. */
+const SLIDES = ['plan', 'back', 'left', 'right', 'front', 'ceiling', '3d'];
+function showSlide(face) {
+  if (face === '3d') {
+    if (store.state.settings.view !== '3d') store.setSettings({ view: '3d' });
+    maximise(document.querySelector('.tile.t3d'));
+    return;
+  }
+  if (store.state.settings.view !== 'six') store.setSettings({ view: 'six' });
+  maximise(document.querySelector(`.tile[data-face="${face}"]`));
+}
+
+function maximise(tile) {
+  for (const t of document.querySelectorAll('.tile')) t.classList.toggle('max', t === tile);
+  views.classList.toggle('maxed', Boolean(tile));
+  requestAnimationFrame(renderGeometry);
+}
+
+sweepBtn.addEventListener('click', () => (sweep ? stopSweep() : startSweep()));
+tourBtn.addEventListener('click', () => (sweep ? stopSweep() : startSweep({ seconds: SLIDES.length * 5, slides: SLIDES })));
+
+// ------------------------------------------------------------------ sessions: the CAD drawing and this overlay, in one file
+const SESSION_FORMAT = 'acoustic.like.audio/session@1';
+
+async function saveSession() {
+  status.textContent = '💾 asking the CAD for its drawing…';
+  const drawing = cad.link ? await cad.link.session() : null;
+  const doc = { format: SESSION_FORMAT, savedAt: new Date().toISOString(), overlay: store.exportDoc(), cad: drawing };
+  const name = (store.state.fileName || drawing?.currentFileName || 'room').replace(/\.[^.]+$/, '');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' }));
+  a.download = `${name}.acoustic-session.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  status.textContent = drawing ? `💾 saved ${name} — drawing, ${store.state.speakers.length} speakers, ${store.state.mics.length} mics` : '💾 saved the overlay — the CAD did not answer, so the drawing is not in the file';
+}
+
+async function openSession(file) {
+  let doc;
+  try {
+    doc = JSON.parse(await file.text());
+  } catch {
+    alert('That file is not JSON.');
+    return;
+  }
+  // an overlay file on its own (File → Export overlay) opens too
+  if (doc?.format === 'acoustic.like.audio@1') doc = { format: SESSION_FORMAT, overlay: doc, cad: null };
+  if (doc?.format !== SESSION_FORMAT) {
+    alert('Not an acoustic.like.audio session file.');
+    return;
+  }
+  const fileName = doc.cad?.currentFileName ?? doc.overlay?.fileName ?? null;
+  store.adopt(fileName, doc.overlay);
+  if (doc.cad && cad.link) cad.link.open(doc.cad);
+  status.textContent = `📂 opened ${fileName ?? 'session'}`;
+}
+
+document.getElementById('saveSession').addEventListener('click', saveSession);
+document.getElementById('openSession').addEventListener('change', (e) => {
+  const f = e.target.files?.[0];
+  if (f) openSession(f);
+  e.target.value = '';
+});
+
+// ------------------------------------------------------------------ every panel can have a window of its own
+for (const tile of document.querySelectorAll('.tile.face, .tile.t3d')) {
+  const face = tile.dataset.face;
+  makePoppable(tile, { title: face === '3d' ? '3-D room' : `${face[0].toUpperCase()}${face.slice(1)}`, onChange: () => renderGeometry() });
+}
+makePoppable(document.getElementById('inspector'), {
+  title: 'Inspector',
+  onChange: () => inspector.render(),
+  onPopped: (out) => document.querySelector('main').classList.toggle('inspector-out', out),
+});
+
+// ------------------------------------------------------------------ Acoustic X, the classic windows
+createAcousticX({
+  store,
+  engine,
+  mount: document.getElementById('acx'),
+  // the Modal Response optimiser's "Use these": a shoebox of those dimensions, drawn like any library room
+  onDrawRoom: ({ L, W, H }) => drawRoom({ id: null, name: `Optimised ${W.toFixed(2)} × ${L.toFixed(2)} × ${H.toFixed(2)} m`, h: H, poly: [[-W / 2, 0], [W / 2, 0], [W / 2, L], [-W / 2, L]] }),
+});
 
 // `?debug` hands the console the store and engine; nothing reads them otherwise.
 if (new URLSearchParams(location.search).has('debug')) window.acoustic = { store, engine };

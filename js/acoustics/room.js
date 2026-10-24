@@ -1,5 +1,6 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+import { buildAlpha, DEFAULT_ISOLATION } from './isolation.js';
 import { BANDS, C, airM } from './bands.js';
 import { DEG, angleDiff, ensureCCW, isConvex, signedArea, simplifyPolygon } from './geometry.js';
 import { measureSection, profileFromLoop } from './elevations.js';
@@ -63,6 +64,9 @@ export function buildRoom(polyMetres, settings, loops = [], patches = []) {
   const Hbase = settings.roomHeight;
   const { f, r } = frontFrame(settings.frontDeg);
   const mats = settings.faceMaterials;
+  // What the walls and floor are BUILT of adds a little bass absorption to what they are faced with (isolation.js).
+  const built = buildAlpha({ ...DEFAULT_ISOLATION, ...settings.isolation });
+  const withBuild = (mat, add) => (add.some((x) => x > 0) ? { ...mat, alpha: mat.alpha.map((a, b) => Math.min(0.99, a + add[b] * (1 - a))) } : mat);
 
   const walls = poly.map((a, i) => {
     const b = poly[(i + 1) % poly.length];
@@ -71,7 +75,7 @@ export function buildRoom(polyMetres, settings, loops = [], patches = []) {
     const nIn = { x: -t.y, y: t.x };
     const outwardDeg = Math.atan2(-nIn.y, -nIn.x) / DEG;
     const face = faceOf(outwardDeg, settings.frontDeg);
-    return { i, a, b, len, t, nIn, face, material: material(mats[face]) };
+    return { i, a, b, len, t, nIn, face, material: withBuild(material(mats[face]), built.walls) };
   });
 
   const area = signedArea(poly);
@@ -99,7 +103,7 @@ export function buildRoom(polyMetres, settings, loops = [], patches = []) {
 
   const laid = layPatches(room, patches);
   const on = (surface, wall = null) => laid.pieces.filter((p) => p.surface === surface && p.wall === wall);
-  const floor = effective(material(mats.floor), m.floorArea, on('floor'));
+  const floor = effective(withBuild(material(mats.floor), built.floor), m.floorArea, on('floor'));
   const ceiling = effective(material(mats.ceiling), m.ceilingArea, on('ceiling'));
   walls.forEach((w) => (w.material = effective(w.material, w.area, on('wall', w.i))));
   const surfaces = [

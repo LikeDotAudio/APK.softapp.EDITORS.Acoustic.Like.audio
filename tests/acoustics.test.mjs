@@ -7,7 +7,7 @@ import { roomImages } from '../js/acoustics/images.js';
 import { prepare, prepareModal, modalDb, waveDb } from '../js/acoustics/field.js';
 import { echogram, iso3382 } from '../js/acoustics/analysis.js';
 import { makeMic, makeSpeaker } from '../js/acoustics/devices.js';
-import { layoutCheck, layoutPositions } from '../js/acoustics/layouts.js';
+import { LAYOUTS, layoutCheck, layoutPositions } from '../js/acoustics/layouts.js';
 import { mirrorBearing, mirrorDevice, mirrorName, syncTwin } from '../js/acoustics/symmetry.js';
 import { advise } from '../js/acoustics/advisor.js';
 import { heightsAt, seedOutline } from '../js/acoustics/elevations.js';
@@ -84,6 +84,19 @@ test('a 7.1.4 placed by the preset checks out against its own references', () =>
   assert.ok(rows.every((r) => r.ok), JSON.stringify(rows.filter((r) => !r.ok)));
   const L = placed.find((p) => p.role === 'L');
   assert.ok(L.x < mix.x, 'L is on the listener’s left when facing +y');
+});
+
+test('every preset, 22.2 included, checks out against its own references', () => {
+  const mix = { x: 2.5, y: 3, z: 1.2 };
+  for (const [name, layout] of Object.entries(LAYOUTS)) {
+    const placed = layoutPositions(name, mix, 90, 2, 10).map((p, i) => ({ ...p, id: `s${i}` }));
+    const rows = layoutCheck(placed, mix, 90, name);
+    assert.equal(rows.length, layout.speakers.length, name);
+    assert.ok(rows.every((r) => r.ok), `${name}: ${JSON.stringify(rows.filter((r) => !r.ok))}`);
+  }
+  const nhk = layoutPositions('22.2', mix, 90, 2, 10);
+  assert.equal(nhk.length, 24);
+  assert.equal(nhk.filter((p) => p.sub).length, 2);
 });
 
 test('the mirror is its own inverse, and swaps L for R', () => {

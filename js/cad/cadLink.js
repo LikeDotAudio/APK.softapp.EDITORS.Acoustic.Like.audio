@@ -26,6 +26,12 @@
  * from whichever window holds the CAD now are heard. Popped, its `view`
  * describes a canvas nowhere near our overlay, so it is not passed on.
  *
+ * MARKS, ARM, SESSIONS. `marks(key, hash, items)` hands the CAD a set of
+ * things to draw and keep under `key` (cad/marks.js); `arm(paletteId)` picks
+ * a product for the user to place next (＋ Desk); `session()` resolves with
+ * the CAD's whole drawing session and `open(session)` puts one back — what
+ * the session file (File tab) is made of.
+ *
  * The protocol string is the contract; it lives in
  * EDITORS.CAD.Like.audio/src/shell/hostBridge/hostBridge.ts.
  */
@@ -41,6 +47,7 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
   const target = () => (popup && !popup.closed ? popup : iframe.contentWindow);
   const send = (type, body = {}) => target()?.postMessage({ protocol: HOST_PROTOCOL, type, ...body }, window.location.origin);
   let palette = null;
+  let sessionWaiters = [];
 
   window.addEventListener('message', (e) => {
     if (e.source !== target() || e.origin !== window.location.origin) return;
@@ -53,6 +60,10 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     else if (msg.type === 'view') { if (!popup) onView?.(msg); }
     else if (msg.type === 'geometry') onGeometry?.(msg);
     else if (msg.type === 'mirror') onMirror?.(msg);
+    else if (msg.type === 'session') {
+      for (const resolve of sessionWaiters) resolve(msg.session ?? null);
+      sessionWaiters = [];
+    }
   });
   iframe.addEventListener('load', () => send('hello'));
 
@@ -82,6 +93,20 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
       palette = { title, items };
       send('palette', palette);
     },
+    marks: (key, hash, items) => send('marks', { key, hash, items }),
+    arm: (paletteId) => {
+      send('arm', { paletteId });
+      popup?.focus();
+    },
+    /** The CAD's drawing session, or null if it does not answer within `ms`. */
+    session(ms = 4000) {
+      return new Promise((resolve) => {
+        sessionWaiters.push(resolve);
+        send('session');
+        setTimeout(() => resolve(null), ms);
+      });
+    },
+    open: (session) => send('open', { session }),
     get popped() {
       return Boolean(popup);
     },

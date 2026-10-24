@@ -1,0 +1,156 @@
+/* Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+   MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+   Acoustic X (classic): Windows 95-style windows, in the style of Pilchner-Schoustal's
+   1998 program. Every rule is scoped under .acx so nothing reaches the app around it. */
+
+.acx {
+  --face: #c0c0c0;
+  --hi: #ffffff;
+  --lite: #dfdfdf;
+  --shade: #808080;
+  --dark: #000000;
+  --navy: #000080;
+  --title2: #1084d0;
+  --ink: #000000;
+  font: 11px/1.25 "MS Sans Serif", Tahoma, "Microsoft Sans Serif", Arial, sans-serif;
+  color: var(--ink);
+  -webkit-font-smoothing: none;
+  color-scheme: light;
+}
+.acx *, .acx *::before, .acx *::after { box-sizing: border-box; }
+
+/* ── the launcher in the app's header ─────────────────────────────── */
+.acx.acx-launch { position: relative; display: inline-block; }
+.acx .acx-btn, .acx button {
+  font: inherit; color: var(--ink); background: var(--face); border: 0; border-radius: 0;
+  padding: 3px 10px; min-height: 21px; cursor: default;
+  box-shadow: inset -1px -1px var(--dark), inset 1px 1px var(--hi), inset -2px -2px var(--shade), inset 2px 2px var(--lite);
+}
+.acx button:hover { border: 0; }
+.acx button:active:not(:disabled), .acx button.down {
+  box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--dark), inset -2px -2px var(--lite), inset 2px 2px var(--shade);
+  padding: 4px 9px 2px 11px;
+}
+.acx button:focus-visible { outline: 1px dotted var(--ink); outline-offset: -4px; }
+.acx button:disabled { color: var(--shade); text-shadow: 1px 1px var(--hi); }
+.acx .acx-menu {
+  position: absolute; top: 100%; left: 0; z-index: 3000; min-width: 290px; padding: 2px; background: var(--face);
+  box-shadow: inset -1px -1px var(--dark), inset 1px 1px var(--lite), inset -2px -2px var(--shade), inset 2px 2px var(--hi);
+}
+.acx .acx-menu[hidden] { display: none; }
+.acx .acx-menu .item { display: block; padding: 4px 20px 4px 22px; white-space: nowrap; cursor: default; }
+.acx .acx-menu .item:hover { background: var(--navy); color: var(--hi); }
+.acx .acx-menu .sep { margin: 3px 1px; border-top: 1px solid var(--shade); border-bottom: 1px solid var(--hi); }
+.acx .acx-menu .note { padding: 4px 8px; color: #404040; white-space: normal; max-width: 290px; }
+
+/* ── the desk the windows float on ───────────────────────────────── */
+.acx.acx-desk { position: fixed; inset: 0; z-index: 2000; pointer-events: none; }
+.acx .acx-win {
+  position: absolute; display: flex; flex-direction: column; pointer-events: auto; background: var(--face); padding: 3px;
+  box-shadow: inset -1px -1px var(--dark), inset 1px 1px var(--lite), inset -2px -2px var(--shade), inset 2px 2px var(--hi), 2px 2px 8px rgba(0, 0, 0, 0.45);
+}
+.acx .acx-win[hidden] { display: none; }
+.acx .acx-win.max { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; }
+.acx .acx-win.min { height: auto !important; width: 260px !important; }
+.acx .acx-win.min > :not(.acx-title) { display: none; }
+
+.acx .acx-title {
+  display: flex; align-items: center; gap: 3px; height: 18px; padding: 0 2px; color: var(--hi); font-weight: bold;
+  background: linear-gradient(90deg, var(--navy), var(--title2)); user-select: none; cursor: default; flex: none;
+}
+.acx .acx-win:not(.front) .acx-title { background: linear-gradient(90deg, #808080, #b5b5b5); color: #d4d0c8; }
+.acx .acx-title .ico { width: 16px; height: 16px; flex: none; }
+.acx .acx-title .txt { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.acx .acx-title button { width: 16px; height: 14px; min-height: 14px; padding: 0; font: bold 9px/12px "Marlett", Tahoma, Arial, sans-serif; text-align: center; }
+.acx .acx-title button:active { padding: 1px 0 0 1px; }
+.acx .acx-title button.x { margin-left: 2px; }
+
+.acx .acx-body { flex: 1; display: flex; gap: 6px; padding: 6px 4px 4px; min-height: 0; }
+.acx .acx-left { width: 268px; flex: none; display: flex; flex-direction: column; min-height: 0; }
+.acx .acx-right { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; }
+.acx .acx-foot { display: flex; align-items: center; gap: 8px; padding: 2px 4px 2px; flex: none; }
+.acx .acx-status {
+  flex: 1; padding: 2px 4px; height: 18px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #202020;
+  box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade);
+}
+
+/* ── property-sheet tabs ─────────────────────────────────────────── */
+.acx .acx-tabs { display: flex; padding-left: 2px; position: relative; z-index: 1; flex: none; }
+.acx .acx-tab {
+  padding: 2px 8px 3px; margin-right: -1px; margin-top: 2px; background: var(--face); cursor: default;
+  border: 1px solid var(--shade); border-bottom: 0; border-radius: 3px 3px 0 0;
+  box-shadow: inset 1px 1px var(--hi), inset -1px 0 var(--dark);
+}
+.acx .acx-tab.on { margin-top: 0; padding-bottom: 5px; margin-bottom: -2px; position: relative; z-index: 2; }
+.acx .acx-sheet {
+  flex: 1; overflow: auto; padding: 8px 6px; min-height: 0;
+  box-shadow: inset -1px -1px var(--dark), inset 1px 1px var(--hi), inset -2px -2px var(--shade), inset 2px 2px var(--lite);
+}
+.acx .acx-page[hidden] { display: none; }
+
+/* ── group boxes ─────────────────────────────────────────────────── */
+.acx fieldset {
+  margin: 0 0 8px; padding: 6px 6px 6px; min-width: 0;
+  border: 1px solid var(--shade); box-shadow: inset 1px 1px var(--hi), 1px 1px var(--hi);
+}
+.acx legend { padding: 0 3px; margin-left: 4px; }
+.acx .acx-right fieldset { margin: 0; }
+.acx fieldset.grow { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+/* ── fields ──────────────────────────────────────────────────────── */
+.acx .row { display: flex; align-items: center; gap: 4px; margin: 3px 0; }
+.acx .row > label:first-child, .acx .row > .lbl { width: 86px; flex: none; }
+.acx .row .unit { width: 22px; color: #202020; }
+.acx .cols { display: flex; gap: 8px; }
+.acx .cols > * { flex: 1; min-width: 0; }
+.acx input[type=text], .acx input[type=number], .acx select, .acx .sunk, .acx textarea {
+  font: inherit; color: var(--ink); background: var(--hi); border: 0; border-radius: 0; padding: 2px 3px; height: 20px; min-width: 0;
+  box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade), inset -2px -2px var(--lite), inset 2px 2px var(--dark);
+}
+.acx input[type=number] { width: 64px; -moz-appearance: textfield; appearance: textfield; }
+.acx input[type=number]::-webkit-inner-spin-button { opacity: 0.6; }
+.acx input:focus, .acx select:focus { outline: none; }
+.acx input:disabled, .acx input[readonly], .acx select:disabled { background: var(--face); color: #404040; }
+.acx input.ro { background: var(--face); }
+.acx select { height: 20px; padding: 1px 2px; }
+.acx select[size] { height: auto; padding: 1px; }
+.acx .readout { display: inline-block; min-width: 56px; height: 18px; padding: 1px 4px; background: var(--hi); box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade), inset -2px -2px var(--lite), inset 2px 2px var(--dark); white-space: nowrap; overflow: hidden; }
+.acx label.opt { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; white-space: nowrap; }
+.acx input[type=radio], .acx input[type=checkbox] { margin: 0; accent-color: var(--navy); }
+.acx .list { width: 100%; font: inherit; }
+.acx .warn { color: #800000; }
+.acx .muted { color: #404040; }
+.acx .small { font-size: 10px; }
+.acx .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.acx table.grid { border-collapse: collapse; width: 100%; background: var(--hi); }
+.acx table.grid th { background: var(--face); font-weight: normal; text-align: left; padding: 1px 4px; box-shadow: inset -1px -1px var(--shade), inset 1px 1px var(--hi); position: sticky; top: 0; }
+.acx table.grid td { padding: 1px 4px; border-bottom: 1px dotted #c0c0c0; white-space: nowrap; }
+.acx table.grid tr.sel td { background: var(--navy); color: var(--hi); }
+.acx .scroll { overflow: auto; background: var(--hi); box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade), inset -2px -2px var(--lite), inset 2px 2px var(--dark); padding: 2px; }
+
+/* ── the black chart panels ──────────────────────────────────────── */
+.acx .acx-chart { position: relative; flex: 1; min-height: 120px; background: #000; box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade), inset -2px -2px var(--lite), inset 2px 2px var(--dark); padding: 2px; }
+.acx .acx-chart canvas { display: block; width: 100%; height: 100%; }
+.acx .manager { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.acx .manager .row { margin: 0; }
+.acx .manager .row > label:first-child, .acx .manager .row > .lbl { width: auto; }
+
+/* ── progress bar and Start ──────────────────────────────────────── */
+.acx .acx-progress { width: 160px; height: 18px; padding: 2px; box-shadow: inset -1px -1px var(--hi), inset 1px 1px var(--shade); }
+.acx .acx-progress > div { height: 100%; width: 0; background: repeating-linear-gradient(90deg, var(--navy) 0 8px, transparent 8px 10px); }
+.acx .start { min-width: 75px; font-weight: bold; }
+
+/* ── the calculator ──────────────────────────────────────────────── */
+.acx .acx-calc { flex: 1; overflow: auto; padding: 6px 4px; }
+.acx .acx-calc .row > label:first-child { width: 120px; }
+.acx .acx-calc input[type=text] { width: 150px; }
+.acx .about { padding: 10px; }
+
+/* windows can be resized from the bottom-right corner, as Win95's could */
+.acx .acx-win { resize: both; overflow: hidden; min-width: 320px; min-height: 160px; }
+.acx .acx-win.min, .acx .acx-win.max { resize: none; min-height: 0; }
+
+/* min / max pairs side by side in the narrow left pane */
+.acx .cols .row > label:first-child { width: 38px; }
+.acx .cols input[type=number] { width: 50px; }
+.acx .cols .row .unit { width: 16px; }

@@ -2,9 +2,13 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS } from '../acoustics/bands.js';
 import { directivityQ, deviceGain, frame } from '../acoustics/patterns.js';
+import { findNulls } from '../acoustics/nulls.js';
 import { allModes } from '../acoustics/room.js';
+import { F_MAX, F_MIN } from '../compute/compute.js';
 import { selectedDevice } from '../model/store.js';
 import { fitCanvas } from '../views/glyphs.js';
+import { download } from './dom.js';
+import { makePoppable, saveCanvas, toCsv } from './popout.js';
 
 /**
  * THE METER BRIDGE
@@ -24,21 +28,64 @@ const FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
 
 export function createMeters({ root, store, engine, onListen }) {
   root.innerHTML = `
-    <div class="meter m-spl"><h4>SPL <span class="sub spl-mic"></span></h4><canvas></canvas></div>
-    <div class="meter m-rta"><h4>Octave RTA <span class="sub">direct + diffuse</span></h4><canvas></canvas></div>
-    <div class="meter m-fr wide"><h4>Frequency response <span class="sub">wave · modal · click to tune</span></h4><canvas></canvas></div>
-    <div class="meter m-echo wide"><h4>Echogram <span class="sub">arrivals · tail · Schroeder</span></h4><canvas></canvas></div>
-    <div class="meter m-iso"><h4>ISO 3382 <button class="listen" title="Hear the estimated impulse response at this mic">▶ Listen</button></h4><div class="tiles"></div></div>
-    <div class="meter m-rt"><h4>RT60 <span class="sub">Sabine · Eyring · EBU</span></h4><canvas></canvas></div>
-    <div class="meter m-polar"><h4>Polar <span class="sub pol-name"></span></h4><canvas></canvas></div>`;
-  const cv = (sel) => root.querySelector(`${sel} canvas`);
-  root.querySelector('.listen').addEventListener('click', () => onListen());
+    <div class="meter m-spl" data-kind="spl"><h4>SPL <span class="sub spl-mic"></span></h4><canvas></canvas></div>
+    <div class="meter m-rta" data-kind="rta"><h4>Octave RTA <span class="sub">direct + diffuse</span></h4><canvas></canvas></div>
+    <div class="meter m-fr wide" data-kind="response"><h4>Frequency response <span class="sub">wave · modal · <b style="color:#38bdf8">nulls</b> · click to tune</span></h4><canvas></canvas></div>
+    <div class="meter m-echo wide" data-kind="echogram"><h4>Echogram <span class="sub">arrivals · tail · Schroeder</span></h4><canvas></canvas></div>
+    <div class="meter m-iso" data-kind="iso3382"><h4>ISO 3382 <button class="listen" title="Hear the estimated impulse response at this mic">▶ Listen</button></h4><div class="tiles"></div></div>
+    <div class="meter m-rt" data-kind="rt60"><h4>RT60 <span class="sub">Sabine · Eyring · EBU</span></h4><canvas></canvas></div>
+    <div class="meter m-polar" data-kind="polar"><h4>Polar <span class="sub pol-name"></span></h4><canvas></canvas></div>`;
+  // Held, not looked up: a meter popped into its own window is no longer under `root`.
+  const el = Object.fromEntries([...root.querySelectorAll('.meter')].map((m) => [m.dataset.kind, m]));
+  const cv = (kind) => el[kind].querySelector('canvas');
+  el.iso3382.querySelector('.listen').addEventListener('click', () => onListen());
 
-  cv('.m-fr').addEventListener('click', (e) => {
+  const fr = cv('response');
+  const frX = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const f = 20 * 50 ** ((e.clientX - r.left - 30) / (r.width - 40));
-    if (f >= 20 && f <= 1000) store.setSettings({ freq: Math.round(f), method: store.state.settings.method === 'energy' ? 'wave' : store.state.settings.method });
+    return F_MIN * (F_MAX / F_MIN) ** ((e.clientX - r.left - 30) / (r.width - 40));
+  };
+  fr.addEventListener('click', (e) => {
+    const f = frX(e);
+    if (f >= F_MIN && f <= F_MAX) store.setSettings({ freq: Math.round(f), method: store.state.settings.method === 'energy' ? 'wave' : store.state.settings.method });
   });
+  // Explore: what the curve reads under the pointer.
+  let hover = null;
+  fr.addEventListener('pointermove', (e) => {
+    hover = frX(e);
+    drawResponse(fr, engine.out, store.state.settings, hover);
+  });
+  fr.addEventListener('pointerleave', () => {
+    hover = null;
+    drawResponse(fr, engine.out, store.state.settings);
+  });
+
+  const titles = { spl: 'SPL', rta: 'Octave RTA', response: 'Frequency response', echogram: 'Echogram', iso3382: 'ISO 3382', rt60: 'RT60', polar: 'Polar' };
+  for (const [kind, m] of Object.entries(el)) {
+    const pop = makePoppable(m, {
+      title: titles[kind],
+      onChange: () => render(),
+      tools: (win) => {
+        const b = (label, title, fn) => {
+          const x = win.document.createElement('button');
+          x.textContent = label;
+          x.title = title;
+          x.onclick = fn;
+          return x;
+        };
+        const name = `${(store.state.fileName || 'room').replace(/\.[^.]+$/, '')}-${kind}`;
+        const out = [b('⬇ CSV', 'Export the numbers behind this graph', () => download(`${name}.csv`, toCsv(meterRows(kind, engine.out, store.state)), 'text/csv'))];
+        if (m.querySelector('canvas')) out.unshift(b('⬇ PNG', 'Save this graph as a picture', () => saveCanvas(m.querySelector('canvas'), `${name}.png`)));
+        return out;
+      },
+    });
+    // The title pops it out; so does a double-click anywhere on it (a single click on the response still tunes).
+    m.querySelector('h4').addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      pop.pop();
+    });
+    m.addEventListener('dblclick', () => pop.pop());
+  }
 
   function render() {
     const out = engine.out;
@@ -46,16 +93,51 @@ export function createMeters({ root, store, engine, onListen }) {
     const rep = out.reports?.[out.monitorId];
     const mic = state.mics.find((m) => m.id === out.monitorId);
     root.classList.toggle('empty', !rep);
-    root.querySelector('.spl-mic').textContent = mic ? (mic.mix ? 'MIX' : mic.name) : '';
-    drawSpl(cv('.m-spl'), rep, state.settings);
-    drawRta(cv('.m-rta'), rep, state.settings);
-    drawResponse(cv('.m-fr'), out, state.settings);
-    drawEcho(cv('.m-echo'), rep);
-    drawIso(root.querySelector('.m-iso .tiles'), rep, state.settings);
-    drawRt(cv('.m-rt'), out.room, state.settings);
-    drawPolar(cv('.m-polar'), selectedDevice(state) ?? state.speakers[0], state.settings, root.querySelector('.pol-name'));
+    el.spl.querySelector('.spl-mic').textContent = mic ? (mic.mix ? 'MIX' : mic.name) : '';
+    drawSpl(cv('spl'), rep, state.settings);
+    drawRta(cv('rta'), rep, state.settings);
+    drawResponse(fr, out, state.settings, hover);
+    drawEcho(cv('echogram'), rep);
+    drawIso(el.iso3382.querySelector('.tiles'), rep, state.settings);
+    drawRt(cv('rt60'), out.room, state.settings);
+    drawPolar(cv('polar'), selectedDevice(state) ?? state.speakers[0], state.settings, el.polar.querySelector('.pol-name'));
   }
   return { render };
+}
+
+/** The numbers behind each graph, as CSV rows (header first). */
+export function meterRows(kind, out, state) {
+  const rep = out.reports?.[out.monitorId];
+  const bands = BANDS.map((b) => b);
+  if (kind === 'response') {
+    const r = out.response;
+    if (!r) return [['no response — place a speaker and a mic']];
+    const nulls = findNulls(r.freqs, r.wave);
+    const inNull = (f) => nulls.find((n) => f >= n.lo && f <= n.hi);
+    return [['Hz', 'wave dB', 'modal dB', 'null'], ...r.freqs.map((f, i) => [f, r.wave[i], r.modal[i], inNull(f) ? `${hz(inNull(f).f)} −${inNull(f).depth.toFixed(1)} dB` : ''])];
+  }
+  if (kind === 'rt60') {
+    const room = out.room;
+    if (!room) return [['no room']];
+    return [['Hz', 'Sabine s', 'Eyring s', 'mean alpha'], ...room.perBand.map((p, i) => [bands[i], p.sabine, p.eyring, p.abar])];
+  }
+  if (!rep) return [['no mic report — place a speaker and a mic']];
+  if (kind === 'spl' || kind === 'rta') return [['Hz', 'total dB', 'direct dB', 'reverb dB'], ...rep.energy.map((e, i) => [bands[i], e.total, e.direct, e.reverb])];
+  if (kind === 'echogram') return [['t ms', 'level dB', 'order'], ...rep.echogram.arrivals.map((a) => [a.t * 1000, a.level, a.order])];
+  if (kind === 'iso3382') return [['parameter', 'value'], ...Object.entries(rep.iso).map(([k, v]) => [k, v]), ['ITDG ms', rep.itdgMs], ['wave dB', rep.wave], ['modal dB', rep.modal]];
+  if (kind === 'polar') {
+    const dev = selectedDevice(state) ?? state.speakers[0];
+    if (!dev) return [['no device']];
+    const freq = state.settings.method === 'energy' ? BANDS[state.settings.band] : state.settings.freq;
+    const probe = { ...dev, _frame: frame(0, 0) };
+    const rows = [['deg', 'horizontal dB', 'vertical dB']];
+    for (let d = 0; d < 360; d += 5) {
+      const a = d * (Math.PI / 180);
+      rows.push([d, deviceGain(probe, [Math.cos(a), -Math.sin(a), 0], freq), deviceGain(probe, [Math.cos(a), 0, Math.sin(a)], freq)]);
+    }
+    return rows;
+  }
+  return [];
 }
 
 function noData(ctx, w, h, text = 'Place a speaker and a mic') {
@@ -140,11 +222,11 @@ function drawRta(canvas, rep, settings) {
   });
 }
 
-function drawResponse(canvas, out, settings) {
+function drawResponse(canvas, out, settings, hover = null) {
   const { ctx, w, h } = fitCanvas(canvas);
   const r = out.response;
   if (!r || !out.room) return noData(ctx, w, h);
-  const x = (f) => 30 + (Math.log(f / 20) / Math.log(50)) * (w - 40);
+  const x = (f) => 30 + (Math.log(f / F_MIN) / Math.log(F_MAX / F_MIN)) * (w - 40);
   const all = [...r.wave, ...r.modal].filter(Number.isFinite);
   const top = Math.ceil(Math.max(...all) / 6) * 6 + 3;
   const range = 42;
@@ -152,12 +234,12 @@ function drawResponse(canvas, out, settings) {
   ctx.strokeStyle = GRID;
   ctx.fillStyle = TEXT;
   ctx.font = FONT;
-  for (const f of [20, 50, 100, 200, 500, 1000]) {
+  for (const f of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
     ctx.beginPath();
     ctx.moveTo(x(f), 6);
     ctx.lineTo(x(f), h - 24);
     ctx.stroke();
-    ctx.fillText(f >= 1000 ? '1k' : String(f), x(f) - 8, h - 12);
+    ctx.fillText(hz(f), x(f) - 8, h - 12);
   }
   for (let db = top; db >= top - range; db -= 6) {
     ctx.beginPath();
@@ -199,6 +281,23 @@ function drawResponse(canvas, out, settings) {
     ctx.stroke();
     ctx.lineWidth = 1;
   };
+  // The nulls: shaded where the curve is down, the deepest point marked and named.
+  let lastLabel = -Infinity;
+  for (const n of findNulls(r.freqs, r.wave)) {
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.16)';
+    ctx.fillRect(x(n.lo), 6, Math.max(2, x(n.hi) - x(n.lo)), h - 30);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.beginPath();
+    ctx.arc(x(n.f), y(n.db), 3.5, 0, Math.PI * 2);
+    ctx.stroke();
+    // a label only where there is room for it; the shading and the ring still mark every null
+    const label = `${hz(n.f)} −${n.depth.toFixed(0)}`;
+    if (x(n.f) - 14 > lastLabel + 4) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(label, x(n.f) - 14, Math.min(h - 28, y(n.db) + 14));
+      lastLabel = x(n.f) - 14 + ctx.measureText(label).width;
+    }
+  }
   trace(r.modal, '#22d3ee', 1.2);
   trace(r.wave, '#f43f5e', 1.8);
   ctx.strokeStyle = '#fde047';
@@ -210,6 +309,32 @@ function drawResponse(canvas, out, settings) {
   ctx.fillText('wave', w - 74, 16);
   ctx.fillStyle = '#22d3ee';
   ctx.fillText('modal', w - 40, 16);
+  if (hover && hover >= F_MIN && hover <= F_MAX) {
+    // the nearest computed point to the pointer
+    let i = 0;
+    for (let j = 1; j < r.freqs.length; j++) if (Math.abs(Math.log(r.freqs[j] / hover)) < Math.abs(Math.log(r.freqs[i] / hover))) i = j;
+    const f = r.freqs[i];
+    ctx.strokeStyle = 'rgba(255,255,255,.5)';
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x(f), 6);
+    ctx.lineTo(x(f), h - 24);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const label = `${f.toFixed(f < 100 ? 1 : 0)} Hz · wave ${Number.isFinite(r.wave[i]) ? r.wave[i].toFixed(1) : '—'} dB${Number.isFinite(r.modal[i]) ? ` · modal ${r.modal[i].toFixed(1)}` : ''}`;
+    const tw = ctx.measureText(label).width + 8;
+    const lx = Math.min(w - tw - 2, x(f) + 6);
+    ctx.fillStyle = 'rgba(11,13,18,.9)';
+    ctx.fillRect(lx, 20, tw, 15);
+    ctx.fillStyle = '#e5e7eb';
+    ctx.fillText(label, lx + 4, 31);
+  }
+}
+
+/** 63, 1.2k, 17k — short enough for an axis. */
+export function hz(f) {
+  if (f >= 1000) return `${+(f / 1000).toFixed(f >= 10000 ? 0 : 1)}k`;
+  return f.toFixed(0);
 }
 
 function drawEcho(canvas, rep) {

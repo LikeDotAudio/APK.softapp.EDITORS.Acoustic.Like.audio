@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { makeMic, makeSpeaker, newId } from '../acoustics/devices.js';
+import { DEFAULT_ISOLATION } from '../acoustics/isolation.js';
 import { mirrorDevice, syncTwin } from '../acoustics/symmetry.js';
 
 /**
@@ -33,7 +34,11 @@ export const DEFAULT_SETTINGS = {
   view: 'six',
   symmetric: true,
   layout: { preset: '7.1.4', radius: 2.0 },
-  show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true },
+  isolation: DEFAULT_ISOLATION,
+  /** What this app draws into the CAD itself (cad/marks.js): labels, reflection panels, cut-aways, construction sections. */
+  cadMarks: { labels: true, panels: true, ceilingPanels: true, cutaways: true, sections: true, arrangement: true },
+  autoPanels: { wall: 'panel-1200x600x100', ceiling: 'cloud-1200', w: 0.6, h: 1.2 },
+  show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true, arrangement: true },
 };
 
 const KEY = 'acoustic.like.audio/v1/';
@@ -78,7 +83,15 @@ export function createStore() {
 
   function importDoc(doc) {
     if (!doc || doc.format !== 'acoustic.like.audio@1') throw new Error('Not an acoustic.like.audio@1 file');
-    state.settings = { ...structuredClone(DEFAULT_SETTINGS), ...doc.settings, show: { ...DEFAULT_SETTINGS.show, ...doc.settings?.show } };
+    const d = doc.settings ?? {};
+    state.settings = {
+      ...structuredClone(DEFAULT_SETTINGS),
+      ...d,
+      show: { ...DEFAULT_SETTINGS.show, ...d.show },
+      isolation: { ...DEFAULT_ISOLATION, ...d.isolation, shared: { ...DEFAULT_ISOLATION.shared, ...d.isolation?.shared } },
+      cadMarks: { ...DEFAULT_SETTINGS.cadMarks, ...d.cadMarks },
+      autoPanels: { ...DEFAULT_SETTINGS.autoPanels, ...d.autoPanels },
+    };
     state.speakers = doc.speakers ?? [];
     state.mics = doc.mics ?? [];
     state.selected = null;
@@ -97,6 +110,20 @@ export function createStore() {
       /* fall through to an empty overlay */
     }
     emit();
+  }
+
+  /**
+   * A session file's overlay, for the drawing `fileName`: kept in this browser
+   * under that name (so the CAD opening the drawing finds it) and put on now.
+   */
+  function adopt(fileName, doc) {
+    state.fileName = fileName;
+    try {
+      localStorage.setItem(KEY + (fileName || 'untitled'), JSON.stringify({ ...doc, fileName }));
+    } catch {
+      /* the overlay still opens; it just will not be there next time */
+    }
+    importDoc(doc);
   }
 
   /** The mirror axis in metres, or null when the CAD's Symmetrical Mode is off. */
@@ -129,6 +156,7 @@ export function createStore() {
     load,
     exportDoc,
     importDoc,
+    adopt,
     axis,
     setCad(patch, what = 'cad') {
       Object.assign(state.cad, patch);

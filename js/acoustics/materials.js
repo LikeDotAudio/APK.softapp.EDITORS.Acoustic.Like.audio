@@ -99,6 +99,11 @@ export const MATERIALS = [
   m('membrane-trap', 'Membrane bass trap', 'Resonator', [0.65, 0.55, 0.35, 0.2, 0.15, 0.1], 25, 0.1, 'flat', '#6b6b2a'),
   // diffusers — golds
   m('diffuser', 'QRD diffuser, wooden wells', 'Diffuser', [0.45, 0.3, 0.15, 0.2, 0.3, 0.4], 20, 0.9, 'qrd', '#d4a52a'),
+  // furniture — the desk is a hard reflector at ear height, the couch a big soft absorber
+  m('desk-top', 'Desk / console top, laminate and metal', 'Furniture', [0.05, 0.04, 0.04, 0.04, 0.05, 0.05], 20, 0.25, 'rough', '#6b7280'),
+  m('upholstered', 'Upholstered couch or chair', 'Furniture', [0.35, 0.5, 0.65, 0.75, 0.75, 0.7], 5, 0.6, 'rough', '#7c5a3a'),
+  m('rack', 'Equipment rack, steel and gear', 'Furniture', [0.05, 0.05, 0.06, 0.08, 0.1, 0.1], 20, 0.5, 'rough', '#3f4652'),
+  m('door-acoustic', 'Acoustic door, sealed, solid core', 'Wood', [0.12, 0.08, 0.05, 0.05, 0.05, 0.05], 45, 0.05, 'flat', '#5c3b1e'),
   // nothing there
   m('opening', 'Opening / void', 'Opening', [1, 1, 1, 1, 1, 1], 0, 0, 'flat', '#202020'),
 ];
@@ -107,15 +112,31 @@ export const MATERIALS = [
 const p = (id, name, mat, size) => ({ id, name, material: mat, size });
 
 export const PRODUCTS = [
+  p('desk-1800x900', 'Producer desk 1800×900', 'desk-top', [1.8, 0.9]),
+  p('console-2400x1000', 'Mixing console 2400×1000', 'desk-top', [2.4, 1.0]),
+  p('console-3200x1200', 'Large-format console 3200×1200', 'desk-top', [3.2, 1.2]),
+  p('couch-2000x900', 'Couch 2000×900', 'upholstered', [2.0, 0.9]),
+  p('couch-2400x1000', 'Client couch 2400×1000', 'upholstered', [2.4, 1.0]),
+  p('armchair-900', 'Armchair 900×900', 'upholstered', [0.9, 0.9]),
+  p('rack-600x800', 'Equipment rack 600×800', 'rack', [0.6, 0.8]),
   p('qrd-600', 'QRD 600×600', 'diffuser', [0.6, 0.6]),
+  p('qrd-1200x600', 'QRD 1200×600', 'diffuser', [1.2, 0.6]),
+  p('skyline-600', 'Skyline diffuser 600×600', 'diffuser', [0.6, 0.6]),
+  p('panel-600x600x50', 'Absorber panel 600×600×50', 'mineral-wool-50', [0.6, 0.6]),
+  p('panel-1200x1200x100', 'Absorber panel 1200×1200×100', 'absorber-100', [1.2, 1.2]),
+  p('superchunk-600', 'Superchunk corner trap 600×600', 'bass-trap', [0.6, 0.6]),
   p('panel-1200x600x50', 'Absorber panel 1200×600×50', 'mineral-wool-50', [1.2, 0.6]),
   p('panel-1200x600x100', 'Absorber panel 1200×600×100', 'absorber-100', [1.2, 0.6]),
   p('bass-trap-600x1200', 'Bass trap 600×1200 corner', 'bass-trap', [0.6, 1.2]),
   p('membrane-trap-1200x600', 'Membrane bass trap 1200×600', 'membrane-trap', [1.2, 0.6]),
   p('slat-1200x600', 'Slat resonator 1200×600', 'slat-resonator', [1.2, 0.6]),
   p('cloud-1200', 'Ceiling cloud 1200×1200', 'ceiling-cloud', [1.2, 1.2]),
+  p('cloud-1200x600', 'Ceiling cloud 1200×600', 'ceiling-cloud', [1.2, 0.6]),
   p('window-1200x1000', 'Window 1200×1000', 'glass-heavy', [1.2, 1.0]),
+  p('window-1800x1200', 'Control-room glass 1800×1200', 'glass-heavy', [1.8, 1.2]),
   p('door-900x2100', 'Door 900×2100', 'door-wood', [0.9, 2.1]),
+  p('door-acoustic-1000x2100', 'Acoustic door 1000×2100', 'door-acoustic', [1.0, 2.1]),
+  p('sliding-glass-1800x2100', 'Sliding glass door 1800×2100', 'glass-heavy', [1.8, 2.1]),
 ];
 
 export const DEFAULT_WALL = 'gypsum';
