@@ -23,7 +23,7 @@ import { installSashes } from './ui/sashes.js';
 import { watchForUpdates } from './ui/freshness.js';
 import { crossings, DIRECT_MARKS_MS, GAP_MARKS_MS, radiusLanes } from './acoustics/radiusScale.js';
 import { hz } from './ui/meters.js';
-import { createEngine, patchesFromCad, sweepFrames } from './compute/engine.js';
+import { REFINE_LABEL, createEngine, patchesFromCad, sweepFrames } from './compute/engine.js';
 import { createStore } from './model/store.js';
 import { createInspector } from './ui/inspector.js';
 import { createMeters } from './ui/meters.js';
@@ -73,6 +73,10 @@ const engine = createEngine(store, (out, phase) => {
     showCache();
     return;
   }
+  if (phase === 'refining') {
+    status.textContent = `⟳ refining — cells ${REFINE_LABEL[out.refining]}…`;
+    return;
+  }
   out.scale = fieldScale(out.values, store.state.settings.rangeDb, scaleZoom);
   showCache();
   if (phase === 'room') {
@@ -80,7 +84,7 @@ const engine = createEngine(store, (out, phase) => {
     renderGeometry();
     return;
   }
-  status.textContent = out.error ? '⚠ field error — see console' : `${out.room.walls.length} walls · ${store.state.speakers.length} spk · ${store.state.mics.length} mic${out.virtual ? ' · virtual room' : ''}`;
+  status.textContent = out.error ? '⚠ field error — see console' : `${out.room.walls.length} walls · ${store.state.speakers.length} spk · ${store.state.mics.length} mic${out.virtual ? ' · virtual room' : ''}${out.level ? ` · cells ${REFINE_LABEL[out.level]}` : ''}`;
   if (out.error) console.error(out.error);
   // nothing ever stands outside the rooms: whatever left one (a layout, a carried array, a smaller plan) comes back, and this runs again
   if (out.room && store.keepInside(out.room, (out.rooms ?? []).map((l) => l.poly))) return;

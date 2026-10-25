@@ -45,6 +45,7 @@ export const DEFAULT_SETTINGS = {
   band: 2,
   maxOrder: 3,
   resolution: 64,
+  refine: 3, // after the field is up, compute it again with cells ½, ¼, ⅛ the size (engine.js)
   rangeDb: 30,
   sliceHeight: null,
   aWeight: false,

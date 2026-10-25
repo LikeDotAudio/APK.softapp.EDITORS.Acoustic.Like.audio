@@ -94,12 +94,14 @@ export function patchesFromCad(geometry) {
 }
 
 export function createEngine(store, onResult) {
-  let worker = null;
-  try {
-    worker = new Worker(new URL('./fieldWorker.js', import.meta.url), { type: 'module' });
-  } catch {
-    worker = null;
-  }
+  const spawn = () => {
+    try {
+      return new Worker(new URL('./fieldWorker.js', import.meta.url), { type: 'module' });
+    } catch {
+      return null;
+    }
+  };
+  let worker = spawn();
   let seq = 0;
   let busy = false;
   let queued = null;
@@ -135,6 +137,7 @@ export function createEngine(store, onResult) {
   function run(job) {
     busy = true;
     inflight = job;
+    const t0 = performance.now();
     const done = (result, error) => {
       busy = false;
       inflight = null;
@@ -142,13 +145,14 @@ export function createEngine(store, onResult) {
       else if (error) {
         out.error = error;
         out.computing = false;
+        out.refining = 0;
         onResult(out);
-      } else finish(result, job);
+      } else finish(result, job, performance.now() - t0);
       if (queued) {
         const next = queued;
         queued = null;
         run(next);
-      } else pump();
+      } else idle();
     };
     if (!worker) {
       setTimeout(() => {
@@ -170,10 +174,19 @@ export function createEngine(store, onResult) {
       busy = false;
       run(job);
     };
-    worker.postMessage({ id, job: { ...job, scene: undefined } }); // the scene only keys the frame cache, not worth cloning
+    worker.postMessage({ id, job: { ...job, scene: undefined, base: undefined } }); // the scene only keys the frame cache, the base only names the job refined: neither worth cloning
   }
 
-  function finish(result, job) {
+  function finish(result, job, ms = 0) {
+    // a refinement computes the field alone: the meters and the response are the base job's, the same at every cell size
+    if (job.level && !result.reports) {
+      result.reports = out.reports;
+      result.response = out.response;
+    }
+    shown = job;
+    out.level = job.level ?? 0;
+    out.refining = 0;
+    if (ms) out.cost[out.level] = { ms, points: gridCount(job.grids) };
     out.fieldRoom = job.room;
     out.fieldGrids = job.grids;
     out.values = result.values;
@@ -181,9 +194,43 @@ export function createEngine(store, onResult) {
     out.response = result.response;
     out.error = null;
     out.computing = Boolean(queued);
-    if (!job.coarse && job.scene === scene) cache.set(job.settings.freq, { result, job });
+    // the finest field had at a frequency is the one kept for it
+    if (!job.coarse && job.scene === scene && (cache.get(job.settings.freq)?.job.level ?? -1) <= (job.level ?? 0)) cache.set(job.settings.freq, { result, job });
     syncFrames();
     onResult(out);
+  }
+
+  /**
+   * THE FIELD REFINED, A HALVING AT A TIME
+   *
+   * Once the field is up at the chosen resolution and nothing else is waiting,
+   * it is computed again with cells half the size, then a quarter, then an
+   * eighth (settings.refine halvings, never past REFINE_MAX cells along the
+   * room's longest side) — every point a sample of its own, not the coarser
+   * one shared out. Each halving is four times the points, four times the work
+   * and four times the cells to draw. Anything changing stops the one in
+   * hand (the worker is replaced) and starts again from the coarse field.
+   */
+  let shown = null; // the job whose field is on screen
+  out.cost = [];
+  out.refining = 0;
+  function finer(job) {
+    if (!job || job.coarse || job.frame || job.base !== last || job.scene !== scene) return null;
+    const level = (job.level ?? 0) + 1;
+    if (level > (job.settings.refine ?? 0)) return null;
+    const res = refinedRes(job.settings.resolution, level);
+    if (res <= refinedRes(job.settings.resolution, level - 1)) return null;
+    const sliceZ = job.grids.plan.z;
+    return { ...job, level, grids: buildGrids(job.room, sliceZ, res), withResponse: false, withReports: false };
+  }
+
+  /** The worker is free: refine what is shown, else paint a sweep frame ahead. */
+  function idle() {
+    const next = finer(shown);
+    if (!next) return pump();
+    out.refining = next.level;
+    onResult(out, 'refining');
+    run(next);
   }
 
   /**
@@ -253,6 +300,14 @@ export function createEngine(store, onResult) {
 
   /** Recompute. `coarse` halves the resolution — used while something is being dragged. */
   function update(coarse = false) {
+    // a refinement in hand is for a room that is about to change: drop it rather than wait it out
+    if (busy && inflight?.level && worker) {
+      worker.terminate();
+      worker = spawn();
+      busy = false;
+      inflight = null;
+      out.refining = 0;
+    }
     const { state } = store;
     const { settings } = state;
     const room = currentRoom();
@@ -267,7 +322,7 @@ export function createEngine(store, onResult) {
     const monitorId = (state.selected?.kind === 'mic' && state.selected.id) || mix?.id || state.mics[0]?.id;
     // everything the field depends on but the frequency; what only changes how it is shown is left out
     const key = [state.cad.geometry, state.speakers, state.mics];
-    const flat = JSON.stringify({ ...settings, freq: 0, view: 0, show: 0, monitorId, responsePoints });
+    const flat = JSON.stringify({ ...settings, freq: 0, view: 0, show: 0, refine: 0, monitorId, responsePoints });
     if (!scene || key.some((v, i) => v !== scene.refs[i]) || flat !== sceneKey) {
       scene = { refs: key };
       sceneKey = flat;
@@ -276,7 +331,8 @@ export function createEngine(store, onResult) {
       syncFrames();
     }
     // the field hears the highlighted arrangement, as the plan shows it, through the monitor controller
-    const job = { room, speakers: monitoredSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, responsePoints, scene, coarse };
+    const job = { room, speakers: monitoredSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, responsePoints, scene, coarse, level: 0 };
+    job.base = job;
     out.monitorId = monitorId;
     if (!coarse) last = job;
     const hit = !coarse && cache.get(settings.freq);
@@ -284,7 +340,9 @@ export function createEngine(store, onResult) {
       queued = null;
       // what is being painted now is older than this: keep it as a frame, do not show it over this one
       if (inflight) inflight.frame = true;
-      finish(hit.result, hit.job);
+      // the cached field stands for this job: refined from it, under this job's settings (refine may have changed)
+      finish(hit.result, { ...hit.job, settings, base: job });
+      if (!busy) idle();
       return;
     }
     out.computing = true;
@@ -306,6 +364,21 @@ export function createEngine(store, onResult) {
   }
 
   return { update, out, currentRoom, frames, setResponsePoints };
+}
+
+/** What each refinement does to the cell, by level. */
+export const REFINE_LABEL = ['as set', '½', '¼', '⅛'];
+
+/** The finest the field is refined to: cells along the room's longest side. */
+export const REFINE_MAX = 1024;
+
+/** The resolution after `level` halvings of the cell, capped at REFINE_MAX. */
+export const refinedRes = (res, level) => Math.min(REFINE_MAX, Math.max(res, Math.round(res * 2 ** level)));
+
+/** How many points a set of grids samples. */
+export function gridCount(grids) {
+  const plane = (g) => g.nx * g.ny;
+  return plane(grids.plan) + plane(grids.floor) + plane(grids.ceiling) + grids.walls.reduce((t, w) => t + w.nu * w.nz, 0);
 }
 
 /** How many of the ladder's first frequencies are its seeds, painted in their order before any gap is split. */

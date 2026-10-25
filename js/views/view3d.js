@@ -154,6 +154,21 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
     return { c, eye, fwd, right, up, size };
   }
 
+  /**
+   * The camera on the move: the field is drawn about 70 cells across a face
+   * so an orbit keeps up; at rest every cell computed is drawn — a refined
+   * field (engine.js) is hundreds of thousands of them.
+   */
+  let moving = false;
+  let settle = 0;
+  const still = () => {
+    clearTimeout(settle);
+    settle = setTimeout(() => {
+      moving = false;
+      render();
+    }, 180);
+  };
+
   function render() {
     const { ctx, w, h } = fitCanvas(canvas);
     const out = engine.out;
@@ -191,7 +206,7 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
     const level = (kind, x, y) => (room.sloped ? heightsAtXY(room, x, y)[kind] : kind === 'floor' ? 0 : room.H);
     /** A floor or ceiling as cells; `vals` null paints them flat. Each corner sits at its surface's height. */
     const plane = (g, vals, kind) => {
-      const step = Math.max(1, Math.round(g.nx / 70));
+      const step = moving ? Math.max(1, Math.round(g.nx / 70)) : 1;
       for (let j = 0; j < g.ny; j += step)
         for (let i = 0; i < g.nx; i += step) {
           const x = g.x0 + i * g.cell;
@@ -236,7 +251,7 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
         return;
       }
       const vals = values.walls[wi];
-      const step = Math.max(1, Math.round(g.nu / 60));
+      const step = moving ? Math.max(1, Math.round(g.nu / 60)) : 1;
       for (let j = 0; j < g.nz; j += step)
         for (let i = 0; i < g.nu; i += step) {
           const t0 = i / g.nu;
@@ -671,11 +686,14 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
     const move = (ev) => {
       cam.yaw = yaw - (ev.clientX - x0) * 0.4;
       cam.pitch = Math.max(-10, Math.min(85, pitch + (ev.clientY - y0) * 0.3));
+      moving = true;
+      clearTimeout(settle);
       render();
     };
     const up = () => {
       canvas.removeEventListener('pointermove', move);
       canvas.removeEventListener('pointerup', up);
+      if (moving) still();
     };
     canvas.addEventListener('pointermove', move);
     canvas.addEventListener('pointerup', up);
@@ -690,7 +708,9 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
     (e) => {
       e.preventDefault();
       cam.dist = Math.max(0.8, Math.min(5, cam.dist * (e.deltaY > 0 ? 1.08 : 1 / 1.08)));
+      moving = true;
       render();
+      still();
     },
     { passive: false },
   );

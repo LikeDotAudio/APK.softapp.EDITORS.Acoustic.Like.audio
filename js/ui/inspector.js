@@ -20,6 +20,7 @@ import { analyseIR, parseWav } from '../acoustics/measure.js';
 import { mirrorDevice } from '../acoustics/symmetry.js';
 import { GLASS_TYPES, makeWindow } from '../acoustics/windows.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
+import { REFINE_LABEL, gridCount, refinedRes } from '../compute/engine.js';
 import { selectedDevice } from '../model/store.js';
 import { groupPatches, shortName, swatch } from '../views/treatments.js';
 import { pickupCard, transducerCard } from '../views/transducer.js';
@@ -718,6 +719,32 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     return parts;
   }
 
+  /**
+   * What refining costs, before it is paid: every halving of the cell is four
+   * times the points to compute and four times the cells the 3-D view draws.
+   * Estimated from the field as set, and — once a level has run — measured.
+   */
+  function refineWarning(settings) {
+    const levels = settings.refine ?? 0;
+    const grids = engine.out.grids;
+    if (!levels || !grids) return [];
+    const base = gridCount(grids);
+    const cost = engine.out.cost ?? [];
+    const ms0 = cost[0]?.ms;
+    const lines = [];
+    for (let l = 1; l <= levels; l++) {
+      const k = (refinedRes(settings.resolution, l) / settings.resolution) ** 2;
+      const had = cost[l];
+      const pts = had?.points ?? base * k;
+      const time = had ? `took ${fmt(had.ms / 1000, 1)} s` : ms0 ? `about ${fmt((ms0 * k) / 1000, 1)} s` : `${fmt(k, 0)}× the work`;
+      lines.push(`cells ${REFINE_LABEL[l]}: ${fmt(pts / 1e6, 2)} M points · ${time}`);
+    }
+    const heavy = (cost[levels]?.points ?? base * (refinedRes(settings.resolution, levels) / settings.resolution) ** 2) > 400000;
+    return [
+      h('p', { class: `hint${heavy ? ' warn' : ''}` }, `⚠ CPU and rendering: each halving of the cell is 4× the points to compute and 4× the cells the 3-D room draws. ${lines.join(' · ')}. It runs in the background after the field is up and stops the moment anything changes; the sweep's frames wait for it, and the 3-D room drops back to coarse cells while you orbit or zoom.`),
+    ];
+  }
+
   // -------------------------------------------------------------------- Field
   function fieldPane() {
     const { settings } = S();
@@ -731,6 +758,8 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Octave band', select(settings.band, BAND_LABELS.map((label, value) => ({ value, label })), (v) => set({ band: +v }))),
       row('Reflection order', num(settings.maxOrder, (v) => set({ maxOrder: Math.max(0, Math.min(6, Math.round(v))) }), { step: 1, min: 0, max: 6 })),
       row('Resolution', num(settings.resolution, (v) => set({ resolution: Math.max(16, Math.min(200, Math.round(v))) }), { step: 8, unit: 'cells', min: 16, max: 200 })),
+      row('Then refine to', select(String(settings.refine ?? 0), REFINE_LABEL.map((label, i) => ({ value: String(i), label: i ? `cells ${REFINE_LABEL.slice(1, i + 1).join(' → ')}` : 'no — stop at the resolution' })), (v) => set({ refine: +v }))),
+      ...refineWarning(settings),
       row('Colour range', num(settings.rangeDb, (v) => set({ rangeDb: Math.max(6, v) }), { step: 3, unit: 'dB', min: 6 })),
       row('Plan slice height', num(settings.sliceHeight ?? NaN, (v) => set({ sliceHeight: v }), { unit: 'm (blank = mix ears)' }), button('auto', () => set({ sliceHeight: null }))),
       row('A-weighting (meter)', check(settings.aWeight, (v) => set({ aWeight: v }))),

@@ -57,8 +57,11 @@ function modalCurve(room, speakers, monitor, freqs, fMax) {
 /** The modal method is a low-frequency model: above this it shows the field at this frequency instead. */
 export const MODAL_MAX = 1000;
 
-/** `withResponse` false (a sweep's frame): no response curve — it does not depend on the frequency, so the frame borrows the room's. */
-export function runJob({ room, speakers, mics, settings, grids, monitorId, responsePoints, withResponse = true }) {
+/**
+ * `withResponse` false (a sweep's frame): no response curve — it does not depend on the frequency, so the frame borrows the room's.
+ * `withReports` false (a refinement, engine.js): no meters either — the cell size does not change what a mic hears.
+ */
+export function runJob({ room, speakers, mics, settings, grids, monitorId, responsePoints, withResponse = true, withReports = true }) {
   const prep = prepare(room, speakers, { maxOrder: settings.maxOrder });
   const modal = room && speakers.length ? prepareModal(room, speakers, Math.min(settings.freq, MODAL_MAX)) : null;
   const sample = (pt) => {
@@ -87,8 +90,8 @@ export function runJob({ room, speakers, mics, settings, grids, monitorId, respo
     walls: grids.walls.map(fill),
   };
 
-  const reports = {};
-  for (const mic of mics) if (speakers.length) reports[mic.id] = micReport(room, prep, modal, mic, settings);
+  const reports = withReports ? {} : null;
+  if (reports) for (const mic of mics) if (speakers.length) reports[mic.id] = micReport(room, prep, modal, mic, settings);
 
   let response = null;
   const monitor = mics.find((m) => m.id === monitorId);
