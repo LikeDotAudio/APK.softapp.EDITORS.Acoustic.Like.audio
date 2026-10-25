@@ -426,7 +426,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
           ? 'Drag to move — it settles onto the recommended divisions, crossings first (Alt: free) · Shift-drag to aim · Ctrl-click to turn it (click to set, Esc to cancel) · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)'
           : kind === 'furniture' || kind === 'gear'
           ? `Drag to move · Shift-drag to turn${kind === 'furniture' ? ' · Del / Backspace to remove' : ' — it lives in the CAD drawing'}`
-          : 'Drag to move — it settles onto the recommended divisions (Alt: free) · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)') + ' · right-click to lock or remove';
+          : 'Drag to move — it settles onto the recommended divisions (Alt: free) · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free) · Ctrl-click to turn it with the pointer in 15° steps (click to set, Alt: free, Esc to cancel)') + ' · right-click to lock or remove';
       const p = toScreen(d.x, d.y);
       el.style.transform = `translate(${p.x - 12}px, ${p.y - 12}px)`;
       el.style.display = Number.isFinite(p.x) ? '' : 'none';
@@ -441,29 +441,34 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
   /** A device being dragged onto the divisions: { along, across } metres in the room's frame, either null. */
   let snapped = null;
   const HOLD_MS = 380;
-  /** A speaker being turned after Ctrl-click: { id, before } — its aim follows the pointer until a click sets it. */
+  /** A speaker, mic or the mix position being turned after Ctrl-click: { kind, id, before } — its aim follows the pointer until a click sets it. */
   let spinning = null;
 
   /**
-   * Ctrl-click (⌘ on a Mac) a speaker: it turns to face the pointer, no
-   * button held, until a click sets it; Esc puts the old aim back. The plan
+   * Ctrl-click (⌘ on a Mac) a speaker, a mic or the mix position: it turns
+   * to face the pointer, no button held, until a click sets it; Esc puts the
+   * old aim back. A speaker turns by the degree, for its toe-in; a listener
+   * or a mic clicks round in 15° steps (Alt: free). The plan
    * sits over the CAD's iframe, which would swallow the pointer, so a sheet
    * over the tile takes it while the speaker turns.
    */
   function startSpin(el) {
     const id = el.dataset.id;
-    const dev = store.state.speakers.find((d) => d.id === id);
+    const kind = el.dataset.kind === 'mic' ? 'mic' : 'speaker';
+    const list = () => (kind === 'mic' ? store.state.mics : store.state.speakers);
+    const dev = list().find((d) => d.id === id);
     if (!dev) return;
-    store.select({ kind: 'speaker', id });
-    spinning = { id, before: dev.aim };
+    store.select({ kind, id });
+    spinning = { kind, id, before: dev.aim };
+    const step = kind === 'mic' ? 15 : 1;
     const sheet = document.createElement('div');
     sheet.className = 'spin';
-    sheet.title = 'Turning the speaker: click to set · Esc to cancel';
+    sheet.title = `Turning the ${kind === 'mic' ? (dev.mix ? 'mix position' : 'mic') : 'speaker'}${step > 1 ? ` in ${step}° steps (Alt: free)` : ''}: click to set · Esc to cancel`;
     hits.parentElement.appendChild(sheet);
     const end = (keep) => {
       sheet.remove();
       window.removeEventListener('keydown', key, true);
-      if (!keep) store.update('speaker', id, { aim: spinning.before }, true);
+      if (!keep) store.update(kind, id, { aim: spinning.before }, true);
       spinning = null;
       store.commit();
       onDrag(false);
@@ -476,10 +481,13 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       end(false);
     };
     sheet.addEventListener('pointermove', (ev) => {
-      const s = store.state.speakers.find((d) => d.id === id);
+      const s = list().find((d) => d.id === id);
       const p = toWorld(ev.clientX, ev.clientY);
       if (!s || Math.hypot(p.x - s.x, p.y - s.y) < 1e-3) return;
-      store.update('speaker', id, { aim: Math.round((Math.atan2(p.y - s.y, p.x - s.x) * 180) / Math.PI) }, true);
+      const deg = (Math.atan2(p.y - s.y, p.x - s.x) * 180) / Math.PI;
+      const by = ev.altKey ? 1 : step;
+      const aim = Math.round(deg / by) * by;
+      if (aim !== s.aim) store.update(kind, id, { aim }, true);
       onDrag(true);
     });
     sheet.addEventListener('pointerdown', (ev) => {
@@ -556,7 +564,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       return;
     }
     if (kind === 'gear') return startGearDrag(e, el);
-    if (kind === 'speaker' && (e.ctrlKey || e.metaKey) && !spinning) return startSpin(el);
+    if ((kind === 'speaker' || kind === 'mic') && (e.ctrlKey || e.metaKey) && !spinning) return startSpin(el);
     // lost outside the room: the touch brings it to the middle instead of dragging it further off
     if (store.bringIn(kind, id, engine.out.room)) return;
     store.select({ kind, id });
@@ -900,7 +908,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     if (orbit) drawOrbit(ctx, orbit, toScreen, pxPerMetre());
     if (snapped) drawSnapped(ctx, room, snapped, toScreen);
     if (turning) drawTurning(ctx, turning, state.mics.find((m) => m.id === turning.id), toScreen, pxPerMetre());
-    if (spinning) drawTurning(ctx, { mark: null }, state.speakers.find((s) => s.id === spinning.id), toScreen, pxPerMetre());
+    if (spinning) drawTurning(ctx, { mark: null }, (spinning.kind === 'mic' ? state.mics : state.speakers).find((s) => s.id === spinning.id), toScreen, pxPerMetre());
     ctx.restore();
 
     syncHits();
