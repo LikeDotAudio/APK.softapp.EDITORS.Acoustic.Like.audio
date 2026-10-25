@@ -65,7 +65,12 @@ import { drawRayOverlay } from './rayOverlay.js';
 const INTRO = { wire: [0, 1], grid: [1, 2], surface: [2, 3.2], device: [3.2, 4.2], treat: [4.2, 5.2] };
 const INTRO_END = 5.2;
 
-export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
+/**
+ * `camera()` and `show()` let a caller (the tour, ui/tour.js) hold the camera
+ * where it wants it and turn the overlays on or off without touching the
+ * page's settings; null leaves the view's own camera and the settings' show.
+ */
+export function createView3d({ canvas, store, engine, introSpeed = () => 1, camera = () => null, show: showOver = () => null }) {
   const cam = { yaw: -55, pitch: 32, dist: 1.9 };
   /** When the room on show arrived (ms), and which room that was: a new plan layer starts the reveal again. */
   let introAt = null;
@@ -141,12 +146,13 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
     const ys = room.poly.map((p) => p.y);
     const c = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, z: room.Hmax / 2 };
     const size = Math.max(room.L, room.W, room.Hmax);
-    const yaw = (cam.yaw + store.state.settings.frontDeg - 90) * DEG;
-    const pitch = cam.pitch * DEG;
+    const view = camera() ?? cam;
+    const yaw = (view.yaw + store.state.settings.frontDeg - 90) * DEG;
+    const pitch = view.pitch * DEG;
     const eye = {
-      x: c.x + Math.cos(pitch) * Math.cos(yaw) * size * cam.dist * -1,
-      y: c.y + Math.cos(pitch) * Math.sin(yaw) * size * cam.dist * -1,
-      z: c.z + Math.sin(pitch) * size * cam.dist,
+      x: c.x + Math.cos(pitch) * Math.cos(yaw) * size * view.dist * -1,
+      y: c.y + Math.cos(pitch) * Math.sin(yaw) * size * view.dist * -1,
+      z: c.z + Math.sin(pitch) * size * view.dist,
     };
     const fwd = norm({ x: c.x - eye.x, y: c.y - eye.y, z: c.z - eye.z });
     const right = norm(cross(fwd, { x: 0, y: 0, z: 1 }));
@@ -200,8 +206,9 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
     const grids = out.fieldGrids;
     const ok = values && grids && out.fieldRoom?.walls.length === room.walls.length;
     const scale = out.scale;
-    const tracing = Boolean(store.state.settings.show.trace);
-    const show = store.state.settings.show.field && ok && store.state.speakers.length > 0;
+    const look = { ...store.state.settings.show, ...showOver() };
+    const tracing = Boolean(look.trace);
+    const show = look.field && ok && store.state.speakers.length > 0;
 
     const level = (kind, x, y) => (room.sloped ? heightsAtXY(room, x, y)[kind] : kind === 'floor' ? 0 : room.H);
     /** A floor or ceiling as cells; `vals` null paints them flat. Each corner sits at its surface's height. */
@@ -553,7 +560,7 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
 
     const mix = state.mics.find((m) => m.mix);
     if (tracing) drawRayOverlay(ctx, proj, room, state, { key: true, w });
-    else if (state.settings.show.rays && mix) {
+    else if (look.rays && mix) {
       const picked = state.selected?.kind === 'speaker' ? state.selected.id : null;
       const rays = firstReflections(room, arrangedSpeakers(state.speakers, state.settings).filter((sp) => !picked || sp.id === picked), mix, state.settings.band ?? 2);
       const labelled = picked || rays.length <= 12;

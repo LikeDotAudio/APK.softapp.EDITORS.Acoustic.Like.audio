@@ -62,7 +62,11 @@ function rightAxis(room, face) {
 
 const TITLES = { plan: 'Plan', ceiling: 'Ceiling (reflected plan)', front: 'Front elevation', back: 'Back elevation', left: 'Left elevation', right: 'Right elevation' };
 
-export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPickPatch }) {
+/**
+ * `reveal()` is how much of the field shows, top down (the tour wipes it in,
+ * ui/tour.js); `show()` overrides the settings' show for this view alone.
+ */
+export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPickPatch, reveal = () => 1, show: showOver = () => null }) {
   // looking straight down or up: the plan (the tour draws it on its own, with no CAD under it) and the ceiling
   const top = face === 'plan' || face === 'ceiling';
   const canvas = tile.querySelector('canvas');
@@ -114,7 +118,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     const room = out.room;
     if (!room) return;
     const { state } = store;
-    const { show } = state.settings;
+    const show = { ...state.settings.show, ...showOver() };
     map = layout(w, h, room);
     const { toS } = map;
 
@@ -145,6 +149,15 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       ctx.imageSmoothingEnabled = true;
       ctx.save();
       ctx.clip(outline);
+      // the field wiped in from the top, an edge of light where it has got to
+      const shown = Math.max(0, Math.min(1, reveal()));
+      const yTop = toS(map.u0, map.v1).y;
+      const yEdge = yTop + (toS(map.u0, map.v0).y - yTop) * shown;
+      if (shown < 1) {
+        ctx.beginPath();
+        ctx.rect(0, 0, w, yEdge);
+        ctx.clip();
+      }
       if (top) {
         const g = out.fieldGrids[face];
         const img = gridCanvas(out.values[face], g.nx, g.ny, out.scale);
@@ -170,6 +183,13 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
         });
       }
       ctx.restore();
+      if (shown > 0 && shown < 1) {
+        ctx.save();
+        ctx.clip(outline);
+        ctx.fillStyle = '#f4902c';
+        ctx.fillRect(0, yEdge - 1.5, w, 3);
+        ctx.restore();
+      }
     }
     ctx.strokeStyle = FACE_COLOURS[face] ?? '#d4d4d4';
     ctx.lineWidth = 1.5;
