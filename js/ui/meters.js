@@ -29,7 +29,7 @@ const FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
 export const FREQ_COLOUR = '#fde047';
 /** The whole room's curve: every seat, power-averaged. */
 const ROOM_COLOUR = '#a3e635';
-/** Each speaker set's curve on the response, when it is not the one sounding (that one is the wave curve). */
+/** Each speaker set's curve on the response, its bar on the SPL, its marks on the RTA and its tile on ISO 3382, when it is not the one sounding. */
 const SET_COLOUR = { A: '#fb923c', B: '#818cf8', C: '#e879f9' };
 /** The meters tucked into the tray, remembered in this browser. */
 const MIN_KEY = 'acoustic.metersMinimised';
@@ -143,13 +143,15 @@ export function createMeters({ root, tray = null, store, engine, onListen }) {
     const mic = state.mics.find((m) => m.id === out.monitorId);
     root.classList.toggle('empty', !rep);
     el.spl.querySelector('.spl-mic').textContent = mic ? (mic.mix ? 'MIX' : mic.name) : '';
-    drawSpl(cv('spl'), rep, state.settings);
-    drawRta(cv('rta'), rep, state.settings);
+    // the other speaker sets at the same mic, beside the one sounding
+    const others = Object.entries(out.setReports ?? {});
+    drawSpl(cv('spl'), rep, state.settings, others);
+    drawRta(cv('rta'), rep, state.settings, others);
     drawResponse(fr, out, state.settings, hover);
     // one point of the response per 2 px of the graph: popped out wide, it is recomputed that fine
     if (fr.clientWidth) engine.setResponsePoints?.((fr.clientWidth - 40) / 2);
     drawEcho(cv('echogram'), rep);
-    drawIso(el.iso3382.querySelector('.tiles'), rep, state.settings);
+    drawIso(el.iso3382.querySelector('.tiles'), rep, state.settings, others);
     drawRt(cv('rt60'), out.room, state.settings);
     drawPolar(cv('polar'), selectedDevice(state) ?? state.speakers[0], state.settings, el.polar.querySelector('.pol-name'));
   }
@@ -174,9 +176,13 @@ export function meterRows(kind, out, state) {
     return [['Hz', 'Sabine s', 'Eyring s', 'mean alpha'], ...room.perBand.map((p, i) => [bands[i], p.sabine, p.eyring, p.abar])];
   }
   if (!rep) return [['no mic report — place a speaker and a mic']];
-  if (kind === 'spl' || kind === 'rta') return [['Hz', 'total dB', 'direct dB', 'reverb dB'], ...rep.energy.map((e, i) => [bands[i], e.total, e.direct, e.reverb])];
+  const others = Object.entries(out.setReports ?? {});
+  if (kind === 'spl' || kind === 'rta') return [['Hz', 'total dB', 'direct dB', 'reverb dB', ...others.map(([k]) => `set ${k} total dB`)], ...rep.energy.map((e, i) => [bands[i], e.total, e.direct, e.reverb, ...others.map(([, r]) => r.energy[i].total)])];
   if (kind === 'echogram') return [['t ms', 'level dB', 'order'], ...rep.echogram.arrivals.map((a) => [a.t * 1000, a.level, a.order])];
-  if (kind === 'iso3382') return [['parameter', 'value'], ...Object.entries(rep.iso).map(([k, v]) => [k, v]), ['ITDG ms', rep.itdgMs], ['wave dB', rep.wave], ['modal dB', rep.modal]];
+  if (kind === 'iso3382') {
+    const col = (r) => [...Object.values(r.iso), r.itdgMs, r.wave, r.modal];
+    return [['parameter', 'value', ...others.map(([k]) => `set ${k}`)], ...[...Object.keys(rep.iso), 'ITDG ms', 'wave dB', 'modal dB'].map((name, i) => [name, col(rep)[i], ...others.map(([, r]) => col(r)[i])])];
+  }
   if (kind === 'polar') {
     const dev = selectedDevice(state) ?? state.speakers[0];
     if (!dev) return [['no device']];
@@ -206,7 +212,7 @@ function broadband(rep, aWeight) {
   return 10 * Math.log10(e);
 }
 
-function drawSpl(canvas, rep, settings) {
+function drawSpl(canvas, rep, settings, others = []) {
   const { ctx, w, h } = fitCanvas(canvas);
   if (!rep) return noData(ctx, w, h, '—');
   const lo = 40;
@@ -219,22 +225,25 @@ function drawSpl(canvas, rep, settings) {
   const bars = [
     { x: 4, db: value, label: settings.aWeight ? 'dBA' : 'dBZ' },
     { x: 40, db: rep.wave, label: `${settings.freq.toFixed(0)}` },
+    // the other sets' broadband level, a bar each in the set's colour
+    ...others.map(([k, r], i) => ({ x: 76 + 30 * i, db: broadband(r, settings.aWeight), label: k, colour: SET_COLOUR[k] })),
   ];
   for (const b of bars) {
     for (let yy = bot; yy > top; yy -= seg + 1) {
       const db = lo + ((bot - yy) / (bot - top)) * (hi - lo);
       const lit = db <= b.db;
-      const c = db > 105 ? '#ef4444' : db > 85 ? '#facc15' : '#22c55e';
+      const c = b.colour ?? (db > 105 ? '#ef4444' : db > 85 ? '#facc15' : '#22c55e');
       ctx.fillStyle = lit ? c : '#1a2130';
-      ctx.fillRect(b.x, yy - seg, 20, seg);
+      ctx.fillRect(b.x, yy - seg, b.colour ? 14 : 20, seg);
     }
-    ctx.fillStyle = TEXT;
+    ctx.fillStyle = b.colour ?? TEXT;
     ctx.font = FONT;
     ctx.fillText(b.label, b.x - 2, h - 18);
   }
   ctx.fillStyle = TEXT;
+  const scaleX = 66 + 30 * others.length;
   for (let db = lo; db <= hi; db += 10) {
-    ctx.fillText(String(db), 66, y(db) + 3);
+    ctx.fillText(String(db), scaleX, y(db) + 3);
   }
   ctx.fillStyle = '#e5e7eb';
   ctx.font = '600 15px ui-monospace, monospace';
@@ -242,11 +251,11 @@ function drawSpl(canvas, rep, settings) {
   ctx.font = FONT;
 }
 
-function drawRta(canvas, rep, settings) {
+function drawRta(canvas, rep, settings, others = []) {
   const { ctx, w, h } = fitCanvas(canvas);
   if (!rep) return noData(ctx, w, h);
   const vals = rep.energy;
-  const top = Math.ceil(Math.max(...vals.map((v) => v.total)) / 10) * 10 + 5;
+  const top = Math.ceil(Math.max(...[rep, ...others.map(([, r]) => r)].flatMap((r) => r.energy.map((v) => v.total))) / 10) * 10 + 5;
   const range = 50;
   const y = (db) => h - 18 - ((Math.max(top - range, db) - (top - range)) / range) * (h - 30);
   const bw = (w - 30) / vals.length;
@@ -269,9 +278,26 @@ function drawRta(canvas, rep, settings) {
     ctx.fillRect(x + 3, y(v.total), bw - 6, h - 18 - y(v.total));
     ctx.fillStyle = '#f59e0b';
     ctx.fillRect(x + 3, y(v.reverb) - 1, bw - 6, 2);
+    // each other set's level in this band: a dot on a stem, side by side across the bar
+    others.forEach(([k, r], j) => {
+      const sx = x + 3 + ((bw - 6) * (j + 1)) / (others.length + 1);
+      const sy = y(r.energy[i].total);
+      ctx.fillStyle = SET_COLOUR[k];
+      ctx.fillRect(sx - 0.5, sy, 1, h - 18 - sy);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
     ctx.fillStyle = i === settings.band ? '#e5e7eb' : TEXT;
     ctx.fillText(BANDS[i] >= 1000 ? `${BANDS[i] / 1000}k` : String(BANDS[i]), x + bw / 2 - 9, h - 5);
   });
+  // the sets' key at the top left: the pop-out buttons sit over the top right
+  let lx = 30;
+  for (const [k] of others) {
+    ctx.fillStyle = SET_COLOUR[k];
+    ctx.fillText(k, lx, 10);
+    lx += ctx.measureText(k).width + 8;
+  }
 }
 
 function drawResponse(canvas, out, settings, hover = null) {
@@ -509,7 +535,7 @@ function drawEcho(canvas, rep) {
   ctx.fillText('0', 28, h - 12);
 }
 
-function drawIso(el, rep, settings) {
+function drawIso(el, rep, settings, others = []) {
   if (!rep) {
     el.innerHTML = '<div class="tile"><b>—</b><span>no mic</span></div>';
     return;
@@ -529,7 +555,12 @@ function drawIso(el, rep, settings) {
     ['D/R', `${f(e.direct - e.reverb, 1)} dB`],
     ['Modal', `${f(rep.modal, 1)} dB`],
   ];
-  el.innerHTML = tiles.map(([k, v]) => `<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('') + `<div class="tile wide"><span>@ ${BANDS[settings.band]} Hz octave · ${rep.firstReflections.length} early reflections</span></div>`;
+  // the other sets, a wide tile each: the figures that change with the boxes (the decay is the room's, the same for every set)
+  const sets = others.map(([k, r]) => {
+    const eb = r.energy[settings.band];
+    return `<div class="tile wide" style="border-color:${SET_COLOUR[k]}"><span style="color:${SET_COLOUR[k]}">set ${k} · C50 ${f(r.iso.C50, 1)} dB · C80 ${f(r.iso.C80, 1)} dB · D50 ${f(r.iso.D50 * 100, 0)} % · ITDG ${f(r.itdgMs, 1)} ms · D/R ${f(eb.direct - eb.reverb, 1)} dB</span></div>`;
+  });
+  el.innerHTML = tiles.map(([k, v]) => `<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('') + `<div class="tile wide"><span>@ ${BANDS[settings.band]} Hz octave · ${rep.firstReflections.length} early reflections</span></div>` + sets.join('');
 }
 
 function drawRt(canvas, room, settings) {

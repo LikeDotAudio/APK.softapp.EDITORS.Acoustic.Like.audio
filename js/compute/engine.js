@@ -106,7 +106,7 @@ export function createEngine(store, onResult) {
   let busy = false;
   let queued = null;
   let inflight = null;
-  const out = { room: null, grids: null, values: null, reports: {}, response: null, frames: { ready: [], ladder: [] }, advice: [], layout: [], rooms: [], error: null, computing: false, virtual: false };
+  const out = { room: null, grids: null, values: null, reports: {}, setReports: {}, response: null, frames: { ready: [], ladder: [] }, advice: [], layout: [], rooms: [], error: null, computing: false, virtual: false };
 
   function currentRoom() {
     const { settings, cad } = store.state;
@@ -181,6 +181,7 @@ export function createEngine(store, onResult) {
     // a refinement computes the field alone: the meters and the response are the base job's, the same at every cell size
     if (job.level && !result.reports) {
       result.reports = out.reports;
+      result.setReports = out.setReports;
       result.response = out.response;
     }
     shown = job;
@@ -191,6 +192,7 @@ export function createEngine(store, onResult) {
     out.fieldGrids = job.grids;
     out.values = result.values;
     out.reports = result.reports;
+    out.setReports = result.setReports ?? {};
     out.response = result.response;
     out.error = null;
     out.computing = Boolean(queued);

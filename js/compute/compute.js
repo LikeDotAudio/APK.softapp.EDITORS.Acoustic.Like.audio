@@ -60,7 +60,8 @@ export const MODAL_MAX = 1000;
 /**
  * `withResponse` false (a sweep's frame): no response curve — it does not depend on the frequency, so the frame borrows the room's.
  * `withReports` false (a refinement, engine.js): no meters either — the cell size does not change what a mic hears.
- * `sets` the other speaker sets' boxes as each would sound selected ({ B: [...] }): the response draws each beside the live one.
+ * `sets` the other speaker sets' boxes as each would sound selected ({ B: [...] }): the response draws each beside the live
+ * one, and `setReports` is each one's report at the monitor mic, for the SPL, RTA and ISO meters.
  */
 export function runJob({ room, speakers, mics, settings, grids, monitorId, responsePoints, sets = {}, withResponse = true, withReports = true }) {
   const prep = prepare(room, speakers, { maxOrder: settings.maxOrder });
@@ -110,18 +111,22 @@ export function runJob({ room, speakers, mics, settings, grids, monitorId, respo
       seats: seats.length,
     };
   }
-  // the other sets at the same seat, a wave curve each — what switching to them on the monitor controller would give
-  if (withResponse && monitor) {
+  // the other sets at the same seat — what switching to them on the monitor controller would give: a wave curve and a report each
+  let setReports = null;
+  if (monitor && (withResponse || withReports)) {
     const freqs = response?.freqs ?? responseFreqs(responsePoints);
-    const curves = Object.entries(sets)
-      .filter(([, spk]) => spk.length)
-      .map(([k, spk]) => {
-        const p = prepare(room, spk, { maxOrder: settings.maxOrder });
-        return [k, freqs.map((f) => waveDb(p, monitor, f, monitor))];
-      });
+    const curves = [];
+    setReports = {};
+    for (const [k, spk] of Object.entries(sets)) {
+      if (!spk.length) continue;
+      const p = prepare(room, spk, { maxOrder: settings.maxOrder });
+      if (withResponse) curves.push([k, freqs.map((f) => waveDb(p, monitor, f, monitor))]);
+      if (withReports) setReports[k] = micReport(room, p, prepareModal(room, spk, Math.min(settings.freq, MODAL_MAX)), monitor, settings);
+    }
     if (curves.length) response = { ...(response ?? { freqs, wave: freqs.map(() => NaN), modal: freqs.map(() => NaN), room: null, seats: 0 }), sets: Object.fromEntries(curves) };
+    if (!withReports) setReports = null;
   }
-  return { values, reports, response };
+  return { values, reports, response, setReports };
 }
 
 /** The seats that make up "the room": the listeners, or every mic when none is a listener. */
