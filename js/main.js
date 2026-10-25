@@ -135,8 +135,38 @@ function askToPop() {
 }
 new ResizeObserver(askToPop).observe(iframe);
 
+/** How many tiles each layout lays out in its own areas: with one of them out in a window of its own, the rest share its space. */
+const LAID_OUT = { six: 6, three: 2, wall: 2 };
+function relayoutViews() {
+  const mode = Object.keys(LAID_OUT).find((m) => views.classList.contains(m));
+  views.classList.remove('loose');
+  for (const t of views.querySelectorAll(':scope > .tile')) t.style.gridColumn = '';
+  const shown = [...views.querySelectorAll(':scope > .tile')].filter((t) => getComputedStyle(t).display !== 'none');
+  if (!mode || views.classList.contains('maxed') || shown.length >= LAID_OUT[mode] || !shown.length) {
+    views.style.gridTemplateColumns = '';
+    views.style.gridTemplateRows = '';
+    return;
+  }
+  // the grid whose cells come nearest a 4:3 tile, every tile in one, the last stretched over any cells left
+  const n = shown.length;
+  const w = views.clientWidth;
+  const h = views.clientHeight;
+  let best = { c: n, score: Infinity };
+  for (let c = 1; c <= n; c++) {
+    const r = Math.ceil(n / c);
+    const score = Math.abs(Math.log(w / c / (h / r) / (4 / 3))) + (c * r - n) * 0.3;
+    if (score < best.score) best = { c, score };
+  }
+  views.classList.add('loose');
+  views.style.gridTemplateColumns = `repeat(${best.c}, minmax(0, 1fr))`;
+  views.style.gridTemplateRows = `repeat(${Math.ceil(n / best.c)}, minmax(0, 1fr))`;
+  const left = best.c * Math.ceil(n / best.c) - n;
+  if (left) shown[n - 1].style.gridColumn = `span ${left + 1}`;
+}
+
 let frame = 0;
 function renderGeometry() {
+  relayoutViews();
   plan.render();
   for (const f of faces) f.render();
   view3d.render();

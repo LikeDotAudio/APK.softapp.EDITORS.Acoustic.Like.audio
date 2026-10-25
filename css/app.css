@@ -28,8 +28,9 @@ button.on { background: var(--accent); color: #111; border-color: var(--accent);
 button.danger:hover { border-color: var(--bad); color: var(--bad); }
 .button input[type=file] { display: none; }
 
-.bar { display: flex; align-items: center; gap: 14px; padding: 6px 12px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.rowEnd { flex-basis: 100%; height: 0; }
+/* wrapped rows sit 4 px apart, not the 14 between groups; the forced break adds no gap of its own */
+.bar { display: flex; align-items: center; gap: 4px 14px; padding: 4px 12px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.rowEnd { flex-basis: 100%; height: 0; margin-top: -4px; }
 .brand { font-weight: 800; letter-spacing: .04em; color: var(--accent); }
 .brand span { color: var(--text); font-weight: 500; }
 .group { display: flex; gap: 2px; }
@@ -63,6 +64,9 @@ main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
 #views.wall .tile.wall { display: block; grid-area: wall; overflow: auto; }
 #views.wall:has(.tile.plan.cad-out) .tile.plan { display: none; }
 #views.wall:has(.tile.plan.cad-out) { grid-template-columns: 1fr; grid-template-areas: "wall"; }
+/* a tile out in a window of its own: the rest share the space it left (main.js relayoutViews) */
+#views.loose { grid-template-areas: none !important; }
+#views.loose > .tile { grid-area: auto !important; }
 #views.maxed { grid-template-columns: 1fr !important; grid-template-rows: 1fr !important; grid-template-areas: "max" !important; }
 #views.maxed .tile:not(.max) { display: none; }
 #views.maxed .tile.max { grid-area: max; }

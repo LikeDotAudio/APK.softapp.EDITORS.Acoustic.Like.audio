@@ -795,8 +795,9 @@ function cutaway(room, state, camAz, has, rays = [], mix = null) {
       p.points3d.forEach((q, i) => seg(q, q.z, up[i], up[i].z, layer));
     }
   }
+  // the boxes alone, floating where they sound: stands and brackets would only tangle with the rays (the blow-up's elevations still show them)
   for (const s of state.speakers) {
-    const z1 = cabinet(s, seg, layerOr(LAYOUT_LAYER), room);
+    const z1 = cabinet(s, seg, layerOr(LAYOUT_LAYER));
     const p = P(s, z1);
     texts.push({ text: s.role || s.name, x: r3(p.X), y: r3(p.Y + 0.05), height: 0.05 });
   }
