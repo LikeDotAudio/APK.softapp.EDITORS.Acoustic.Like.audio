@@ -47,7 +47,8 @@ main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
 #views { display: grid; gap: 4px; padding: 4px; min-height: 0; background: #111; }
 /* the six views in pairs that look alike: the two looking down (plan over ceiling), the long walls, the short walls */
 #views.six { grid-template-columns: 1.3fr 1.3fr 1fr; grid-template-rows: 1.5fr 1fr; grid-template-areas: "plan left front" "ceiling right back"; }
-#views.six:has(.tile.plan.cad-out) { grid-template-rows: 1fr 1fr; }
+/* the CAD out, the plan is small: even rows — only in the default shape, the wide and tall ones keep their own rows */
+#views.six:not([data-shape=wide], [data-shape=tall]):has(.tile.plan.cad-out) { grid-template-rows: 1fr 1fr; }
 /* a letterbox of a screen: one row, still in pairs */
 #views.six[data-shape=wide] { grid-template-columns: 1.6fr 1fr 1.3fr 1.3fr 1fr 1fr; grid-template-rows: 1fr; grid-template-areas: "plan ceiling left right front back"; }
 /* a tall one: the pairs side by side, one under another */
