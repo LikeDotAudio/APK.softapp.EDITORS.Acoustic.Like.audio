@@ -19,10 +19,45 @@ export const F_MIN = 20;
 export const F_MAX = 17000;
 export const RESPONSE_FREQS = Array.from({ length: 240 }, (_, i) => F_MIN * 2 ** (i / 24)).filter((f) => f <= F_MAX);
 
+/**
+ * The response's frequencies for a graph `points` wide: log-spaced, 20 Hz to the top, one per point, never coarser
+ * than 1/24 octave. A graph popped out across a big screen gets as many as it has pixels to show (meters.js asks).
+ */
+export function responseFreqs(points = 0) {
+  const n = Math.max(RESPONSE_FREQS.length, Math.min(2400, Math.round(points) || 0));
+  if (n === RESPONSE_FREQS.length) return RESPONSE_FREQS;
+  const span = Math.log(F_MAX / F_MIN);
+  return Array.from({ length: n }, (_, i) => F_MIN * Math.exp((span * i) / (n - 1)));
+}
+
+/** A modal room is rebuilt per frequency, so a fine response reads it at 1/48 octave at most and draws straight between. */
+const MODAL_STEP_OCT = 1 / 48;
+function modalCurve(room, speakers, monitor, freqs, fMax) {
+  const out = freqs.map(() => NaN);
+  let lastLog = -Infinity;
+  const at = [];
+  freqs.forEach((f, i) => {
+    if (f > fMax) return;
+    const lf = Math.log2(f);
+    if (lf - lastLog < MODAL_STEP_OCT * 0.999 && freqs[i + 1] <= fMax) return;
+    lastLog = lf;
+    out[i] = modalDb(room, prepareModal(room, speakers, f), monitor);
+    at.push(i);
+  });
+  for (let k = 1; k < at.length; k++) {
+    const [i, j] = [at[k - 1], at[k]];
+    for (let m = i + 1; m < j; m++) {
+      const t = Math.log(freqs[m] / freqs[i]) / Math.log(freqs[j] / freqs[i]);
+      out[m] = out[i] + (out[j] - out[i]) * t;
+    }
+  }
+  return out;
+}
+
 /** The modal method is a low-frequency model: above this it shows the field at this frequency instead. */
 export const MODAL_MAX = 1000;
 
-export function runJob({ room, speakers, mics, settings, grids, monitorId }) {
+export function runJob({ room, speakers, mics, settings, grids, monitorId, responsePoints }) {
   const prep = prepare(room, speakers, { maxOrder: settings.maxOrder });
   const modal = room && speakers.length ? prepareModal(room, speakers, Math.min(settings.freq, MODAL_MAX)) : null;
   const sample = (pt) => {
@@ -59,14 +94,14 @@ export function runJob({ room, speakers, mics, settings, grids, monitorId }) {
   if (monitor && speakers.length) {
     const fModalMax = Math.min(MODAL_MAX, Math.max(200, schroeder(room) * 1.5));
     const seats = roomSeats(mics);
-    const modals = RESPONSE_FREQS.map((f) => (f <= fModalMax ? prepareModal(room, speakers, f) : null));
+    const freqs = responseFreqs(responsePoints);
     response = {
-      freqs: RESPONSE_FREQS,
-      wave: RESPONSE_FREQS.map((f) => waveDb(prep, monitor, f, monitor)),
-      modal: modals.map((m) => (m ? modalDb(room, m, monitor) : NaN)),
+      freqs,
+      wave: freqs.map((f) => waveDb(prep, monitor, f, monitor)),
+      modal: modalCurve(room, speakers, monitor, freqs, fModalMax),
       energy: BANDS.map((_, b) => energyAt(room, prep, monitor, b, monitor)),
       // the whole room: every seat's wave response, power-averaged by tier — one seat alone is not the room
-      room: seats.length > 1 ? RESPONSE_FREQS.map((f) => powerMean(seats.map((m) => waveDb(prep, m, f, m)), seats.map(seatWeight))) : null,
+      room: seats.length > 1 ? freqs.map((f) => powerMean(seats.map((m) => waveDb(prep, m, f, m)), seats.map(seatWeight))) : null,
       seats: seats.length,
     };
   }

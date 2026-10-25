@@ -101,6 +101,8 @@ export function createMeters({ root, store, engine, onListen }) {
     drawSpl(cv('spl'), rep, state.settings);
     drawRta(cv('rta'), rep, state.settings);
     drawResponse(fr, out, state.settings, hover);
+    // one point of the response per 2 px of the graph: popped out wide, it is recomputed that fine
+    if (fr.clientWidth) engine.setResponsePoints?.((fr.clientWidth - 40) / 2);
     drawEcho(cv('echogram'), rep);
     drawIso(el.iso3382.querySelector('.tiles'), rep, state.settings);
     drawRt(cv('rt60'), out.room, state.settings);

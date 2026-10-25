@@ -245,7 +245,7 @@ export function createEngine(store, onResult) {
     const monitorId = (state.selected?.kind === 'mic' && state.selected.id) || mix?.id || state.mics[0]?.id;
     // everything the field depends on but the frequency; what only changes how it is shown is left out
     const key = [state.cad.geometry, state.speakers, state.mics];
-    const flat = JSON.stringify({ ...settings, freq: 0, view: 0, show: 0, monitorId });
+    const flat = JSON.stringify({ ...settings, freq: 0, view: 0, show: 0, monitorId, responsePoints });
     if (!scene || key.some((v, i) => v !== scene.refs[i]) || flat !== sceneKey) {
       scene = { refs: key };
       sceneKey = flat;
@@ -254,7 +254,7 @@ export function createEngine(store, onResult) {
       syncFrames();
     }
     // the field hears the highlighted arrangement, as the plan shows it
-    const job = { room, speakers: soundingSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, scene, coarse };
+    const job = { room, speakers: soundingSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, responsePoints, scene, coarse };
     out.monitorId = monitorId;
     if (!coarse) last = job;
     const hit = !coarse && cache.get(settings.freq);
@@ -271,7 +271,19 @@ export function createEngine(store, onResult) {
     else run(job);
   }
 
-  return { update, out, currentRoom, frames };
+  /**
+   * How many points the frequency response is drawn across (meters.js, from the graph's width): a graph popped out
+   * across a big screen is recomputed finer. Rounded to 50 so a sash dragged a pixel does not recompute the room.
+   */
+  let responsePoints = 0;
+  function setResponsePoints(n) {
+    const next = Math.round(n / 50) * 50;
+    if (next === responsePoints) return;
+    responsePoints = next;
+    if (last) update();
+  }
+
+  return { update, out, currentRoom, frames, setResponsePoints };
 }
 
 /**

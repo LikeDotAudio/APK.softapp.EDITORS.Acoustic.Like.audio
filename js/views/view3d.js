@@ -44,8 +44,25 @@ import { drawPatch } from './treatments.js';
  * instruments laid on the floor stood up to their height.
  */
 
-export function createView3d({ canvas, store, engine }) {
+/**
+ * THE ROOM ARRIVING
+ *
+ * A room new to the view builds itself up rather than appearing whole: its
+ * wireframe, then a floor grid, then the surfaces, then the speakers and
+ * listeners, then the treatments — seconds at 1×, `introSpeed()` times
+ * faster (the header's Reveal fader); 0 shows it all at once, as does a
+ * system that asks for reduced motion.
+ */
+const INTRO = { wire: [0, 1], grid: [1, 2], surface: [2, 3.2], device: [3.2, 4.2], treat: [4.2, 5.2] };
+const INTRO_END = 5.2;
+
+export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
   const cam = { yaw: -55, pitch: 32, dist: 1.9 };
+  /** When the room on show arrived (ms), and which room that was: a new plan layer starts the reveal again. */
+  let introAt = null;
+  let introKey = null;
+  let introFrame = 0;
+  const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   /** The devices as last drawn, in screen pixels: what a click is tested against. */
   let shown = [];
   /** The camera as last drawn — what a screen point is turned back into a ray with. */
@@ -135,6 +152,16 @@ export function createView3d({ canvas, store, engine }) {
     ctx.fillStyle = '#0b0d12';
     ctx.fillRect(0, 0, w, h);
     if (!room) return;
+    const key = engine.out.planLayer ?? '';
+    if (key !== introKey) {
+      introKey = key;
+      introAt = performance.now();
+    }
+    const speed = introSpeed();
+    const t = reduced || !(speed > 0) || introAt == null ? Infinity : ((performance.now() - introAt) / 1000) * speed;
+    const A = Object.fromEntries(Object.entries(INTRO).map(([k, [a, b]]) => [k, Math.max(0, Math.min(1, (t - a) / (b - a)))]));
+    cancelAnimationFrame(introFrame);
+    if (t < INTRO_END) introFrame = requestAnimationFrame(render);
     const B = basis(room);
     const focal = Math.min(w, h) * 1.1;
     seen = { B, focal, w, h };
@@ -284,6 +311,12 @@ export function createView3d({ canvas, store, engine }) {
     // the treatments: inward off their surface, so they are in front of it whichever way it is cut
     const lift = B.size * 0.004;
     const sel = store.state.selected?.kind === 'patch' ? store.state.selected.id : null;
+    /** Faces pushed from `from` on belong to that stage of the reveal; anything untagged is a surface. */
+    const stage = (from, name) => {
+      for (let i = from; i < faces.length; i++) faces[i].stage ??= name;
+    };
+    stage(0, 'surface');
+    const treatFrom = faces.length;
     for (const p of room.patches ?? []) {
       let n;
       if (p.surface === 'floor') n = { x: 0, y: 0, z: 1 };
@@ -303,6 +336,8 @@ export function createView3d({ canvas, store, engine }) {
       faces.push({ pts: p.points3d.map((q) => ({ x: q.x + n.x * lift, y: q.y + n.y * lift, z: q.z + n.z * lift })), patch: p, selected: p.id === sel });
     }
 
+    stage(treatFrom, 'treat');
+    const deviceFrom = faces.length;
     const { state } = store;
     const picked = state.selected?.id;
     // only the highlighted arrangement's boxes stand in the room: 2.0 is two (layouts.js soundingSpeakers)
@@ -314,6 +349,7 @@ export function createView3d({ canvas, store, engine }) {
       box(s, { rt, f, up: cross(rt, f) }, size.w, size.d, size.h, rgbOf(s.color).map((v) => Math.round(v * 0.55)), { front: [24, 27, 34], spk: s, selected: s.id === picked });
     }
     for (const m of state.mics) if (isListener(m) || m.mix) figure(m, rgbOf(MIC_PRESETS[m.kind]?.colour ?? '#ff3b3b'), m.id === picked);
+    stage(deviceFrom, 'device');
 
     for (const f of faces) {
       f.s = f.pts.map(proj);
@@ -323,6 +359,8 @@ export function createView3d({ canvas, store, engine }) {
     faces.sort((a, b) => b.depth - a.depth);
     for (const f of faces) {
       if (f.s.some((p) => p.depth <= 0.01)) continue;
+      ctx.globalAlpha = A[f.stage];
+      if (!ctx.globalAlpha) continue;
       if (f.solid) {
         solid(f);
         continue;
@@ -388,6 +426,35 @@ export function createView3d({ canvas, store, engine }) {
       }
     }
 
+    // the reveal's floor grid, half-metre squares, gone again as the surfaces come in over it
+    const gridAlpha = A.grid * (1 - A.surface);
+    if (gridAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = gridAlpha * 0.8;
+      const outline = room.poly.map((p) => proj({ ...p, z: level('floor', p.x, p.y) }));
+      ctx.beginPath();
+      outline.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.closePath();
+      ctx.clip();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 0.75;
+      const xs = room.poly.map((p) => p.x);
+      const ys = room.poly.map((p) => p.y);
+      const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+      const line = (a, b) => {
+        const [p, q] = [proj(a), proj(b)];
+        if (p.depth <= 0.01 || q.depth <= 0.01) return;
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(q.x, q.y);
+      };
+      ctx.beginPath();
+      for (let x = Math.ceil(x0 * 2) / 2; x <= x1; x += 0.5) line({ x, y: y0, z: 0 }, { x, y: y1, z: 0 });
+      for (let y = Math.ceil(y0 * 2) / 2; y <= y1; y += 0.5) line({ x: x0, y, z: 0 }, { x: x1, y, z: 0 });
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.globalAlpha = A.wire;
     ctx.strokeStyle = 'rgba(255,255,255,.35)';
     ctx.lineWidth = 1;
     // the floor's and ceiling's edges, traced along each wall so a slope bends them
@@ -416,6 +483,7 @@ export function createView3d({ canvas, store, engine }) {
       ctx.stroke();
     }
     drawMetreStick(ctx, proj, room, B, level);
+    ctx.globalAlpha = A.device;
 
     const mix = state.mics.find((m) => m.mix);
     if (tracing) drawRays(ctx, proj, room, state, mix, w);
@@ -518,6 +586,7 @@ export function createView3d({ canvas, store, engine }) {
       ctx.font = '10px ui-monospace, monospace';
       ctx.fillText(o.label, o.t.x + 6, o.t.y - 6);
     }
+    ctx.globalAlpha = 1;
     ctx.fillStyle = '#9aa4b2';
     ctx.font = '11px system-ui';
     ctx.fillText('3-D cut-away · drag a device to move it (Shift: up/down) · drag elsewhere to orbit · wheel to zoom', 10, h - 10);
@@ -572,7 +641,13 @@ export function createView3d({ canvas, store, engine }) {
     { passive: false },
   );
 
-  return { render };
+  /** Build the room up again from its wireframe (the Reveal fader moved). */
+  function replay() {
+    introAt = performance.now();
+    render();
+  }
+
+  return { render, replay };
 }
 
 /**

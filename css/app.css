@@ -40,6 +40,9 @@ button.danger:hover { border-color: var(--bad); color: var(--bad); }
 .freq { display: flex; align-items: center; gap: 6px; font-family: var(--mono); }
 .freq input { width: 160px; accent-color: #fde047; }
 .freq output { min-width: 70px; color: #fde047; display: flex; flex-direction: column; line-height: 1.05; }
+.reveal { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.reveal input { width: 70px; }
+.reveal output { min-width: 26px; font-family: var(--mono); color: var(--text); }
 .freq output small { font-size: 8px; color: var(--muted); }
 .status { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 

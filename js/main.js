@@ -78,6 +78,7 @@ const engine = createEngine(store, (out, phase) => {
   syncMarks();
   followConsole();
   pickDrawnRoom();
+  placePendingLayout();
 });
 
 /** Views report drag start/end; the store's 'drag' events already drive the coarse recompute. */
@@ -112,7 +113,32 @@ function jumpTo(sheet) {
 
 const plan = createPlanView({ tile: document.querySelector('.tile.plan .stage'), iframe, store, engine, onDrag, cad });
 const faces = ['ceiling', 'front', 'back', 'left', 'right'].map((face) => createFaceView({ tile: document.querySelector(`.tile[data-face="${face}"]`), face, store, engine, onDrag, onJump: () => jumpTo(face), onPickPatch: (id) => inspector.showPatch(id) }));
-const view3d = createView3d({ canvas: document.querySelector('.tile.t3d canvas'), store, engine });
+// the header's Reveal fader: how fast a room builds up in 3-D (views/view3d.js) — this browser's taste, not the session's
+const reveal = { speed: 1 };
+try {
+  const v = parseFloat(localStorage.getItem('acoustic.revealSpeed'));
+  if (Number.isFinite(v)) reveal.speed = v;
+} catch {
+  // no storage: 1×
+}
+const view3d = createView3d({ canvas: document.querySelector('.tile.t3d canvas'), store, engine, introSpeed: () => reveal.speed });
+{
+  const input = document.getElementById('revealSpeed');
+  const out = document.getElementById('revealOut');
+  const show = () => (out.textContent = reveal.speed ? `${reveal.speed}×` : 'off');
+  input.value = String(reveal.speed);
+  show();
+  input.addEventListener('input', () => {
+    reveal.speed = parseFloat(input.value);
+    show();
+    try {
+      localStorage.setItem('acoustic.revealSpeed', String(reveal.speed));
+    } catch {
+      // the speed just does not outlive the page
+    }
+    view3d.replay();
+  });
+}
 const wallBuilder = createWallBuilder({ root: document.querySelector('.tile.wall'), store, engine, cad, inputs: () => wallInputs(store.state.cad.geometry), jumpTo });
 const meters = createMeters({
   root: document.getElementById('meters'),
@@ -627,6 +653,15 @@ function drawRoom(entry) {
   status.textContent = `drawing “${entry.name}” into the CAD…`;
 }
 
+/** A dice room's arrangement waits for the engine to make the drawn loop the room and seat the mixer, then goes in. */
+let pendingLayout = null;
+function placePendingLayout() {
+  if (!pendingLayout || engine.out.planLayer !== pendingLayout) return;
+  if (!store.state.mics.some((m) => m.mix)) return;
+  pendingLayout = null;
+  inspector.placeLayout();
+}
+
 /** Once the CAD has drawn it, the new loop becomes the room. */
 function pickDrawnRoom() {
   if (!pendingRoom) return;
@@ -644,6 +679,8 @@ function pickDrawnRoom() {
     // each kind of furniture on a layer of its own (marks.js slices)
     for (const f of furniture) cad.link.place(furnitureLayer(f.paletteId), [{ paletteId: f.paletteId, at: [+((f.x + ox) / k).toFixed(4), +((f.y + oy) / k).toFixed(4)], rotation: f.rotation }]);
     store.seat(seats.map((s) => makeMic(s.kind, { x: s.x + ox, y: s.y + oy, z: s.z }, { aim: s.aim, mix: Boolean(s.mix) })));
+    // the arrangement picked on the toolbar goes in round the new mix seat, once the engine has the room
+    if (seats.some((x) => x.mix) && LAYOUTS[store.state.settings.layout.preset]) pendingLayout = loop.layerId;
     if (door) hangDoor(loop, door, h, ox, oy, k);
   }
 }
