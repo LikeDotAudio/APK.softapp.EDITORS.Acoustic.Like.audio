@@ -414,6 +414,10 @@ new ResizeObserver(() => {
   }
 }
 
+/** The Width slider's range, mm. */
+const WIDTH_MM = [800, 6000];
+const widthLanes = { key: [], list: [] };
+
 // ------------------------------------------------------------------ speaker arrangements
 {
   const bar = document.getElementById('arrangement');
@@ -528,9 +532,6 @@ function syncRoomGrowth() {
   el.title = g.any ? `This width puts speakers outside the room. To keep them ${CLEAR_M} m clear of the walls: ${growthDetail(g)} — the dashed outline on the plan.` : '';
 }
 
-/** The Width slider's range, mm. */
-const WIDTH_MM = [800, 6000];
-const widthLanes = { key: [], list: [] };
 const laneText = (l) => `r ${l.r.toFixed(2)} m · direct ${l.direct.toFixed(1)} ms · first reflection +${l.gap.toFixed(1)} ms${l.fits ? '' : ' · outside the room'}`;
 
 /**
