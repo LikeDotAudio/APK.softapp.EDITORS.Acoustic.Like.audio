@@ -184,3 +184,16 @@ test('None mutes the selected set; By hand, or a box placed by hand onto None, s
   assert.equal(store.state.settings.layout.preset, 'hand');
   assert.equal(arrangedSpeakers(store.state.speakers, store.state.settings).length, 1);
 });
+
+test('the response draws the other speaker sets beside the live one; a muted set draws none', async () => {
+  const { runJob } = await import('../js/compute/compute.js');
+  const { buildGrids } = await import('../js/compute/grids.js');
+  const room = buildRoom([{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 6 }, { x: 0, y: 6 }], { roomHeight: 3, frontDeg: 90, faceMaterials: {} });
+  const mix = makeMic('omni', { x: 2.5, y: 3, z: 1.2 }, { mix: true });
+  const at = (x, set) => ({ ...makeSpeaker('monitor', { x, y: 5, z: 1.2 }, { aim: 270 }), set });
+  const settings = { roomHeight: 3, frontDeg: 90, band: 2, maxOrder: 1, freq: 100, method: 'wave', layout: { preset: 'hand' }, show: {}, faceMaterials: {} };
+  const out = runJob({ room, speakers: [at(2, 'A')], mics: [mix], settings, grids: buildGrids(room, 1.2, 8), monitorId: mix.id, responsePoints: 40, sets: { B: [at(3, 'B')], C: [] } });
+  assert.deepEqual(Object.keys(out.response.sets), ['B']);
+  assert.equal(out.response.sets.B.length, out.response.freqs.length);
+  assert.notDeepEqual(out.response.sets.B, out.response.wave);
+});

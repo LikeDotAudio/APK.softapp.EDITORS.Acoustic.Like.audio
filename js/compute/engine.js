@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { advise } from '../acoustics/advisor.js';
-import { arrayFront, layoutCentre, layoutCheck } from '../acoustics/layouts.js';
+import { activeSet, arrayFront, layoutCentre, layoutCheck, selectSet, SPEAKER_SETS } from '../acoustics/layouts.js';
 import { monitoredSpeakers } from '../acoustics/monitor.js';
 import { ELEVATION_FACES, elevationFaceOf } from '../acoustics/elevations.js';
 import { buildRoom } from '../acoustics/room.js';
@@ -331,7 +331,9 @@ export function createEngine(store, onResult) {
       syncFrames();
     }
     // the field hears the highlighted arrangement, as the plan shows it, through the monitor controller
-    const job = { room, speakers: monitoredSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, responsePoints, scene, coarse, level: 0 };
+    // and the other sets, each as it would sound selected, for their own curves on the response
+    const sets = Object.fromEntries(Object.keys(SPEAKER_SETS).filter((k) => k !== activeSet(settings)).map((k) => [k, monitoredSpeakers(state.speakers, selectSet(settings, k))]));
+    const job = { room, speakers: monitoredSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, responsePoints, sets, scene, coarse, level: 0 };
     job.base = job;
     out.monitorId = monitorId;
     if (!coarse) last = job;

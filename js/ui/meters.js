@@ -29,6 +29,8 @@ const FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
 export const FREQ_COLOUR = '#fde047';
 /** The whole room's curve: every seat, power-averaged. */
 const ROOM_COLOUR = '#a3e635';
+/** Each speaker set's curve on the response, when it is not the one sounding (that one is the wave curve). */
+const SET_COLOUR = { A: '#fb923c', B: '#818cf8', C: '#e879f9' };
 /** The meters tucked into the tray, remembered in this browser. */
 const MIN_KEY = 'acoustic.metersMinimised';
 /** Each meter's icon in the tray. */
@@ -38,7 +40,7 @@ export function createMeters({ root, tray = null, store, engine, onListen }) {
   root.innerHTML = `
     <div class="meter m-spl" data-kind="spl"><h4>SPL <span class="sub spl-mic"></span></h4><canvas></canvas></div>
     <div class="meter m-rta" data-kind="rta"><h4>Octave RTA <span class="sub">direct + diffuse</span></h4><canvas></canvas></div>
-    <div class="meter m-fr wide" data-kind="response"><h4>Frequency response <span class="sub">mix · room · modal · <b style="color:#38bdf8">nulls</b> · click to set the current frequency</span></h4><canvas></canvas></div>
+    <div class="meter m-fr wide" data-kind="response"><h4>Frequency response <span class="sub">mix · other sets · room · modal · <b style="color:#38bdf8">nulls</b> · click to set the current frequency</span></h4><canvas></canvas></div>
     <div class="meter m-echo wide" data-kind="echogram"><h4>Echogram <span class="sub">arrivals · tail · Schroeder</span></h4><canvas></canvas></div>
     <div class="meter m-iso" data-kind="iso3382"><h4>ISO 3382 <button class="listen" title="Hear the estimated impulse response at this mic">▶ Listen</button></h4><div class="tiles"></div></div>
     <div class="meter m-rt" data-kind="rt60"><h4>RT60 <span class="sub">Sabine · Eyring · EBU</span></h4><canvas></canvas></div>
@@ -163,7 +165,8 @@ export function meterRows(kind, out, state) {
     if (!r) return [['no response — place a speaker and a mic']];
     const nulls = findNulls(r.freqs, r.wave);
     const inNull = (f) => nulls.find((n) => f >= n.lo && f <= n.hi);
-    return [['Hz', 'wave dB', 'room dB', 'modal dB', 'null'], ...r.freqs.map((f, i) => [f, r.wave[i], r.room?.[i] ?? '', r.modal[i], inNull(f) ? `${hz(inNull(f).f)} −${inNull(f).depth.toFixed(1)} dB` : ''])];
+    const sets = Object.entries(r.sets ?? {});
+    return [['Hz', 'wave dB', ...sets.map(([k]) => `set ${k} dB`), 'room dB', 'modal dB', 'null'], ...r.freqs.map((f, i) => [f, r.wave[i], ...sets.map(([, v]) => v[i]), r.room?.[i] ?? '', r.modal[i], inNull(f) ? `${hz(inNull(f).f)} −${inNull(f).depth.toFixed(1)} dB` : ''])];
   }
   if (kind === 'rt60') {
     const room = out.room;
@@ -276,7 +279,8 @@ function drawResponse(canvas, out, settings, hover = null) {
   const r = out.response;
   if (!r || !out.room) return noData(ctx, w, h);
   const x = (f) => 30 + (Math.log(f / F_MIN) / Math.log(F_MAX / F_MIN)) * (w - 40);
-  const all = [...r.wave, ...r.modal, ...(r.room ?? [])].filter(Number.isFinite);
+  const sets = Object.entries(r.sets ?? {});
+  const all = [...r.wave, ...r.modal, ...(r.room ?? []), ...sets.flatMap(([, v]) => v)].filter(Number.isFinite);
   const top = Math.ceil(Math.max(...all) / 6) * 6 + 3;
   const range = 42;
   const y = (db) => 6 + ((top - Math.max(top - range, Math.min(top, db))) / range) * (h - 30);
@@ -349,6 +353,8 @@ function drawResponse(canvas, out, settings, hover = null) {
   }
   trace(r.modal, '#22d3ee', 1.2);
   if (r.room) trace(r.room, ROOM_COLOUR, 1.6);
+  // the sets not sounding, under the one that is
+  for (const [k, vals] of sets) trace(vals, SET_COLOUR[k], 1.3);
   trace(r.wave, '#f43f5e', 1.8);
   // The sweep's frames: a faint tick for each one still to paint, a dot on the curve for each one ready.
   const { ready = [], ladder = [] } = out.frames ?? {};
@@ -392,7 +398,8 @@ function drawResponse(canvas, out, settings, hover = null) {
     ctx.fillStyle = FREQ_COLOUR;
     ctx.fillText(label, lx + 4, h - 30);
   }
-  const legend = [['wave', '#f43f5e'], ...(r.room ? [[`room ·${r.seats}`, ROOM_COLOUR]] : []), ['modal', '#22d3ee']];
+  const live = settings.speakerSet ?? 'A';
+  const legend = [[`wave · ${live}`, '#f43f5e'], ...sets.map(([k]) => [k, SET_COLOUR[k]]), ...(r.room ? [[`room ·${r.seats}`, ROOM_COLOUR]] : []), ['modal', '#22d3ee']];
   let lx = w - 4;
   for (const [text, colour] of legend.reverse()) {
     lx -= ctx.measureText(text).width + 8;
@@ -411,7 +418,7 @@ function drawResponse(canvas, out, settings, hover = null) {
     ctx.lineTo(x(f), h - 24);
     ctx.stroke();
     ctx.setLineDash([]);
-    const label = `${f.toFixed(f < 100 ? 1 : 0)} Hz · wave ${Number.isFinite(r.wave[i]) ? r.wave[i].toFixed(1) : '—'} dB${Number.isFinite(r.room?.[i]) ? ` · room ${r.room[i].toFixed(1)}` : ''}${Number.isFinite(r.modal[i]) ? ` · modal ${r.modal[i].toFixed(1)}` : ''}`;
+    const label = `${f.toFixed(f < 100 ? 1 : 0)} Hz · wave ${Number.isFinite(r.wave[i]) ? r.wave[i].toFixed(1) : '—'} dB${Number.isFinite(r.room?.[i]) ? ` · room ${r.room[i].toFixed(1)}` : ''}${Number.isFinite(r.modal[i]) ? ` · modal ${r.modal[i].toFixed(1)}` : ''}${sets.map(([k, v]) => (Number.isFinite(v[i]) ? ` · ${k} ${v[i].toFixed(1)}` : '')).join('')}`;
     const tw = ctx.measureText(label).width + 8;
     const lx = Math.min(w - tw - 2, x(f) + 6);
     ctx.fillStyle = 'rgba(11,13,18,.9)';

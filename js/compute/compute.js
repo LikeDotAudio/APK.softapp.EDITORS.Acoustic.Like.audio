@@ -60,8 +60,9 @@ export const MODAL_MAX = 1000;
 /**
  * `withResponse` false (a sweep's frame): no response curve — it does not depend on the frequency, so the frame borrows the room's.
  * `withReports` false (a refinement, engine.js): no meters either — the cell size does not change what a mic hears.
+ * `sets` the other speaker sets' boxes as each would sound selected ({ B: [...] }): the response draws each beside the live one.
  */
-export function runJob({ room, speakers, mics, settings, grids, monitorId, responsePoints, withResponse = true, withReports = true }) {
+export function runJob({ room, speakers, mics, settings, grids, monitorId, responsePoints, sets = {}, withResponse = true, withReports = true }) {
   const prep = prepare(room, speakers, { maxOrder: settings.maxOrder });
   const modal = room && speakers.length ? prepareModal(room, speakers, Math.min(settings.freq, MODAL_MAX)) : null;
   const sample = (pt) => {
@@ -108,6 +109,17 @@ export function runJob({ room, speakers, mics, settings, grids, monitorId, respo
       room: seats.length > 1 ? freqs.map((f) => powerMean(seats.map((m) => waveDb(prep, m, f, m)), seats.map(seatWeight))) : null,
       seats: seats.length,
     };
+  }
+  // the other sets at the same seat, a wave curve each — what switching to them on the monitor controller would give
+  if (withResponse && monitor) {
+    const freqs = response?.freqs ?? responseFreqs(responsePoints);
+    const curves = Object.entries(sets)
+      .filter(([, spk]) => spk.length)
+      .map(([k, spk]) => {
+        const p = prepare(room, spk, { maxOrder: settings.maxOrder });
+        return [k, freqs.map((f) => waveDb(p, monitor, f, monitor))];
+      });
+    if (curves.length) response = { ...(response ?? { freqs, wave: freqs.map(() => NaN), modal: freqs.map(() => NaN), room: null, seats: 0 }), sets: Object.fromEntries(curves) };
   }
   return { values, reports, response };
 }
