@@ -171,3 +171,16 @@ test('the blow-up shows the speaker and the listener in the floor plan and in ev
   assert.ok(figs.every((f) => f.lines.length && f.texts.length));
   assert.equal(new Set(out.blowup.map((it) => it.name)).size, out.blowup.length, 'every block named once');
 });
+
+test('None mutes the selected set; By hand, or a box placed by hand onto None, sounds', async () => {
+  const { createStore } = await import('../js/model/store.js');
+  const boxes = [{ id: 'a', set: 'C', role: 'L' }, { id: 'b', set: 'C' }];
+  assert.deepEqual(arrangedSpeakers(boxes, { speakerSet: 'C', layout: { preset: 'none' } }), []);
+  assert.equal(arrangedSpeakers(boxes, { speakerSet: 'C', layout: { preset: 'none' }, show: { arrangement: false } }).length, 0, 'hiding the arrangement does not unmute None');
+  assert.equal(arrangedSpeakers(boxes, { speakerSet: 'C', layout: { preset: 'hand' } }).length, 2);
+  const store = createStore();
+  store.setSettings({ layout: { ...store.state.settings.layout, preset: 'none' } });
+  store.addSpeaker('monitor', { x: 1, y: 1, z: 1.2 });
+  assert.equal(store.state.settings.layout.preset, 'hand');
+  assert.equal(arrangedSpeakers(store.state.speakers, store.state.settings).length, 1);
+});

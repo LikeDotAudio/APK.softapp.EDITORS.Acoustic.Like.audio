@@ -6,7 +6,7 @@ import { buildRoom } from '../js/acoustics/room.js';
 import { makeMic, makeSpeaker } from '../js/acoustics/devices.js';
 import { F_MAX, F_MIN, RESPONSE_FREQS, responseFreqs, runJob } from '../js/compute/compute.js';
 
-const settings = { roomHeight: 3, frontDeg: 90, band: 2, maxOrder: 1, freq: 100, method: 'wave', layout: { preset: 'none', radius: 1.5 }, show: {}, faceMaterials: {} };
+const settings = { roomHeight: 3, frontDeg: 90, band: 2, maxOrder: 1, freq: 100, method: 'wave', layout: { preset: 'hand', radius: 1.5 }, show: {}, faceMaterials: {} };
 const room = buildRoom([{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 6 }, { x: 0, y: 6 }], settings);
 const mic = makeMic('mixer', { x: 2, y: 3, z: 1.2 }, { mix: true });
 const speakers = [makeSpeaker('monitor', { x: 1, y: 1, z: 1.2 })];

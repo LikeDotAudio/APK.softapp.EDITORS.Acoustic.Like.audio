@@ -5,7 +5,7 @@ import { DEFAULT_ISOLATION } from '../acoustics/isolation.js';
 import { mirrorDevice, syncTwin } from '../acoustics/symmetry.js';
 import { clampInside, CLEAR_M, intoRoom, outside } from '../acoustics/inRoom.js';
 import { DEFAULT_MONITOR } from '../acoustics/monitor.js';
-import { activeSet, carryArray, LAYOUTS, OLD_SET_BOXES, selectSet, setLayout, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
+import { activeSet, carryArray, HAND_LAYOUT, LAYOUTS, NO_LAYOUT, OLD_SET_BOXES, selectSet, setLayout, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
 import { pointInPolygon } from '../acoustics/geometry.js';
 
 const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
@@ -304,7 +304,8 @@ export function createStore() {
       emit('selection');
     },
     addSpeaker(kind, at, extra) {
-      // a box placed by hand joins the set that is sounding
+      // a box placed by hand joins the selected set; a set on None is placed by hand from then on, so it is heard
+      if (state.settings.layout?.preset === NO_LAYOUT) state.settings = { ...state.settings, layout: { ...state.settings.layout, preset: HAND_LAYOUT } };
       add('speaker', { ...makeSpeaker(kind, at, extra), set: activeSet(state.settings) });
     },
     addMic(kind, at, extra) {

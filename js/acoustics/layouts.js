@@ -36,8 +36,10 @@ const BED_FRONT = [{ name: 'C', az: 0, el: 0, range: [0, 0], side: 'C', line: tr
 const UNDER_LR = [{ name: 'LFE1', az: 30, under: true }, { name: 'LFE2', az: -30, under: true }];
 const TOPS_4 = [...pair('tf', 45, 45, [30, 55]), ...pair('tr', 135, 45, [110, 150])];
 
-/** No arrangement: every speaker is placed by hand, and every one of them sounds. */
+/** None: the set is silent — every box in it muted, drawn as a ghost. */
 export const NO_LAYOUT = 'none';
+/** By hand: no arrangement, every speaker placed by hand, and every one of them sounds. */
+export const HAND_LAYOUT = 'hand';
 
 export const LAYOUTS = {
   // one box on the centre line, straight ahead: a mono check, a talkback, a single wedge
@@ -134,11 +136,13 @@ export const elWindow = (s) => s.elRange ?? (s.el === 0 ? [-10, 10] : [30, 55]);
 
 /**
  * The speakers the highlighted arrangement soloes: those whose role is one of
- * its own (2.0 picks L and R out of a 7.1.4). Every speaker when no
- * arrangement is shown, or when none of them carries one of its roles —
- * always of the selected speaker set (SPEAKER_SETS) alone.
+ * its own (2.0 picks L and R out of a 7.1.4). Every speaker when the set is
+ * placed by hand, when no arrangement is shown, or when none of them carries
+ * one of its roles; none at all when the set is None — always of the selected
+ * speaker set (SPEAKER_SETS) alone.
  */
 export function arrangedSpeakers(speakers, settings) {
+  if (settings.layout?.preset === NO_LAYOUT) return [];
   const set = activeSet(settings);
   const mine = speakers.filter((s) => setOf(s) === set);
   const layout = LAYOUTS[settings.layout?.preset];

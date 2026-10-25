@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { MIC_PRESETS } from './devices.js';
-import { activeSet, NO_LAYOUT, setLayout, setOf, SPEAKER_SETS } from './layouts.js';
+import { activeSet, HAND_LAYOUT, NO_LAYOUT, setLayout, setOf, SPEAKER_SETS } from './layouts.js';
 
 /**
  * ACOUSTIC GROUPS
@@ -15,12 +15,13 @@ import { activeSet, NO_LAYOUT, setLayout, setOf, SPEAKER_SETS } from './layouts.
  * decide.
  */
 
-/** The speaker sets that hold any boxes, in A-B-C order: { key, title, preset, live, items }. */
+/** The speaker sets that hold any boxes, in A-B-C order: { key, title, preset, live, muted, items } — `preset` null placed by hand, `muted` a set on None. */
 export function sourceGroups(speakers, settings) {
   return Object.entries(SPEAKER_SETS)
     .map(([key, set]) => {
       const preset = setLayout(settings, key).preset;
-      return { key, title: set.title, preset: preset === NO_LAYOUT ? null : preset, live: key === activeSet(settings), items: speakers.filter((s) => setOf(s) === key) };
+      const muted = preset === NO_LAYOUT;
+      return { key, title: set.title, preset: muted || preset === HAND_LAYOUT ? null : preset, live: key === activeSet(settings), muted, items: speakers.filter((s) => setOf(s) === key) };
     })
     .filter((g) => g.items.length);
 }

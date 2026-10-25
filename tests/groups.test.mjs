@@ -16,9 +16,13 @@ test('sources: one branch per set that holds boxes, a box with no set is A’s',
   assert.equal(g[0].live, false);
 });
 
-test('sources: a set with no arrangement names none', () => {
-  const g = sourceGroups([{ id: 1, set: 'C' }], { speakerSet: 'C', layout: { preset: 'none' } });
+test('sources: a set placed by hand names no arrangement; a set on None is muted', () => {
+  const g = sourceGroups([{ id: 1, set: 'C' }], { speakerSet: 'C', layout: { preset: 'hand' } });
   assert.equal(g[0].preset, null);
+  assert.equal(g[0].muted, false);
+  const none = sourceGroups([{ id: 1, set: 'C' }], { speakerSet: 'C', layout: { preset: 'none' } });
+  assert.equal(none[0].preset, null);
+  assert.equal(none[0].muted, true);
 });
 
 test('receivers: the mix seat first, then the tiers, then measurement mics in placing order', () => {

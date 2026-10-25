@@ -7,7 +7,7 @@ import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { receiverOrder, sourceGroups } from '../acoustics/groups.js';
 import { outside } from '../acoustics/inRoom.js';
 import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
-import { activeSet, arrangedSpeakers, arrayFront, isMain, LAYOUTS, layoutCentre, layoutPositions, NO_LAYOUT, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
+import { activeSet, arrangedSpeakers, arrayFront, HAND_LAYOUT, isMain, LAYOUTS, layoutCentre, layoutPositions, NO_LAYOUT, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from '../acoustics/roomFit.js';
 import { LOW_END } from '../acoustics/widthFinder.js';
 import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
@@ -155,7 +155,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       branch(
         'sources',
         ['🔊 Sources', h('small', {}, ` ${speakers.length + people.length}`)],
-        sets.length || people.length ? [...sets.map((g) => branch(`set:${g.key}`, [g.title, h('small', {}, ` ${g.preset ?? 'by hand'}${g.live ? ' · sounding' : ''} · ${g.items.length}`)], g.items.map(speaker), g.live ? 'live' : '')), ...voices] : [h('p', { class: 'hint' }, 'None yet — ＋ Speaker.')],
+        sets.length || people.length ? [...sets.map((g) => branch(`set:${g.key}`, [g.title, h('small', {}, ` ${g.muted ? 'none · muted' : g.preset ?? 'by hand'}${g.live && !g.muted ? ' · sounding' : ''} · ${g.items.length}`)], g.items.map(speaker), g.live && !g.muted ? 'live' : '')), ...voices] : [h('p', { class: 'hint' }, 'None yet — ＋ Speaker.')],
       ),
     );
     out.push(branch('receivers', ['🎧 Receivers', h('small', {}, ` ${mics.length}`)], mics.length ? receiverOrder(mics).map(mic) : [h('p', { class: 'hint' }, 'None yet — ＋ Mic.')]));
@@ -802,7 +802,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const boxes = [...Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub'), ...acx].map(([value, p]) => ({ value, label: p.label }));
     const parts = [
       h('h3', {}, SPEAKER_SETS[activeSet(settings)].title),
-      row('Preset', select(settings.layout.preset, [{ value: NO_LAYOUT, label: 'None — speakers by hand' }, ...SPEAKER_SETS[activeSet(settings)].presets.map((value) => ({ value, label: LAYOUTS[value].label }))], (v) => set({ layout: { ...settings.layout, preset: v } }))),
+      row('Preset', select(settings.layout.preset, [{ value: NO_LAYOUT, label: 'None — the set is silent' }, { value: HAND_LAYOUT, label: 'By hand — every box sounds' }, ...SPEAKER_SETS[activeSet(settings)].presets.map((value) => ({ value, label: LAYOUTS[value].label }))], (v) => set({ layout: { ...settings.layout, preset: v } }))),
       // the width carries the placed speakers with it, so they stay round the listener
       row('Width', widthSlider(settings.layout.radius, best), num(settings.layout.radius, (v) => moveArray('radius', Math.max(0.8, v) * 1000), { unit: 'm radius', min: 0.8, step: 0.1 })),
       ...widthFitRows(fit, best, settings.layout.radius),
@@ -815,7 +815,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       h(
         'div',
         { class: 'actions' },
-        !LAYOUTS[settings.layout.preset] ? h('p', { class: 'hint' }, 'No arrangement: every speaker is yours to place, and every one sounds.') : mix && room ? button(`Place ${settings.layout.preset} around mix`, () => placeLayout(mix, room)) : h('p', { class: 'hint' }, 'Place a mix-position mic first.'),
+        settings.layout.preset === NO_LAYOUT ? h('p', { class: 'hint' }, 'None: every box in this set is muted. Pick an arrangement, or By hand to hear the boxes you place.') : !LAYOUTS[settings.layout.preset] ? h('p', { class: 'hint' }, 'By hand: every speaker is yours to place, and every one sounds.') : mix && room ? button(`Place ${settings.layout.preset} around mix`, () => placeLayout(mix, room)) : h('p', { class: 'hint' }, 'Place a mix-position mic first.'),
       ),
     ];
     if (out.layout.length)

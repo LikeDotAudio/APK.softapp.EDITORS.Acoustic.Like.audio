@@ -640,7 +640,7 @@ const widthLanes = { key: [], list: [] };
     const none = document.createElement('button');
     none.dataset.preset = NO_LAYOUT;
     none.textContent = 'None';
-    none.title = 'No arrangement: place speakers by hand — every one of this set sounds, nothing is checked against a layout';
+    none.title = 'None: this set is silent — every box in it muted. A speaker placed by hand afterwards makes it a set placed by hand, and it sounds';
     none.onclick = () => pick(k, { preset: NO_LAYOUT });
     row.append(letter, none);
     for (const preset of set.presets) {
@@ -658,7 +658,7 @@ const widthLanes = { key: [], list: [] };
     place.title = `Place this arrangement around the mix seat (replaces the ${set.title.split(' — ')[0]}'s arranged speakers)`;
     place.onclick = () => {
       if (k !== activeSet(store.state.settings)) pick(k);
-      if (!LAYOUTS[store.state.settings.layout.preset]) status.textContent = '⚠ pick an arrangement to place — None places nothing';
+      if (!LAYOUTS[store.state.settings.layout.preset]) status.textContent = '⚠ pick an arrangement to place — None and By hand place nothing';
       else if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
     };
     row.append(place);
