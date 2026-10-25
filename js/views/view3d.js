@@ -494,7 +494,9 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
       const seen = (r) => {
         if (r.surface === 'ceiling') return B.eye.z < room.Hmax;
         if (r.surface === 'floor') return B.eye.z > 0;
-        const wall = room.walls[r.wall];
+        // a console's top (the console bounce) is a mirror at its height, seen from above it
+        const wall = r.surface === 'wall' ? room.walls[r.wall] : null;
+        if (!wall) return B.eye.z > (r.hit?.z ?? 0);
         return (B.eye.x - wall.a.x) * wall.nIn.x + (B.eye.y - wall.a.y) * wall.nIn.y >= 0;
       };
       for (const r of rays) {
