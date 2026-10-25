@@ -38,6 +38,7 @@ import { createTour } from './ui/tour.js';
 import { makeFold } from './ui/fold.js';
 import { createPlayer } from './ui/player.js';
 import { createMonitor } from './ui/monitor.js';
+import { createWizard } from './ui/wizard.js';
 
 const CEILING_LAYER = 'Ceiling';
 
@@ -239,13 +240,17 @@ function renderAll() {
 
 /**
  * The app opens on the room in 3-D, heard modally; a CAD with nothing drawn on it
- * gets a room by the dice, furnished and seated, so there is a room to hear at once.
+ * opens the wizard (ui/wizard.js) — or, with the wizard turned off at start, gets
+ * a room by the dice, furnished and seated, so there is a room to hear at once.
  */
 let opened = false;
+const drawnNothing = (g) => !g?.walls?.length && !g?.rooms?.length;
 function opening(geometry) {
   opened = true;
   store.setSettings({ view: '3d', method: 'modal' });
-  if (!geometry.walls?.length && !geometry.rooms?.length) drawRoom(grabBag(store.state.settings.lastLibraryRoom));
+  if (!drawnNothing(geometry)) return;
+  if (wizard.atStart()) wizard.open();
+  else drawRoom(grabBag(store.state.settings.lastLibraryRoom));
 }
 
 cad.link = connectCad(iframe, {
@@ -1131,13 +1136,64 @@ installSashes({
 });
 
 // ------------------------------------------------------------------ Acoustic X, the classic windows
-createAcousticX({
+const acx = createAcousticX({
   store,
   engine,
   mount: document.getElementById('acx'),
   // the Modal Response optimiser's "Use these": a shoebox of those dimensions, drawn like any library room
   onDrawRoom: ({ L, W, H }) => drawRoom({ id: 'optimised', group: 'Control rooms', name: `Optimised ${W.toFixed(2)} × ${L.toFixed(2)} × ${H.toFixed(2)} m`, h: H, poly: [[-W / 2, 0], [W / 2, 0], [W / 2, L], [-W / 2, L]] }),
 });
+
+// ------------------------------------------------------------------ the wizard: room, things, system, walls, go
+const wizard = createWizard({
+  store,
+  engine,
+  rooms: ROOM_LIBRARY,
+  act: {
+    drawRoom,
+    dice: () => grabBag(store.state.settings.lastLibraryRoom),
+    drawOwn: () => {
+      store.setMode('pick-wall');
+      jumpTo('plan');
+    },
+    openFile: () => document.getElementById('openSession').closest('label').click(),
+    // the toolbar's own furniture buttons, so a piece is armed exactly as the fold arms it
+    furniture: () => [...document.querySelectorAll('#furniture button[data-arm]')].map((b) => ({ id: b.dataset.arm, label: b.textContent, title: b.title })),
+    arm: (id) => document.querySelector(`#furniture button[data-arm="${id}"]`)?.click(),
+    seat: () => place('place-mic', 'mic', 'mixer'),
+    mic: () => place('place-mic', 'mic', 'cardioid'),
+    byHand: () => place('place-speaker'),
+    sets: () => Object.entries(SPEAKER_SETS).map(([k, set]) => ({ k, title: set.title, presets: set.presets.map((id) => ({ id, label: LAYOUTS[id].label })) })),
+    // the arrangement bar's own buttons: the preset picked on its row, then that row's ⤓
+    system: (k, preset) => {
+      const row = document.querySelector(`#arrangement .speakerSet[data-set="${k}"]`);
+      row?.querySelector(`button[data-preset="${preset}"]`)?.click();
+      row?.querySelector('button:last-child')?.click();
+    },
+    pickWall: () => {
+      store.setMode('pick-wall');
+      jumpTo('plan');
+      inspector.show('Inspect');
+    },
+    go: ({ view, method, meters: kinds, sweep: sweepToo, report }) => {
+      store.setSettings({ view, method });
+      // the graphs hidden by 📈: shown again by it, so it remembers
+      if (document.body.classList.contains('meters-hidden')) document.getElementById('graphsBtn').click();
+      for (const k of kinds) meters.open(k);
+      if (sweepToo) startSweep();
+      if (report.length) acx.report(report);
+    },
+    closed: () => {
+      if (drawnNothing(store.state.cad.geometry)) drawRoom(grabBag(store.state.settings.lastLibraryRoom));
+    },
+  },
+});
+function place(mode, kind, preset) {
+  if (kind) store.setPlaceKind(kind, preset);
+  store.setMode(mode);
+  jumpTo('plan');
+}
+document.getElementById('wizardBtn').addEventListener('click', () => (wizard.isOpen ? wizard.close(false) : wizard.open(drawnNothing(store.state.cad.geometry) ? 0 : 1)));
 
 // `?debug` hands the console the store and engine; nothing reads them otherwise.
 if (new URLSearchParams(location.search).has('debug')) window.acoustic = { store, engine };

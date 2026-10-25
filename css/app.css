@@ -491,3 +491,63 @@ body.sashing-v iframe, body.sashing-h iframe { pointer-events: none; }
 .monStrips button { padding: 0 6px; }
 .monStrips input { width: 56px; }
 .monStrips tr.silent td.name, .monStrips tr.silent td.mono { opacity: .4; }
+
+/* the wizard (ui/wizard.js): steps 1 and 5 a dialog over the app, 2–4 a card beside the views so the plan stays clickable */
+#wizardShade { position: fixed; inset: 0; z-index: 3000; background: rgba(0, 0, 0, .55); }
+#wizardShade[hidden], #wizard[hidden] { display: none; }
+#wizard { position: fixed; z-index: 3001; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 16px 48px rgba(0, 0, 0, .6); }
+#wizard.big { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 48px); }
+#wizard.side { right: calc(var(--inspector-w, 360px) + 12px); top: 96px; width: min(400px, calc(100vw - 32px)); max-height: calc(100vh - 140px); }
+#wizard > header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+#wizard > header nav { display: flex; gap: 2px; flex-wrap: wrap; }
+#wizard > header nav button { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+#wizard > header nav button.done { color: var(--ok); border-color: var(--ok); }
+#wizard > header .x { margin-left: auto; }
+#wizard > h3 { margin: 10px 14px 0; font-size: 16px; }
+#wizard .wizBody { padding: 4px 14px 10px; overflow: auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+#wizard .wizBody > p { margin: 4px 0; }
+#wizard > footer { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); }
+#wizard > footer i { flex: 1; }
+#wizard .check { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.wizActs { display: flex; flex-wrap: wrap; gap: 6px; }
+.wizGrid { display: flex; flex-wrap: wrap; gap: 4px; }
+.wizScroll { overflow: auto; max-height: calc(100vh - 300px); padding-right: 4px; }
+.wizScroll h4:first-child { margin-top: 0; }
+.wizRooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.wizRoom { display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto 1fr; column-gap: 8px; align-items: start; text-align: left; padding: 6px; border-radius: 6px; }
+.wizRoom svg { grid-row: span 2; width: 44px; height: 44px; }
+.wizRoom svg polygon { fill: rgba(244, 144, 44, .15); stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.wizRoom b { font-size: 12px; line-height: 1.25; }
+.wizRoom span { font: 10px var(--mono); color: var(--muted); }
+.wizLive { font-size: 12px; padding: 4px 8px; border-left: 3px solid var(--muted); background: #202022; }
+.wizLive.ok { border-color: var(--ok); }
+.wizLive.warn { border-color: var(--warn); color: #fde68a; }
+.wizSet { display: flex; flex-direction: column; gap: 3px; }
+.wizSet > span { font-size: 11px; color: var(--muted); }
+.wizFaces { width: 100%; border-collapse: collapse; }
+.wizFaces td { padding: 2px 4px; }
+.wizFaces td:first-child { white-space: nowrap; }
+.wizFaces select { width: 100%; }
+.wizFaces .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; }
+.wizRead { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: center; }
+.wizSti { display: flex; flex-direction: column; align-items: center; padding: 6px; border-radius: 6px; border: 2px solid var(--muted); text-align: center; }
+.wizSti b { font: 700 26px var(--mono); }
+.wizSti span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.wizSti small { font-size: 10px; color: var(--muted); }
+.wizSti.bad, .wizSti.poor { border-color: var(--bad); color: var(--bad); }
+.wizSti.fair { border-color: var(--warn); color: var(--warn); }
+.wizSti.good, .wizSti.excellent { border-color: var(--ok); color: var(--ok); }
+.rtChart { width: 100%; height: auto; display: block; }
+.rtChart .aim { fill: rgba(34, 197, 94, .15); stroke: rgba(34, 197, 94, .5); }
+.rtChart .ok { fill: var(--ok); }
+.rtChart .off { fill: var(--warn); }
+.rtChart text { fill: var(--text); font: 9px var(--mono); text-anchor: middle; }
+.rtChart text.hz { fill: var(--muted); }
+.wizAsks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.wizAsk { display: grid; grid-template-columns: 32px 1fr; column-gap: 8px; text-align: left; padding: 10px; border-radius: 8px; }
+.wizAsk i { grid-row: span 2; font-style: normal; font-size: 22px; line-height: 1; }
+.wizAsk span { font-size: 11px; color: var(--muted); font-weight: 400; }
+.wizAsk.on { background: rgba(244, 144, 44, .14); color: var(--text); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.wizGo { display: flex; justify-content: center; padding: 6px 0 2px; }
+.wizGo .go { font-size: 18px; font-weight: 800; padding: 10px 48px; border-radius: 24px; background: var(--accent); color: #111; border-color: var(--accent); }
+@media (max-width: 700px) { #wizard.side { right: 16px; left: 16px; width: auto; } }

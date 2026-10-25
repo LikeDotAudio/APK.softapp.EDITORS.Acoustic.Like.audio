@@ -2478,6 +2478,11 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       ),
     );
     win.refresh = () => win.sync();
+    win.print = (names) => {
+      for (const [n] of MODULES) pick[n] = names.includes(n);
+      win.sync();
+      preview(false);
+    };
   });
 
   makeWindow('about', 'About Acoustic X (classic)', { w: 400, h: 230, foot: false }, (win) => {
@@ -2799,5 +2804,11 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
   });
   pullFromRoom();
 
-  return { open, close };
+  /** The report of the modules named (MODULES ids), previewed in a window of its own — the wizard's Go. */
+  function report(names) {
+    pullFromRoom();
+    wins.reports.print(names);
+  }
+
+  return { open, close, report };
 }

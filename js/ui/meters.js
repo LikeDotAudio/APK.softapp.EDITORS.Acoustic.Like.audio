@@ -151,7 +151,7 @@ export function createMeters({ root, tray = null, store, engine, onListen }) {
     drawRt(cv('rt60'), out.room, state.settings);
     drawPolar(cv('polar'), selectedDevice(state) ?? state.speakers[0], state.settings, el.polar.querySelector('.pol-name'));
   }
-  return { render };
+  return { render, open: (kind) => el[kind] && minimise(kind, false) };
 }
 
 /** The numbers behind each graph, as CSV rows (header first). */
