@@ -6,7 +6,7 @@ import { furnitureTops, specular } from './images.js';
 import { deviceGain } from './patterns.js';
 import { elevationOrigin, faceCoords } from './patches.js';
 import { heightsAtXY } from './elevations.js';
-import { furnitureHeight } from './materials.js';
+import { furnitureHeight, lookup } from './materials.js';
 
 /**
  * WHERE THE PANELS GO
@@ -28,11 +28,71 @@ import { furnitureHeight } from './materials.js';
  * patches in, so a panel drawn there lands back where it was computed; or in
  * plan for the ceiling). Named per face, left to right as the elevation shows
  * it: LEFT-1, LEFT-2 …, and labelled with the speaker it answers.
+ *
+ * What each panel IS rides along as `treatment`, for whoever picks the product:
+ *
+ *   absorber  the mirror points on the walls, and the wall BEHIND each box
+ *             (`front`): there a free-standing box's rear radiation — all of
+ *             a dipole's back lobe, most of anything's bass and low mids —
+ *             comes straight back, smearing the image and colouring it. One
+ *             panel w × h centred on the box's foot on that wall, at its
+ *             height. A flush or corner-mounted box IS in that wall and has
+ *             nothing behind it to treat.
+ *   diffuser  with `diffuse`, the side walls' mirror points become diffusers
+ *             spread over the band the literature puts them in — 305 mm under
+ *             the ears to 914 mm over them (diffuserBand) — so the side
+ *             reflections come back scattered rather than taken out, and the
+ *             room stays alive. `ceiling: 'diffuser'` does the same over the
+ *             seat: the frontal bounce off the ceiling sent to the sides
+ *             instead of into the heads.
  */
 
-export function reflectionPanels(room, speakers, mix, { w = 0.6, h = 1.2, cw = 1.2, ch = 1.2, ceiling = true } = {}) {
+/** Where side-wall diffusers go: from 305 mm under the ears to 914 mm over them (1 ft and 3 ft), kept between floor and ceiling. */
+export const DIFFUSER_BELOW = 0.305;
+export const DIFFUSER_ABOVE = 0.914;
+
+export function diffuserBand(room, mix) {
+  const hts = heightsAtXY(room, mix.x, mix.y);
+  return { lo: Math.max(hts.floor, mix.z - DIFFUSER_BELOW), hi: Math.min(hts.ceiling, mix.z + DIFFUSER_ABOVE) };
+}
+
+/** The wall straight behind a box — its inward normal along the box's aim — and the box's foot on it: { wall, at, d }, or null. */
+export function wallBehind(room, s) {
+  const a = (s.aim ?? 0) * (Math.PI / 180);
+  const f = { x: Math.cos(a), y: Math.sin(a) };
+  let best = null;
+  for (const wall of room.walls) {
+    if (f.x * wall.nIn.x + f.y * wall.nIn.y < 0.5) continue;
+    const d = (s.x - wall.a.x) * wall.nIn.x + (s.y - wall.a.y) * wall.nIn.y;
+    if (!(d > 0)) continue;
+    const at = { x: s.x - wall.nIn.x * d, y: s.y - wall.nIn.y * d };
+    const u = (at.x - wall.a.x) * wall.t.x + (at.y - wall.a.y) * wall.t.y;
+    if (u < 0 || u > wall.len) continue;
+    if (!best || d < best.d) best = { wall, at, d };
+  }
+  return best;
+}
+
+/**
+ * The panel options from the settings (settings.autoPanels): the wall behind
+ * each box is treated unless `front` is false; side-wall diffusers only when
+ * `sideDiffusers` is on; the ceiling a diffuser when its chosen product is one.
+ */
+export function panelOptions(ap = {}, ceilingOn = true) {
+  const ceilingDiffuses = lookup(ap.ceiling ?? 'cloud-1200')?.category === 'Diffuser';
+  return { w: ap.w ?? 0.6, h: ap.h ?? 1.2, front: ap.front !== false, diffuse: ap.sideDiffusers === true, ceiling: ceilingOn ? (ceilingDiffuses ? 'diffuser' : true) : false };
+}
+
+/** The product a panel is drawn as: the chosen wall panel, ceiling product or side diffuser (a 1200 × 600 QRD unless one is chosen). */
+export function panelProduct(p, ap = {}) {
+  if (p.kind === 'ceiling') return ap.ceiling ?? 'cloud-1200';
+  return p.treatment === 'diffuser' ? ap.diffuser ?? 'qrd-1200x600' : ap.wall ?? 'panel-1200x600x100';
+}
+
+export function reflectionPanels(room, speakers, mix, { w = 0.6, h = 1.2, cw = 1.2, ch = 1.2, ceiling = true, front = false, diffuse = false } = {}) {
   if (!room || !mix) return [];
   const out = [];
+  const band = diffuse ? diffuserBand(room, mix) : null;
   for (const s of speakers) {
     if (s.kind === 'sub') continue;
     for (const wall of room.walls) {
@@ -44,9 +104,24 @@ export function reflectionPanels(room, speakers, mix, { w = 0.6, h = 1.2, cw = 1
       const at = { x: wall.a.x + (wall.b.x - wall.a.x) * hit.u, y: wall.a.y + (wall.b.y - wall.a.y) * hit.u };
       const q = Math.hypot(at.x - img.x, at.y - img.y) / Math.hypot(mix.x - img.x, mix.y - img.y);
       const hts = heightsAtXY(room, at.x, at.y);
+      const sideWall = wall.face === 'left' || wall.face === 'right';
+      if (band && sideWall && band.hi > band.lo) {
+        const sheet = onElevation(room, wall, at, (band.lo + band.hi) / 2, w, band.hi - band.lo);
+        if (sheet) out.push({ kind: 'wall', treatment: 'diffuser', face: wall.face, wall: wall.i, speaker: s.role || s.name, at, z: (band.lo + band.hi) / 2, sheet });
+        continue;
+      }
       const z = Math.max(hts.floor + h / 2, Math.min(hts.ceiling - h / 2, s.z + (mix.z - s.z) * q));
       const sheet = onElevation(room, wall, at, z, w, h);
-      if (sheet) out.push({ kind: 'wall', face: wall.face, wall: wall.i, speaker: s.role || s.name, at, z, sheet });
+      if (sheet) out.push({ kind: 'wall', treatment: 'absorber', face: wall.face, wall: wall.i, speaker: s.role || s.name, at, z, sheet });
+    }
+    if (front && (s.mount ?? 'free') === 'free') {
+      const back = wallBehind(room, s);
+      if (back) {
+        const hts = heightsAtXY(room, back.at.x, back.at.y);
+        const z = Math.max(hts.floor + h / 2, Math.min(hts.ceiling - h / 2, s.z));
+        const sheet = onElevation(room, back.wall, back.at, z, w, h);
+        if (sheet) out.push({ kind: 'wall', treatment: 'absorber', behind: true, face: back.wall.face, wall: back.wall.i, speaker: s.role || s.name, at: back.at, z, sheet });
+      }
     }
     if (!ceiling) continue;
     const top = heightsAtXY(room, mix.x, mix.y).ceiling;
@@ -57,7 +132,7 @@ export function reflectionPanels(room, speakers, mix, { w = 0.6, h = 1.2, cw = 1
     const { f, r } = room.frame;
     // a cloud is laid square to the room
     const corner = (a, b) => ({ x: at.x + r.x * a + f.x * b, y: at.y + r.y * a + f.y * b });
-    out.push({ kind: 'ceiling', face: 'ceiling', wall: null, speaker: s.role || s.name, at, z: top, sheet: [corner(-cw / 2, -ch / 2), corner(cw / 2, -ch / 2), corner(cw / 2, ch / 2), corner(-cw / 2, ch / 2)] });
+    out.push({ kind: 'ceiling', treatment: ceiling === 'diffuser' ? 'diffuser' : 'absorber', face: 'ceiling', wall: null, speaker: s.role || s.name, at, z: top, sheet: [corner(-cw / 2, -ch / 2), corner(cw / 2, -ch / 2), corner(cw / 2, ch / 2), corner(-cw / 2, ch / 2)] });
   }
   // names: per face, in the order the elevation reads left to right
   const byFace = new Map();
@@ -172,6 +247,13 @@ export function firstReflections(room, speakers, mix, band = 2) {
     }
   }
   return out;
+}
+
+/** What a wall is at a point on it — the patch painted there, else what the wall is faced with: { material, patch }. */
+export function finishAt(room, wall, at, z) {
+  const u = (at.x - wall.a.x) * wall.t.x + (at.y - wall.a.y) * wall.t.y;
+  const patch = (room.patches ?? []).find((p) => p.surface === 'wall' && p.wall === wall.i && pointInPolygon(u, z, p.points3d.map((q) => ({ x: (q.x - wall.a.x) * wall.t.x + (q.y - wall.a.y) * wall.t.y, y: q.z }))));
+  return { material: patch?.material ?? lookup(wall.material.base) ?? wall.material, patch: patch ?? null };
 }
 
 /** A reflection's heat, 0 (20 dB under the direct sound, or quieter) to 1 (as loud as it). */

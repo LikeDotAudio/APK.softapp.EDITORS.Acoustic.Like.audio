@@ -48,7 +48,7 @@ export function driversOf(spk) {
   const coax = /coax|concentric/i.test(spk.driver ?? '');
   const x = spk.fCross || 0;
 
-  if (spk.kind === 'sub' || spk.pattern === 'omni' && hi <= 300) {
+  if (spk.kind === 'sub' || (spk.pattern === 'omni' && hi <= 300)) {
     const d = cone(inches(spk.driver) && inches(spk.driver) * 0.0254, H * 0.82);
     return { box, ways: 1, crossovers: [], drivers: [{ role: 'woofer', y: H / 2, d, lo, hi, assumed: false }] };
   }
@@ -82,34 +82,52 @@ export function driversOf(spk) {
       ],
     };
   }
-  const tweetY = spk.centerHeight && spk.centerHeight > H * 0.5 ? spk.centerHeight : H * 0.8;
-  if (x && x < 1000) {
-    // three-way: the crossover we know is woofer → mid; the mid → tweeter one is typical
-    const wd = cone(null, H * 0.42);
-    const wy = spk.wooferHeight || wd / 2 + 0.03;
-    const md = cone(W * 0.4, (tweetY - (wy + wd / 2)) * 0.9);
-    const my = (wy + wd / 2 + tweetY) / 2 - 0.01;
+  const TR = 0.014; // a 28 mm dome
+  const three = x > 0 && x < 1000;
+  // three-way: the crossover we know is woofer → mid, the mid → tweeter one is typical
+  const xo = three ? [{ f: x, assumed: false }, { f: TYPICAL_TWEETER_X, assumed: true }] : [{ f: x || TYPICAL_TWO_WAY_X, assumed: !x }];
+  const top = xo[xo.length - 1].f;
+  const known = (v) => v > 0 && v < H;
+  const ch = known(spk.centerHeight) ? spk.centerHeight : 0;
+  const wh = known(spk.wooferHeight) ? spk.wooferHeight : 0;
+  // a woofer level with the acoustic centre in a cabinet wider than tall: a pair either side of the mid and dome
+  if (wh && ch && Math.abs(wh - ch) < H * 0.08 && W >= H * 0.9) {
+    const md = three ? Math.min(W * 0.2, H * 0.35) : 0;
+    const my = ch;
+    const ty = three ? Math.min(H - 0.02 - TR, my + md / 2 + 0.012 + TR) : ch;
+    const half = Math.max(md, 2 * TR) / 2 + 0.01;
+    const wd = cone(Math.min(W / 2 - half - 0.03, 2 * Math.min(wh, H - wh) - 0.03), H);
+    const wx = half + 0.015 + wd / 2;
     return {
       box,
-      ways: 3,
-      crossovers: [{ f: x, assumed: false }, { f: TYPICAL_TWEETER_X, assumed: true }],
+      ways: xo.length + 1,
+      crossovers: xo,
       drivers: [
-        { role: 'woofer', y: wy, d: wd, lo, hi: x, assumed: !spk.wooferHeight },
-        { role: 'mid', y: my, d: md, lo: x, hi: TYPICAL_TWEETER_X, assumed: true },
-        { role: 'tweeter', y: tweetY, d: 0.028, lo: TYPICAL_TWEETER_X, hi, assumed: !spk.centerHeight },
+        { role: 'woofer', y: wh, xs: [-wx, wx], d: wd, lo, hi: xo[0].f, assumed: false },
+        ...(three ? [{ role: 'mid', y: my, d: md, lo: x, hi: top, assumed: true }] : []),
+        { role: 'tweeter', y: ty, d: 2 * TR, lo: top, hi, assumed: three },
       ],
     };
   }
-  const xo = x || TYPICAL_TWO_WAY_X;
-  const wd = cone(null, (tweetY - 0.035) * 0.95);
-  const wy = spk.wooferHeight || Math.max(wd / 2 + 0.02, tweetY - 0.035 - wd / 2);
+  // stacked: the dome on top, a mid under it (at the acoustic centre), the woofer at the bottom
+  const my = three ? ch || H * 0.6 : 0;
+  const md = three ? cone(W * 0.4, 2 * (H - 0.03 - 2 * TR - 0.012 - my)) : 0;
+  const ty = three ? Math.min(H - 0.02 - TR, my + md / 2 + 0.012 + TR) : ch > H * 0.5 ? ch : H * 0.8;
+  const ceiling = three ? my - md / 2 - 0.01 : ty - TR - 0.006;
+  // the datasheet's woofer height, when the woofer it places fits under what is above it; else one sat at the bottom
+  const fromData = wh ? cone(null, Math.min(2 * (wh - 0.012), 2 * (ceiling - wh))) : 0;
+  const free = cone(null, ceiling - 0.015);
+  const useData = fromData >= free * 0.6;
+  const wd = useData ? fromData : free;
+  const wy = useData ? wh : 0.015 + wd / 2;
   return {
     box,
-    ways: 2,
-    crossovers: [{ f: xo, assumed: !x }],
+    ways: xo.length + 1,
+    crossovers: xo,
     drivers: [
-      { role: 'woofer', y: wy, d: wd, lo, hi: xo, assumed: !spk.wooferHeight },
-      { role: 'tweeter', y: tweetY, d: 0.028, lo: xo, hi, assumed: !spk.centerHeight },
+      { role: 'woofer', y: wy, d: wd, lo, hi: xo[0].f, assumed: !useData },
+      ...(three ? [{ role: 'mid', y: my, d: md, lo: x, hi: top, assumed: true }] : []),
+      { role: 'tweeter', y: ty, d: 2 * TR, lo: top, hi, assumed: three || !ch },
     ],
   };
 }
@@ -155,20 +173,19 @@ function polarSvg(dev, plane, colour) {
   const cov = plane === 'h' ? dev.hCov : dev.vCov;
   let body = '';
   for (const db of [0, -6, -12, -18, -24]) body += `<circle r="${rOf(db)}" class="ring${db === -6 ? ' six' : ''}"/>`;
+  for (const db of [-6, -12, -18, -24]) body += `<text x="${rOf(db) + 2}" y="-2" class="t db">${db}</text>`;
   body += `<line x1="0" y1="${-R}" x2="0" y2="${R}" class="ring"/><line x1="${-R}" y1="0" x2="${R}" y2="0" class="ring"/>`;
   if (dev.pattern === 'horn' && cov < 360) {
     for (const s of [-1, 1]) {
       const t = (s * cov * Math.PI) / 360;
       body += `<line x1="0" y1="0" x2="${(R * Math.sin(t)).toFixed(1)}" y2="${(-R * Math.cos(t)).toFixed(1)}" class="cov"/>`;
     }
-    body += `<text x="0" y="${-R - 6}" class="t mid">${cov}° at −6 dB</text>`;
+    body += `<text x="${R}" y="${R + 14}" class="t end">${cov}° at −6 dB</text>`;
   }
   if (dev.omniBelow) body += `<path d="${path(polarOf(dev, plane, dev.omniBelow))}" class="lo"/>`;
   body += `<path d="${path(polarOf(dev, plane, hiF))}" class="hi" style="stroke:${colour};fill:${colour}"/>`;
   body += `<text x="${-R}" y="${R + 14}" class="t">${plane === 'h' ? 'From above' : 'From the side'}</text>`;
-  const legend = dev.omniBelow ? `${kHz(hiF)}+ · <tspan class="dash">╌ ${kHz(dev.omniBelow)}</tspan>` : 'every band';
-  body += `<text x="${R}" y="${R + 14}" class="t end">${legend}</text>`;
-  return svg(`${-R - 12} ${-R - 16} ${2 * R + 24} ${2 * R + 36}`, body, 'tx-polar');
+  return svg(`${-R - 12} ${-R - 6} ${2 * R + 24} ${2 * R + 26}`, body, 'tx-polar');
 }
 
 /** The speaker face-on, to scale in mm, every driver where it sits, the box's size written on it. */
@@ -178,21 +195,22 @@ function faceSvg(spk, { box, drivers }) {
   const H = mm(box.h);
   const pad = Math.max(W, H) * 0.14;
   let body = `<rect x="${-W / 2}" y="${-H}" width="${W}" height="${H}" rx="${Math.min(W, H) * 0.04}" class="box"/>`;
-  for (const d of drivers) {
+  for (const d of drivers.flatMap((q) => (q.xs ?? [0]).map((x) => ({ ...q, x })))) {
+    const cx = mm(d.x);
     const cy = -mm(d.y);
     const r = mm(d.d) / 2;
     const c = DRIVER_COLOURS[d.role];
     if (d.role === 'horn') {
       const w = mm(d.w);
       const hh = mm(d.h);
-      body += `<rect x="${-w / 2}" y="${cy - hh / 2}" width="${w}" height="${hh}" rx="${hh * 0.12}" class="horn" style="stroke:${c}"/>`;
-      body += `<rect x="${-w * 0.12}" y="${cy - hh * 0.12}" width="${w * 0.24}" height="${hh * 0.24}" class="throat" style="stroke:${c}"/>`;
+      body += `<rect x="${cx - w / 2}" y="${cy - hh / 2}" width="${w}" height="${hh}" rx="${hh * 0.12}" class="horn" style="stroke:${c}"/>`;
+      body += `<rect x="${cx - w * 0.12}" y="${cy - hh * 0.12}" width="${w * 0.24}" height="${hh * 0.24}" class="throat" style="stroke:${c}"/>`;
     } else if (d.role === 'tweeter') {
-      body += `<circle cx="0" cy="${cy}" r="${r * 1.9}" class="plate"/><circle cx="0" cy="${cy}" r="${r}" class="dome" style="stroke:${c}"/>`;
+      body += `<circle cx="${cx}" cy="${cy}" r="${r * 1.9}" class="plate"/><circle cx="${cx}" cy="${cy}" r="${r}" class="dome" style="stroke:${c}"/>`;
     } else if (d.role === 'coax') {
-      body += `<circle cx="0" cy="${cy}" r="${r}" class="throat" style="stroke:${c}"/><circle cx="0" cy="${cy}" r="${r * 0.35}" class="dome" style="stroke:${c}"/>`;
+      body += `<circle cx="${cx}" cy="${cy}" r="${r}" class="throat" style="stroke:${c}"/><circle cx="${cx}" cy="${cy}" r="${r * 0.35}" class="dome" style="stroke:${c}"/>`;
     } else {
-      body += `<circle cx="0" cy="${cy}" r="${r}" class="surround" style="stroke:${c}"/><circle cx="0" cy="${cy}" r="${r * 0.86}" class="cone"/><circle cx="0" cy="${cy}" r="${r * 0.22}" class="cap" style="stroke:${c}"/>`;
+      body += `<circle cx="${cx}" cy="${cy}" r="${r}" class="surround" style="stroke:${c}"/><circle cx="${cx}" cy="${cy}" r="${r * 0.86}" class="cone"/><circle cx="${cx}" cy="${cy}" r="${r * 0.22}" class="cap" style="stroke:${c}"/>`;
     }
   }
   body += `<text x="0" y="${pad * 0.7}" class="t mid" style="font-size:${pad * 0.42}px">${W} mm</text>`;
@@ -239,7 +257,7 @@ export function transducerCard(spk) {
     'div',
     { class: 'tx-card' },
     h('div', { class: 'tx-views' }, faceSvg(spk, parts), polarSvg(spk, 'h', colour), polarSvg(spk, 'v', colour)),
-    h('div', { class: 'tx-foot' }, h('p', { class: 'stat' }, `${spk.maker ? spk.maker + ' · ' : ''}${ways}${xo ? `, crossing at ${xo}` : ''} · ${spk.pattern} ${spk.hCov}° × ${spk.vCov}°`), bandsSvg(parts), legend),
+    h('div', { class: 'tx-foot' }, h('p', { class: 'stat' }, `${spk.maker ? spk.maker + ' · ' : ''}${ways}${xo ? `, crossing at ${xo}` : ''} · ${spk.pattern} ${spk.hCov}° × ${spk.vCov}°`, spk.omniBelow ? h('span', { class: 'hint' }, ` — coverage solid from ${kHz(spk.omniBelow * 4)} up, dashed at ${kHz(spk.omniBelow)} where it is half gone`) : ''), bandsSvg(parts), legend),
   );
 }
 

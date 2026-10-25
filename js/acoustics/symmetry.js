@@ -39,13 +39,15 @@ export function mirrorDevice(dev, axisX) {
 
 /**
  * After `changed` moved or changed, bring its twin into line. Keeps the twin's
- * own id, pair and selection; everything physical comes from the mirror.
+ * own id, pair and selection, and its monitor channel (mute, solo, Ø, trim);
+ * everything physical comes from the mirror.
  */
 export function syncTwin(list, changed, axisX) {
   if (!changed.pairId || axisX == null) return list;
   return list.map((d) => {
     if (d.id === changed.id || d.pairId !== changed.pairId) return d;
     const m = mirrorDevice(changed, axisX);
-    return { ...m, id: d.id, pairId: d.pairId };
+    // its channel on the monitor controller is its own: muting L does not mute R
+    return { ...m, id: d.id, pairId: d.pairId, mute: d.mute, solo: d.solo, invert: d.invert, trimDb: d.trimDb };
   });
 }

@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS } from './bands.js';
 import { alongLength, elevationFaceOf, seedOutline } from './elevations.js';
-import { sharedFaces, WALL_BUILDS, wallTl } from './isolation.js';
+import { LOW_BANDS, LOW_SLOPE_DB, sharedFaces, WALL_BUILDS, wallTl } from './isolation.js';
 import { PRODUCTS, material } from './materials.js';
 import { elevationOrigin } from './patches.js';
 import { windowOnSheet } from './windows.js';
@@ -316,9 +316,11 @@ export function wallWindows(room, face, windows = []) {
  * what is not glass, each window's glass — each with its area and TL per
  * octave; `tl` the composite and `rating` its single number. `shared` says
  * whether the house is on the other side; then `leak` is the level there per
- * octave for `roomDb` in the room.
+ * octave for `roomDb` in the room. `low` is the same at 31 and 63 Hz, where a
+ * single-number rating says nothing (isolation.js LOW_BANDS), its `leak` for
+ * `lowDb` = [L31, L63] in the room.
  */
-export function wallTransmission(room, face, iso, windows = [], roomDb = 100) {
+export function wallTransmission(room, face, iso, windows = [], roomDb = 100, lowDb = null) {
   const S = faceArea(room, face);
   const build = WALL_BUILDS[iso.walls] ?? WALL_BUILDS['single-stud'];
   const wallBand = wallTl(iso);
@@ -334,5 +336,9 @@ export function wallTransmission(room, face, iso, windows = [], roomDb = 100) {
   const shared = sharedFaces(iso).includes(face);
   const level = Array.isArray(roomDb) ? roomDb : BANDS.map(() => roomDb);
   const leak = shared && S > 0 ? tl.map((v, b) => level[b] - v + 10 * Math.log10(S / A_HOUSE)) : null;
-  return { build, layers: build.layers ?? [], parts, tl, rating: stcRating(tl), buildRating: stcRating(wallBand), area: S, shared, roomDb: level, leak };
+  // below the rating's bands (isolation.js LOW_BANDS): each part's 125 Hz figure carried down the mass law, the composite as above
+  const lowParts = parts.map((p) => LOW_BANDS.map((_, i) => Math.max(0, p.tl[0] - LOW_SLOPE_DB * (LOW_BANDS.length - i))));
+  const lowTl = LOW_BANDS.map((_, i) => (total > 0 ? -10 * Math.log10(parts.reduce((s, p, k) => s + p.area * 10 ** (-lowParts[k][i] / 10), 0) / total) : lowParts[0][i]));
+  const low = { freqs: LOW_BANDS, tl: lowTl, leak: shared && S > 0 && Array.isArray(lowDb) ? lowTl.map((v, i) => lowDb[i] - v + 10 * Math.log10(S / A_HOUSE)) : null };
+  return { build, layers: build.layers ?? [], parts, tl, rating: stcRating(tl), buildRating: stcRating(wallBand), area: S, shared, roomDb: level, leak, low };
 }

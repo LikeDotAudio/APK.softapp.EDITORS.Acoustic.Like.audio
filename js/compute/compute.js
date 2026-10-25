@@ -57,7 +57,8 @@ function modalCurve(room, speakers, monitor, freqs, fMax) {
 /** The modal method is a low-frequency model: above this it shows the field at this frequency instead. */
 export const MODAL_MAX = 1000;
 
-export function runJob({ room, speakers, mics, settings, grids, monitorId, responsePoints }) {
+/** `withResponse` false (a sweep's frame): no response curve — it does not depend on the frequency, so the frame borrows the room's. */
+export function runJob({ room, speakers, mics, settings, grids, monitorId, responsePoints, withResponse = true }) {
   const prep = prepare(room, speakers, { maxOrder: settings.maxOrder });
   const modal = room && speakers.length ? prepareModal(room, speakers, Math.min(settings.freq, MODAL_MAX)) : null;
   const sample = (pt) => {
@@ -91,7 +92,7 @@ export function runJob({ room, speakers, mics, settings, grids, monitorId, respo
 
   let response = null;
   const monitor = mics.find((m) => m.id === monitorId);
-  if (monitor && speakers.length) {
+  if (withResponse && monitor && speakers.length) {
     const fModalMax = Math.min(MODAL_MAX, Math.max(200, schroeder(room) * 1.5));
     const seats = roomSeats(mics);
     const freqs = responseFreqs(responsePoints);

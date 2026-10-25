@@ -4,7 +4,7 @@ import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
 import { buildRoom } from './acoustics/room.js';
 import { elevationOrigin, faceCoords } from './acoustics/patches.js';
-import { arrangedSpeakers, arrayFront, LAYOUTS, NO_LAYOUT, relayArray } from './acoustics/layouts.js';
+import { activeSet, arrangedSpeakers, arrayFront, LAYOUTS, NO_LAYOUT, relayArray, selectSet, setLayout, SPEAKER_SETS } from './acoustics/layouts.js';
 import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
 import { widthSweep } from './acoustics/widthFinder.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from './acoustics/roomFit.js';
@@ -23,7 +23,7 @@ import { installSashes } from './ui/sashes.js';
 import { watchForUpdates } from './ui/freshness.js';
 import { crossings, DIRECT_MARKS_MS, GAP_MARKS_MS, radiusLanes } from './acoustics/radiusScale.js';
 import { hz } from './ui/meters.js';
-import { createEngine, patchesFromCad } from './compute/engine.js';
+import { createEngine, patchesFromCad, sweepFrames } from './compute/engine.js';
 import { createStore } from './model/store.js';
 import { createInspector } from './ui/inspector.js';
 import { createMeters } from './ui/meters.js';
@@ -33,8 +33,11 @@ import { FACE_COLOURS } from './views/glyphs.js';
 import { fieldScale, rampGradient } from './views/paint.js';
 import { createPlanView, planLabel } from './views/plan.js';
 import { createView3d } from './views/view3d.js';
+import { askLicence } from './ui/licence.js';
 import { createTour } from './ui/tour.js';
+import { makeFold } from './ui/fold.js';
 import { createPlayer } from './ui/player.js';
+import { createMonitor } from './ui/monitor.js';
 
 const CEILING_LAYER = 'Ceiling';
 
@@ -59,6 +62,8 @@ const views = document.getElementById('views');
 const status = document.getElementById('status');
 
 const cad = { link: null };
+/** The dB window dragged out on the colour ramp ({ top, range }), or null for the whole field. Not saved: a way of looking. */
+let scaleZoom = null;
 
 const engine = createEngine(store, (out, phase) => {
   if (phase === 'frame') {
@@ -66,7 +71,7 @@ const engine = createEngine(store, (out, phase) => {
     meters.render();
     return;
   }
-  out.scale = fieldScale(out.values, store.state.settings.rangeDb);
+  out.scale = fieldScale(out.values, store.state.settings.rangeDb, scaleZoom);
   if (phase === 'room') {
     status.textContent = '⟳ computing…';
     renderGeometry();
@@ -125,7 +130,7 @@ try {
 }
 const view3d = createView3d({ canvas: document.querySelector('.tile.t3d canvas'), store, engine, introSpeed: () => reveal.speed });
 // a new frequency rendering: the meters fold away and the views take their height until it is done (ui/meterFold.js)
-createMeterFold({ store, engine, onUnfold: () => meters.render() });
+createMeterFold({ store, engine, meters: document.getElementById('meters'), onUnfold: () => meters.render() });
 {
   const input = document.getElementById('revealSpeed');
   const out = document.getElementById('revealOut');
@@ -227,7 +232,19 @@ function renderAll() {
     syncFieldScale();
     meters.render();
     inspector.render();
+    monitor.render();
   });
+}
+
+/**
+ * The app opens on the room in 3-D, heard modally; a CAD with nothing drawn on it
+ * gets a room by the dice, furnished and seated, so there is a room to hear at once.
+ */
+let opened = false;
+function opening(geometry) {
+  opened = true;
+  store.setSettings({ view: '3d', method: 'modal' });
+  if (!geometry.walls?.length && !geometry.rooms?.length) drawRoom(grabBag(store.state.settings.lastLibraryRoom));
 }
 
 cad.link = connectCad(iframe, {
@@ -243,6 +260,7 @@ cad.link = connectCad(iframe, {
     const first = !store.state.cad.geometry || msg.fileName !== store.state.fileName;
     store.setCad({ geometry: msg, connected: true }, 'geometry');
     if (first && msg.fileName !== store.state.fileName) store.load(msg.fileName);
+    if (!opened) opening(msg);
     engine.update();
   },
   onMirror: (msg) => {
@@ -261,6 +279,32 @@ cad.link = connectCad(iframe, {
 
 // The finishes and products the CAD can paint onto the room; cadLink sends them again on every `ready`.
 cad.link.palette('Acoustic finishes & products', paletteItems());
+
+// ------------------------------------------------------------------ the graphs over the views, shown or hidden — this browser's taste
+{
+  const btn = document.getElementById('graphsBtn');
+  const show = (on) => {
+    document.body.classList.toggle('meters-hidden', !on);
+    btn.classList.toggle('on', on);
+    if (on) requestAnimationFrame(() => meters.render());
+  };
+  let on = true;
+  try {
+    on = localStorage.getItem('acoustic.graphs') !== 'off';
+  } catch {
+    // no storage: shown
+  }
+  show(on);
+  btn.addEventListener('click', () => {
+    on = !on;
+    show(on);
+    try {
+      localStorage.setItem('acoustic.graphs', on ? 'on' : 'off');
+    } catch {
+      // the choice just does not outlive the page
+    }
+  });
+}
 
 // ------------------------------------------------------------------ undo, and the warning that asks for it
 const undoBtn = document.getElementById('undo');
@@ -336,12 +380,27 @@ function syncFieldScale() {
   const { settings, speakers } = store.state;
   scaleBar.hidden = !(settings.show.field && scale && speakers.length);
   if (scaleBar.hidden) return;
-  scaleBar.querySelector('.lo').textContent = `${scale.top - scale.range} dB`;
+  const lo = scale.top - scale.range;
+  scaleBar.querySelector('.lo').textContent = `${+lo.toFixed(1)} dB`;
   const hi = scaleBar.querySelector('.hi');
-  hi.replaceChildren(`${scale.top} dB · `, Object.assign(document.createElement('span'), { className: 'freqNow', textContent: settings.method === 'energy' ? planLabel(settings) : `${settings.method} · current frequency ${hz(settings.freq)} Hz` }));
-  // markers: what the mix seat and the whole room read on this scale, at the current frequency
+  // the frequency is the slider's under the ramp, said once there; a window dragged out offers the whole field back
+  hi.replaceChildren(`${+scale.top.toFixed(1)} dB`);
+  if (scaleZoom) {
+    const all = Object.assign(document.createElement('button'), { className: 'scaleAll', textContent: '⤢ all', title: 'Back to the whole field: the loudest cell sets the top' });
+    all.onclick = () => zoomScale(null);
+    hi.append(' ', all);
+  }
   const ramp = scaleBar.querySelector('.ramp');
   ramp.replaceChildren();
+  // the dB scale over the ramp: a tick every 1, 2 or 5 dB, a number every five ticks
+  const step = [1, 2, 5, 10].find((s) => scale.range / s <= 16) ?? 10;
+  for (let v = Math.ceil(lo / step) * step; v <= scale.top + 1e-9; v += step) {
+    const at = ((v - lo) / scale.range) * 100;
+    const major = Math.round(v / step) % 5 === 0;
+    ramp.append(Object.assign(document.createElement('i'), { className: `dbTick${major ? ' major' : ''}`, style: `left:${at}%` }));
+    if (major) ramp.append(Object.assign(document.createElement('span'), { className: 'dbNum', style: `left:${at}%`, textContent: String(+v.toFixed(1)) }));
+  }
+  // markers: what the mix seat and the whole room read on this scale, at the current frequency — a small triangle under the ramp each
   const { reports } = engine.out;
   const read = (rep) => (!rep ? NaN : settings.method === 'energy' ? rep.energy?.[settings.band]?.total : settings.method === 'modal' ? rep.modal : rep.wave);
   const mix = store.state.mics.find((m) => m.mix);
@@ -351,13 +410,61 @@ function syncFieldScale() {
   for (const [name, db, colour] of marks) {
     if (!Number.isFinite(db)) continue;
     const t = Math.max(0, Math.min(1, (db - (scale.top - scale.range)) / scale.range));
-    const mark = Object.assign(document.createElement('i'), { className: 'mark', title: `${name}: ${db.toFixed(1)} dB at the current frequency` });
+    const mark = Object.assign(document.createElement('i'), { className: `mark${t <= 0 || t >= 1 ? ' off' : ''}`, title: `${name}: ${db.toFixed(1)} dB at the current frequency${t <= 0 || t >= 1 ? ' — outside this window' : ''}` });
     mark.style.left = `${t * 100}%`;
-    mark.style.background = colour;
-    mark.append(Object.assign(document.createElement('span'), { textContent: `${name} ${db.toFixed(1)} dB` }));
-    mark.firstChild.style.color = colour;
+    mark.style.setProperty('--c', colour);
+    mark.append(Object.assign(document.createElement('span'), { textContent: `${name} ${db.toFixed(1)}` }));
     ramp.append(mark);
   }
+  if (rampDrag.sel) ramp.append(rampDrag.sel);
+}
+
+/** A window of the scale to look at: the field's colours spread over it alone, every view repainted (no recompute). */
+function zoomScale(zoom) {
+  scaleZoom = zoom;
+  engine.out.scale = fieldScale(engine.out.values, store.state.settings.rangeDb, zoom);
+  renderGeometry();
+  syncFieldScale();
+  meters.render();
+}
+
+// drag across the ramp to look at that range of dB; ⤢ all (or a double-click) gives the whole field back
+const rampDrag = { from: null, sel: null };
+{
+  const ramp = scaleBar.querySelector('.ramp');
+  const dbAt = (e) => {
+    const { scale } = engine.out;
+    const box = ramp.getBoundingClientRect();
+    const t = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
+    return { t, db: scale.top - scale.range + t * scale.range };
+  };
+  ramp.addEventListener('pointerdown', (e) => {
+    if (!engine.out.scale || e.button !== 0) return;
+    ramp.setPointerCapture(e.pointerId);
+    rampDrag.from = dbAt(e);
+    rampDrag.sel = Object.assign(document.createElement('i'), { className: 'sel' });
+    ramp.append(rampDrag.sel);
+  });
+  ramp.addEventListener('pointermove', (e) => {
+    const now = dbAt(e);
+    ramp.title = `${now.db.toFixed(1)} dB — drag to look at a range`;
+    if (!rampDrag.from) return;
+    const [a, b] = [Math.min(rampDrag.from.t, now.t), Math.max(rampDrag.from.t, now.t)];
+    Object.assign(rampDrag.sel.style, { left: `${a * 100}%`, width: `${(b - a) * 100}%` });
+    rampDrag.sel.textContent = `${Math.min(rampDrag.from.db, now.db).toFixed(1)} – ${Math.max(rampDrag.from.db, now.db).toFixed(1)}`;
+  });
+  const end = (e) => {
+    if (!rampDrag.from) return;
+    const now = dbAt(e);
+    const [lo, hi] = [Math.min(rampDrag.from.db, now.db), Math.max(rampDrag.from.db, now.db)];
+    rampDrag.sel?.remove();
+    rampDrag.from = rampDrag.sel = null;
+    // a click is not a range: a window narrower than 1 dB is ignored
+    if (e.type === 'pointerup' && hi - lo >= 1) zoomScale({ top: +hi.toFixed(1), range: +(hi - lo).toFixed(1) });
+  };
+  ramp.addEventListener('pointerup', end);
+  ramp.addEventListener('pointercancel', end);
+  ramp.addEventListener('dblclick', () => scaleZoom && zoomScale(null));
 }
 
 function syncToolbar() {
@@ -383,12 +490,20 @@ function syncToolbar() {
   const freqOut = document.getElementById('freqOut');
   freqOut.replaceChildren(Object.assign(document.createElement('small'), { textContent: settings.method === 'energy' ? 'current band' : 'current frequency' }), settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${hz(settings.freq)} Hz`);
   freq.disabled = settings.method === 'energy';
-  for (const b of document.querySelectorAll('#arrangement button[data-preset]')) b.classList.toggle('on', b.dataset.preset === settings.layout.preset);
+  for (const row of document.querySelectorAll('#arrangement .speakerSet')) {
+    const live = row.dataset.set === activeSet(settings);
+    const preset = setLayout(settings, row.dataset.set).preset;
+    row.classList.toggle('live', live);
+    row.querySelector('.setLetter').classList.toggle('on', live);
+    for (const b of row.querySelectorAll('button[data-preset]')) b.classList.toggle('on', b.dataset.preset === preset);
+  }
   for (const input of document.querySelectorAll('.arrayFields input')) {
     if (document.activeElement === input) continue;
     const key = input.dataset.array;
     input.value = Math.round(key === 'radius' ? (settings.layout.radius ?? 2) * 1000 : key === 'rotate' ? settings.layout.rotate ?? 0 : settings.layout.offset?.[key] ?? 0);
   }
+  const arrayBtn = document.getElementById('arrayBtn');
+  if (arrayBtn) arrayBtn.textContent = `◎ r ${Math.round((settings.layout.radius ?? 2) * 1000)}${settings.layout.rotate ? ` ⟲${Math.round(settings.layout.rotate)}°` : ''} ▾`;
 }
 
 for (const header of document.querySelectorAll('.tile header, .tile.face canvas, .tile.t3d canvas')) {
@@ -444,28 +559,44 @@ const widthLanes = { key: [], list: [] };
 // ------------------------------------------------------------------ speaker arrangements
 {
   const bar = document.getElementById('arrangement');
-  const none = document.createElement('button');
-  none.dataset.preset = NO_LAYOUT;
-  none.textContent = 'None';
-  none.title = 'No arrangement: place speakers by hand — every one sounds, nothing is checked against a layout';
-  none.onclick = () => store.setSettings({ layout: { ...store.state.settings.layout, preset: NO_LAYOUT } });
-  bar.append(none);
-  for (const [preset, l] of Object.entries(LAYOUTS)) {
-    const b = document.createElement('button');
-    b.dataset.preset = preset;
-    b.textContent = preset;
-    b.title = `${l.label}: show its reference angles over the room`;
-    b.onclick = () => store.setSettings({ layout: { ...store.state.settings.layout, preset }, show: { ...store.state.settings.show, arrangement: true } });
-    bar.append(b);
-  }
-  const place = document.createElement('button');
-  place.textContent = '⤓';
-  place.title = 'Place this arrangement around the mix seat (replaces the arranged speakers)';
-  place.onclick = () => {
-    if (!LAYOUTS[store.state.settings.layout.preset]) status.textContent = '⚠ pick an arrangement to place — None places nothing';
-    else if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
+  // one row per speaker set (layouts.js SPEAKER_SETS): its letter selects it, a preset selects it and lays that
+  // arrangement over the room, ⤓ places it round the mix seat — only the selected set sounds
+  const pick = (k, patch = {}) => {
+    const settings = selectSet(store.state.settings, k);
+    store.setSettings({ speakerSet: settings.speakerSet ?? 'A', layout: { ...settings.layout, ...patch }, layoutSets: settings.layoutSets, ...(patch.preset && patch.preset !== NO_LAYOUT ? { show: { ...settings.show, arrangement: true } } : {}) });
   };
-  bar.append(place);
+  for (const [k, set] of Object.entries(SPEAKER_SETS)) {
+    const row = document.createElement('div');
+    row.className = 'group speakerSet';
+    row.dataset.set = k;
+    const letter = Object.assign(document.createElement('button'), { className: 'setLetter', textContent: set.label, title: `${set.title}: make it the set that sounds` });
+    letter.onclick = () => pick(k);
+    const none = document.createElement('button');
+    none.dataset.preset = NO_LAYOUT;
+    none.textContent = 'None';
+    none.title = 'No arrangement: place speakers by hand — every one of this set sounds, nothing is checked against a layout';
+    none.onclick = () => pick(k, { preset: NO_LAYOUT });
+    row.append(letter, none);
+    for (const preset of set.presets) {
+      const l = LAYOUTS[preset];
+      const b = document.createElement('button');
+      b.dataset.preset = preset;
+      b.textContent = preset;
+      b.title = `${set.title} · ${l.label}: show its reference angles over the room`;
+      b.onclick = () => pick(k, { preset });
+      row.append(b);
+    }
+    const place = document.createElement('button');
+    place.textContent = '⤓';
+    place.title = `Place this arrangement around the mix seat (replaces the ${set.title.split(' — ')[0]}'s arranged speakers)`;
+    place.onclick = () => {
+      if (k !== activeSet(store.state.settings)) pick(k);
+      if (!LAYOUTS[store.state.settings.layout.preset]) status.textContent = '⚠ pick an arrangement to place — None places nothing';
+      else if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
+    };
+    row.append(place);
+    bar.append(row);
+  }
 
   // the array's centre off the mix seat, and its radius, in mm — moving either carries the placed speakers with it
   const field = (key, glyph, title) => {
@@ -512,9 +643,17 @@ const widthLanes = { key: [], list: [] };
     lanes.title = near ? laneText(near) : '';
   });
   scale.append(width, lanes);
-  fields.append(scale, ticks, find, grow);
-  bar.after(fields);
+  fields.append(scale, ticks, find);
+  // the fields fold behind one button over the views; the warning that the room is too small stays on the bar
+  const arrayBtn = Object.assign(document.createElement('button'), { id: 'arrayBtn', title: 'The array: its centre off the mix seat, its width and its turn — the placed speakers follow' });
+  bar.after(arrayBtn);
+  makeFold(arrayBtn, fields);
+  arrayBtn.parentNode.after(grow);
 }
+const monitor = createMonitor({ root: document.getElementById('monitor'), store, engine });
+makeFold(document.getElementById('monitorBtn'), document.getElementById('monitor'), { sticky: true, onOpen: () => monitor.render() });
+makeFold(document.getElementById('furnitureBtn'), document.getElementById('furniture'), { closeOn: 'button[data-arm]' });
+makeFold(document.getElementById('moreBtn'), document.getElementById('more'), { closeOn: '#tour' });
 
 /**
  * Sweep the array's width for the flattest low end over the room's seats
@@ -845,6 +984,9 @@ document.getElementById('songFile').addEventListener('change', (e) => {
   e.target.value = '';
 });
 
+// the tour's sweep moves a twelfth of an octave a frame
+const TOUR_FRAMES = sweepFrames(1 / 12);
+
 // the tour: a window of its own plays every view in turn while the frequency sweeps, and saves it as a video
 const tour = createTour({
   store,
@@ -853,12 +995,26 @@ const tour = createTour({
   soundtrack: () => (player.loaded ? { stream: player.stream(), duration: player.duration } : null),
   onStart: (seconds, withSong) => {
     if (withSong) player.restart();
-    else startSweep({ seconds });
+    else {
+      // the views are held still while the engine paints the frames the sweep will play
+      stopSweep();
+      if (store.state.settings.method === 'energy') store.setSettings({ method: 'wave' });
+      engine.frames(true, TOUR_FRAMES);
+    }
     tourBtn.classList.add('on');
+  },
+  // the tour's frame nearest the point that far up the range, on a log scale — false while it is still being painted
+  sweepTo: (u) => {
+    const want = Math.log(F_MIN) + u * (Math.log(F_MAX) - Math.log(F_MIN));
+    const f = TOUR_FRAMES.reduce((best, g) => (Math.abs(Math.log(g) - want) < Math.abs(Math.log(best) - want) ? g : best));
+    if (!engine.out.frames.ready.includes(f)) return false;
+    if (f !== store.state.settings.freq) store.setSettings({ freq: f });
+    return true;
   },
   onStop: () => {
     if (player.playing) player.pause();
     stopSweep();
+    engine.frames(false);
     tourBtn.classList.remove('on');
   },
   caption: () => {
@@ -910,6 +1066,12 @@ async function openSession(file) {
 }
 
 document.getElementById('saveSession').addEventListener('click', saveSession);
+// 📂 Open asks for a licence key first, as the 1997 program did. A placebo: any key, Enter, and the file picker opens.
+document.getElementById('openSession').closest('label').addEventListener('click', (e) => {
+  if (e.target.id === 'openSession') return;
+  e.preventDefault();
+  askLicence(() => document.getElementById('openSession').click());
+});
 document.getElementById('openSession').addEventListener('change', (e) => {
   const f = e.target.files?.[0];
   if (f) openSession(f);

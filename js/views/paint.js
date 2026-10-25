@@ -47,8 +47,13 @@ export function gridCanvas(values, w, h, scale, alpha = 1) {
   return c;
 }
 
-/** The shared colour scale: the loudest cell anywhere sets the top. */
-export function fieldScale(values, rangeDb) {
+/**
+ * The shared colour scale: the loudest cell anywhere sets the top — unless a
+ * window was dragged out on the ramp (`zoom`: { top, range }), when the
+ * colours spread over that alone.
+ */
+export function fieldScale(values, rangeDb, zoom = null) {
+  if (zoom) return { top: zoom.top, range: zoom.range, zoomed: true };
   let top = -Infinity;
   const scan = (arr) => {
     for (const v of arr) if (v > top) top = v;

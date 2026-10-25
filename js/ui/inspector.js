@@ -5,7 +5,7 @@ import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId,
 import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { outside } from '../acoustics/inRoom.js';
 import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
-import { arrangedSpeakers, arrayFront, isMain, LAYOUTS, layoutCentre, layoutPositions, NO_LAYOUT } from '../acoustics/layouts.js';
+import { activeSet, arrangedSpeakers, arrayFront, isMain, LAYOUTS, layoutCentre, layoutPositions, NO_LAYOUT, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from '../acoustics/roomFit.js';
 import { LOW_END } from '../acoustics/widthFinder.js';
 import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
@@ -13,11 +13,15 @@ import { MIC_PATTERNS, SPEAKER_PATTERNS } from '../acoustics/patterns.js';
 import { allModes, fromFrame, inFrame, schroeder } from '../acoustics/room.js';
 import { ROOM_LIBRARY, grabBag, planArea } from '../acoustics/roomLibrary.js';
 import { subCrawl } from '../acoustics/subDesigner.js';
+import { optimiseSubs } from '../acoustics/multiSub.js';
+import { analyseIR, parseWav } from '../acoustics/measure.js';
 import { mirrorDevice } from '../acoustics/symmetry.js';
 import { GLASS_TYPES, makeWindow } from '../acoustics/windows.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { selectedDevice } from '../model/store.js';
 import { groupPatches, shortName, swatch } from '../views/treatments.js';
+import { pickupCard, transducerCard } from '../views/transducer.js';
+import { alphaGraph, alphaSpark, INTENTS, intentDial, intentOf, SERIES, spread } from './alphaChart.js';
 import { button, check, download, h, num, row, select, slider, text } from './dom.js';
 
 /**
@@ -266,28 +270,49 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Aim', num(d.aim, (v) => up({ aim: v }), { step: 1, unit: '°' })),
       row('Tilt', num(d.tilt, (v) => up({ tilt: v }), { step: 1, unit: '°', min: -90, max: 90 })),
       row('Colour', h('input', { type: 'color', value: d.color, onchange: (e) => up({ color: e.target.value }) })),
-      h('p', { class: 'hint' }, 'How it sounds — drive, range, pattern, coverage, mount — is on the ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); tab = 'Acoustics'; render(); } }, 'Acoustics'), ' tab.'),
+      h('p', { class: 'hint' }, 'How it sounds — drive, range, pattern, coverage, mount — is on the ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); tab = 'Acoustics'; render(); } }, 'Acoustics'), ' tab (Transducer).'),
       actions,
     ];
   }
 
   /**
-   * THE ACOUSTICS TAB: how the selected speaker sounds — its drive, range,
-   * pattern and coverage, crossover, delay and mount — a page of its own,
-   * so its placement on Inspect stays short. Nothing selected: every speaker,
-   * to pick one.
+   * THE ACOUSTICS TAB, in two: TRANSDUCER — how the selected speaker sounds
+   * (its drive, range, pattern and coverage, crossover, delay and mount) with
+   * what it looks like and how it throws under it, or a mic's pickup — and
+   * WALL — what the selected surface does to sound: its finish with the
+   * treatments mixed in, band by band, and its share of the room's absorption.
+   * The half shown follows what is picked; a press on the other one holds
+   * until the pick changes.
    */
+  let acoustics = { view: null, for: undefined };
   function acousticsPane() {
     const sel = S().selected;
+    const auto = sel?.kind === 'wall' ? 'Wall' : 'Transducer';
+    const view = acoustics.view && acoustics.for === sel?.id ? acoustics.view : auto;
+    const pick = (v) => {
+      acoustics = { view: v, for: sel?.id };
+      render();
+    };
+    return [
+      h('nav', { class: 'subtabs' }, ...['Transducer', 'Wall'].map((v) => h('button', { class: v === view ? 'on' : '', onclick: () => pick(v) }, `${v} acoustics`))),
+      ...(view === 'Wall' ? wallAcoustics(sel) : transducerAcoustics(sel)),
+    ];
+  }
+
+  function transducerAcoustics(sel) {
+    if (sel?.kind === 'mic') {
+      const m = S().mics.find((x) => x.id === sel.id);
+      if (m) return [h('h3', {}, `Transducer · ${m.name}`), row('Pattern', select(m.pattern, MIC_PATTERNS.map((x) => ({ value: x, label: x })), (v) => store.update('mic', m.id, { pattern: v }))), pickupCard(m)];
+    }
     const d = sel?.kind === 'speaker' ? S().speakers.find((x) => x.id === sel.id) : null;
     if (!d) {
       const list = S().speakers.map((x) => h('button', { onclick: () => store.select({ kind: 'speaker', id: x.id }) }, x.role || x.name));
-      return [h('h3', {}, 'Acoustics'), h('p', { class: 'hint' }, list.length ? 'Pick a speaker to see how it sounds:' : 'No speakers yet — place one with ＋ Speaker.'), h('div', { class: 'actions' }, ...list)];
+      return [h('h3', {}, 'Transducer acoustics'), h('p', { class: 'hint' }, list.length ? 'Pick a speaker to see how it sounds:' : 'No speakers yet — place one with ＋ Speaker.'), h('div', { class: 'actions' }, ...list)];
     }
     const up = (patch) => store.update('speaker', d.id, patch);
     const room = engine.out.room;
     return [
-      h('h3', {}, `Acoustics · ${d.role || d.name}`),
+      h('h3', {}, `Transducer · ${d.role || d.name}`),
       ...driveRows(d, up),
       row('Range low (−10 dB)', num(d.fLow ?? 0, (v) => up({ fLow: v }), { step: 1, unit: 'Hz (0 = none)', min: 0 })),
       row('Range high (−10 dB)', num(d.fHigh ?? 0, (v) => up({ fHigh: v }), { step: 100, unit: 'Hz (0 = none)', min: 0 })),
@@ -295,10 +320,61 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('H coverage', num(d.hCov, (v) => up({ hCov: v }), { step: 5, unit: '°', min: 10, max: 360 })),
       row('V coverage', num(d.vCov, (v) => up({ vCov: v }), { step: 5, unit: '°', min: 10, max: 360 })),
       row('Omni below', num(d.omniBelow, (v) => up({ omniBelow: v }), { step: 10, unit: 'Hz', min: 0 })),
+      row('Crossover', num(d.fCross ?? 0, (v) => up({ fCross: v }), { step: 10, unit: 'Hz (0 = typical; under 1 kHz = three-way)', min: 0 })),
       row('Low-pass', num(d.lowpass, (v) => up({ lowpass: v }), { step: 10, unit: 'Hz (0 = off)', min: 0 })),
       row('Delay', num(d.delayMs, (v) => up({ delayMs: v }), { step: 0.1, unit: 'ms', min: 0 })),
       row('Mount', select(d.mount, Object.entries(MOUNTS).map(([value, m]) => ({ value, label: m.label })), (v) => up({ mount: v }))),
       d.mount === 'free' && room ? h('p', { class: 'hint' }, sbirHint(d, room)) : '',
+      transducerCard(d),
+    ];
+  }
+
+  /** One surface's acoustics: α and sabins per band, what of the room's absorption it holds, its scattering, the treatments on it. */
+  function wallAcoustics(sel) {
+    const room = engine.out.room;
+    if (!room) return [h('h3', {}, 'Wall acoustics'), h('p', { class: 'hint' }, 'No room yet.')];
+    const surfaces = room.surfaces ?? [];
+    const n = sel?.kind === 'wall' ? room.walls.findIndex((w) => w.key === sel.id) : -1;
+    const key = n >= 0 ? `wall:${room.walls[n].i}` : acoustics.surface;
+    const sf = surfaces.find((x) => x.key === key);
+    const choose = (k) => {
+      if (k.startsWith('wall:')) return showWall(room.walls[+k.slice(5)]?.key);
+      acoustics = { view: 'Wall', for: sel?.id, surface: k };
+      render();
+    };
+    const picker = h('div', { class: 'actions' }, ...surfaces.map((x) => h('button', { class: x.key === key ? 'on' : '', onclick: () => choose(x.key) }, surfaceLabel(room, x.key))));
+    if (!sf) return [h('h3', {}, 'Wall acoustics'), h('p', { class: 'hint' }, 'Pick a surface — or a wall on the plan in Walls mode:'), picker];
+    const m = sf.material;
+    const base = lookup(m.base);
+    const pieces = (room.patches ?? []).filter((p) => (sf.key.startsWith('wall:') ? p.surface === 'wall' && `wall:${p.wall}` === sf.key : p.surface === sf.key));
+    const bandRows = BANDS.map((_, b) => {
+      const A = sf.area * m.alpha[b];
+      const share = room.perBand[b].A + room.perBand[b].Aobj > 0 ? (100 * A) / (room.perBand[b].A + room.perBand[b].Aobj) : 0;
+      return h(
+        'tr',
+        {},
+        h('td', {}, BAND_LABELS[b]),
+        h('td', {}, fmt(m.alpha[b])),
+        h('td', {}, h('span', { class: 'abar', style: `--v:${Math.round(m.alpha[b] * 100)}%` })),
+        h('td', {}, fmt(A, 1)),
+        h('td', {}, `${fmt(share, 0)} %`),
+        h('td', {}, fmt(m.scatter[b])),
+      );
+    });
+    return [
+      h('h3', {}, `Wall acoustics · ${surfaceLabel(room, sf.key)}`),
+      picker,
+      h('p', { class: 'stat' }, `${fmt(sf.area, 1)} m² of ${base?.name ?? m.name}${m.patched > 0 ? `, ${fmt((100 * m.patched) / sf.area, 0)} % treated (${fmt(m.patched, 1)} m²)` : ''} · ${fmt(sf.area / room.perBand[0].S * 100, 0)} % of the room's surface`),
+      h(
+        'table',
+        { class: 'grid wall-bands' },
+        h('tr', {}, h('th', {}, 'band'), h('th', { title: 'absorption coefficient, the treatments mixed in' }, 'α'), h('th', {}, ''), h('th', { title: 'α × area, m² (metric sabins)' }, 'sabins'), h('th', { title: 'of all the room’s absorption in this band, furniture included' }, 'of room'), h('th', { title: 'scattering coefficient' }, 's')),
+        ...bandRows,
+      ),
+      pieces.length
+        ? [h('h4', {}, 'Treatments on it'), h('ul', {}, ...pieces.map((p) => h('li', {}, `${p.material.name} · ${fmt(p.area, 2)} m²`)))]
+        : h('p', { class: 'hint' }, 'Nothing treats it yet. ' + HOW_TO_TREAT),
+      sf.key.startsWith('wall:') ? h('p', { class: 'hint' }, 'Its finish is picked on Inspect, with the wall selected.') : '',
     ];
   }
 
@@ -537,21 +613,63 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
   }
 
   // ---------------------------------------------------------------- Materials
+  /** The dial's picked step (ui/alphaChart.js INTENTS), or null for every material. */
+  let matIntent = null;
+  /** What is on the α graph: [{ key, name, alpha, colour }] — null until the tab is first opened. */
+  let compared = null;
+
   function materialsPane() {
-    const head = h('tr', {}, h('th', {}, 'α'), ...BAND_HEADS.map((b) => h('th', {}, b)), h('th', {}, 's1k'));
-    const matRows = (m, title = m.name, sub = '') => [
-      h('tr', { class: 'name' }, h('td', { colspan: 8 }, swatch(m), ` ${title}`, sub ? h('span', { class: 'sub' }, ` · ${sub}`) : '')),
-      h('tr', { class: 'vals' }, h('td', {}, ''), ...m.alpha.map((a) => h('td', {}, fmt(a))), h('td', {}, fmt(m.scatter[3]))),
+    const all = [
+      ...PRODUCTS.map((p) => ({ key: `p:${p.id}`, name: p.name, m: lookup(p.material), sub: shortName(lookup(p.material).name, 26), product: true })),
+      ...MATERIALS.map((m) => ({ key: `m:${m.id}`, name: m.name, m })),
     ];
+    // first time in: the room's own finishes (not the room's blends of them with what is on them), so the graph says something before anything is clicked
+    if (!compared) {
+      const used = [...new Set(Object.values(S().settings.faceMaterials ?? {}))];
+      compared = all.filter((x) => !x.product && used.includes(x.m.id)).slice(0, 3).map((x, i) => ({ key: x.key, name: x.name, alpha: x.m.alpha, colour: SERIES[i] }));
+    }
+    const toggle = (x) => {
+      const at = compared.findIndex((c) => c.key === x.key);
+      if (at >= 0) compared.splice(at, 1);
+      else {
+        // the colour stays with the material while it is plotted: the first slot nobody holds
+        const free = SERIES.find((c) => !compared.some((q) => q.colour === c));
+        if (!free) compared.shift();
+        compared.push({ key: x.key, name: x.name, alpha: x.m.alpha, colour: free ?? SERIES.find((c) => !compared.some((q) => q.colour === c)) });
+      }
+      render();
+    };
+    const fits = (x) => !matIntent || intentOf(x.m).id === matIntent;
+    const head = h('tr', {}, h('th', {}, 'α'), ...BAND_HEADS.map((b) => h('th', {}, b)), h('th', {}, 's1k'));
+    const matRows = (x) => {
+      const on = compared.find((c) => c.key === x.key);
+      const click = () => toggle(x);
+      const title = on ? 'On the graph — click to take it off' : 'Click to plot its α on the graph';
+      return [
+        h('tr', { class: `name${on ? ' plotted' : ''}`, onclick: click, title }, h('td', { colspan: 6 }, on ? h('i', { class: 'linekey', style: `border-color:${on.colour}` }) : '', swatch(x.m), ` ${x.name}`, x.sub ? h('span', { class: 'sub' }, ` · ${x.sub}`) : ''), h('td', { colspan: 2, class: 'spark' }, alphaSpark(x.m.alpha, on?.colour))),
+        h('tr', { class: `vals${on ? ' plotted' : ''}`, onclick: click, title }, h('td', {}, ''), ...x.m.alpha.map((a) => h('td', {}, fmt(a))), h('td', {}, fmt(x.m.scatter[3]))),
+      ];
+    };
+    const picked = all.filter(fits);
+    const step = INTENTS.find((s) => s.id === matIntent);
+    const env = step && picked.length ? { ...spread(picked.map((x) => x.m)), colour: step.colour, label: `${step.label} · ${picked.length}` } : null;
     const parts = [
       h('h3', {}, 'Materials'),
+      h(
+        'div',
+        { class: 'mat-charts' },
+        h('div', { class: 'mat-dial' }, intentDial(all.map((x) => x.m), matIntent, (id) => { matIntent = id; render(); }), h('p', { class: 'hint' }, step ? step.hint : 'Reflect on one side, absorb on the other: pick what the surface should do, and the list below keeps only what does it. A material’s slice is its NRC, the mean α over 250 Hz – 2 kHz.')),
+        alphaGraph(compared, env, (key) => { compared = compared.filter((c) => c.key !== key); render(); }),
+      ),
       h('p', { class: 'hint' }, 'What the blocks in the CAD’s Acoustic palette stand for: α absorption per octave band, s scattering at 1 kHz. Typical published figures, rounded — design intent, not a test report. The swatch is how each is drawn in the elevations and the 3-D room: a grid for absorbers, wells for diffusers, a sheen for glass, diagonals for masonry.'),
-      h('h4', {}, 'Products — fixed-size blocks'),
-      h('table', { class: 'grid treat' }, head.cloneNode(true), ...PRODUCTS.flatMap((p) => matRows(lookup(p.material), p.name, shortName(lookup(p.material).name, 26)))),
     ];
+    const products = picked.filter((x) => x.product);
+    if (products.length) parts.push(h('h4', {}, 'Products — fixed-size blocks'), h('table', { class: 'grid treat pick' }, head.cloneNode(true), ...products.flatMap(matRows)));
     for (const cat of [...new Set(MATERIALS.map((m) => m.category))]) {
-      parts.push(h('h4', {}, `${cat} — finishes`), h('table', { class: 'grid treat' }, head.cloneNode(true), ...MATERIALS.filter((m) => m.category === cat).flatMap((m) => matRows(m))));
+      const rows = picked.filter((x) => !x.product && x.m.category === cat);
+      if (rows.length) parts.push(h('h4', {}, `${cat} — finishes`), h('table', { class: 'grid treat pick' }, head.cloneNode(true), ...rows.flatMap(matRows)));
     }
+    if (!picked.length) parts.push(h('p', { class: 'hint' }, 'Nothing here does that — pick another slice.'));
     return parts;
   }
 
@@ -605,8 +723,8 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       .join(', ');
     const boxes = Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub').map(([value, p]) => ({ value, label: p.label }));
     const parts = [
-      h('h3', {}, 'Immersive layout'),
-      row('Preset', select(settings.layout.preset, [{ value: NO_LAYOUT, label: 'None — speakers by hand' }, ...Object.entries(LAYOUTS).map(([value, l]) => ({ value, label: l.label }))], (v) => set({ layout: { ...settings.layout, preset: v } }))),
+      h('h3', {}, SPEAKER_SETS[activeSet(settings)].title),
+      row('Preset', select(settings.layout.preset, [{ value: NO_LAYOUT, label: 'None — speakers by hand' }, ...SPEAKER_SETS[activeSet(settings)].presets.map((value) => ({ value, label: LAYOUTS[value].label }))], (v) => set({ layout: { ...settings.layout, preset: v } }))),
       // the width carries the placed speakers with it, so they stay round the listener
       row('Width', widthSlider(settings.layout.radius, best), num(settings.layout.radius, (v) => moveArray('radius', Math.max(0.8, v) * 1000), { unit: 'm radius', min: 0.8, step: 0.1 })),
       ...widthFitRows(fit, best, settings.layout.radius),
@@ -694,13 +812,15 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const { settings } = S();
     const ax = store.axis();
     // the mains one box, the surrounds and heights another: DMT 12s at the front, DMT 8s round the rest
-    const box = (role) => (isMain(role) ? settings.layout.mains ?? 'dmt12' : settings.layout.surround ?? 'dmt8');
-    const keep = S().speakers.filter((s) => !s.role);
+    const box = (role) => LAYOUTS[settings.layout.preset]?.box ?? (isMain(role) ? settings.layout.mains ?? 'dmt12' : settings.layout.surround ?? 'dmt8');
+    // only the selected set is laid afresh: the other sets' boxes stay where they stand
+    const setId = activeSet(settings);
+    const keep = S().speakers.filter((s) => !s.role || setOf(s) !== setId);
     const centre = layoutCentre(mix, arrayFront(settings), settings.layout.offset);
     const placed = layoutPositions(settings.layout.preset, centre, arrayFront(settings), settings.layout.radius, room.H, room);
     const pairs = new Map();
     const speakers = placed.map((p) => {
-      const s = makeSpeaker(p.sub ? 'sub' : box(p.role), p, { name: p.role, role: p.role, side: p.side, aim: +p.aim.toFixed(1), tilt: +p.tilt.toFixed(1) });
+      const s = { ...makeSpeaker(p.sub ? 'sub' : box(p.role), p, { name: p.role, role: p.role, side: p.side, aim: +p.aim.toFixed(1), tilt: +p.tilt.toFixed(1) }), set: setId };
       const base = p.role.slice(1);
       if (settings.symmetric && ax != null && Math.abs(centre.x - ax) < 0.02 && (p.side === 'L' || p.side === 'R')) {
         if (!pairs.has(base)) pairs.set(base, newId('p'));
@@ -724,6 +844,8 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Wall panel', select(ap.wall, products, (v) => set({ autoPanels: { ...ap, wall: v } }))),
       row('Panel size', num(ap.w, (v) => set({ autoPanels: { ...ap, w: v } }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(ap.h, (v) => set({ autoPanels: { ...ap, h: v } }), { unit: 'm tall', min: 0.2, step: 0.05 })),
       row('Ceiling cloud', select(ap.ceiling, products, (v) => set({ autoPanels: { ...ap, ceiling: v } }))),
+      h('div', { class: 'checks' }, check(ap.front !== false, (v) => set({ autoPanels: { ...ap, front: v } }), 'a panel on the wall behind each free-standing box'), check(ap.sideDiffusers === true, (v) => set({ autoPanels: { ...ap, sideDiffusers: v } }), 'diffusers at the side-wall reflections, 305 mm under the ears to 914 mm over')),
+      row('Side diffuser', select(ap.diffuser ?? 'qrd-1200x600', products, (v) => set({ autoPanels: { ...ap, diffuser: v } }))),
       h('p', { class: 'hint' }, 'A panel goes wherever a speaker’s first reflection meets a wall on its way to the mix seat, named LEFT-1, RIGHT-2 … on the wall’s elevation. They move when the speakers or the seat move, and the room hears them like any treatment.'),
     ];
   }
@@ -878,6 +1000,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
 
   // ------------------------------------------------------------------ Subs: the sub crawl
   let crawl = null;
+  let tuned = null;
   function subsPane() {
     const room = engine.out.room;
     const seats = S().mics;
@@ -920,6 +1043,23 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
         subs && !subs.running ? button('Clear map', () => { engine.out.subs = null; render(); onSubs(); }) : '',
       ),
     );
+    const placed = S().speakers.filter((x) => x.kind === 'sub');
+    if (placed.length > 1) {
+      parts.push(
+        h('h4', {}, `Tune the subs together · ${placed.length} subs`),
+        h('p', { class: 'hint' }, 'Keeps every sub where you put it and sets each one’s delay, gain (never a boost) and polarity so their modes cancel across the seats, then one cut-only EQ shared by all of them. The first sub is the reference.'),
+        h('div', { class: 'actions' }, button('▶ Tune', () => { tuned = optimiseSubs(room, placed, seats); render(); })),
+      );
+      if (tuned) {
+        const sc = (x) => `flat ${fmt(x.flat, 1)} · even ${fmt(x.even, 1)} dB`;
+        parts.push(
+          h('p', { class: 'stat' }, `As they stand: ${sc(tuned.before)} → tuned: ${sc(tuned.after)} → with the EQ: ${sc(tuned.eqd)}`),
+          h('table', { class: 'grid' }, h('tr', {}, h('th', {}, 'sub'), h('th', {}, 'delay'), h('th', {}, 'gain'), h('th', {}, 'polarity')), ...tuned.subs.map((t) => h('tr', {}, h('td', {}, t.name), h('td', {}, `${fmt(t.delayMs, 2)} ms`), h('td', {}, `${fmt(t.gainDb, 0)} dB`), h('td', {}, t.invert ? 'inverted' : 'normal')))),
+          h('p', { class: 'stat' }, tuned.eq.length ? `Shared EQ: ${tuned.eq.map((e) => `${fmt(e.f, 0)} Hz ${fmt(e.gainDb, 1)} dB Q ${fmt(e.q, 1)}`).join(' · ')}` : 'Shared EQ: none needed.'),
+          h('div', { class: 'actions' }, button('Apply delays, gains and polarity', () => { store.updateMany('speaker', tuned.subs.map((t) => ({ id: t.id, delayMs: t.delayMs, gainDb: t.gainDb, invert: t.invert }))); tuned = null; })),
+        );
+      }
+    }
     if (subs?.running) parts.push(h('p', { class: 'stat' }, `crawling… ${fmt(subs.progress * 100, 0)} %`));
     if (subs?.best?.length)
       parts.push(
@@ -935,11 +1075,49 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
   }
 
   // ------------------------------------------------------------------ Advisor
+  let measured = null;
   function advisorPane() {
     return [
       h('h3', {}, 'Advisor'),
       h('ul', { class: 'advice' }, ...engine.out.advice.map((a) => h('li', { class: a.level }, h('b', {}, a.title), h('span', {}, a.detail)))),
+      ...measuredPart(),
     ];
+  }
+
+  /** A measured impulse response (WAV) read beside the model: decay per octave, the gated response's limit, the modes it rings at. */
+  function measuredPart() {
+    const input = h('input', {
+      type: 'file',
+      accept: '.wav,audio/wav,audio/x-wav',
+      onchange: async (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        try {
+          const { fs, channels } = parseWav(await f.arrayBuffer());
+          measured = { name: f.name, ...analyseIR(channels[0], fs) };
+        } catch (err) {
+          alert(String(err.message || err));
+        }
+        render();
+      },
+    });
+    const parts = [h('h4', {}, 'Measured'), h('p', { class: 'hint' }, 'Load an impulse response (WAV, as REW or any sweep tool exports it) measured at the mix seat. It is read on its own terms — the model is not fitted to it.'), h('div', { class: 'actions' }, input)];
+    if (!measured) return parts;
+    const room = engine.out.room;
+    const m = measured;
+    parts.push(
+      h('p', { class: 'stat' }, `${m.name} · ${m.fs} Hz · T30 ${fmt(m.params.T30, 2)} s · EDT ${fmt(m.params.EDT, 2)} s · C80 ${fmt(m.params.C80, 1)} dB · D50 ${fmt(m.params.D50 * 100, 0)} %`),
+      h(
+        'table',
+        { class: 'grid' },
+        h('tr', {}, h('th', {}, 'Hz'), ...m.bands.map((b) => h('th', {}, String(b.f)))),
+        h('tr', {}, h('td', {}, 'T30 measured'), ...m.bands.map((b) => h('td', {}, fmt(b.T30, 2)))),
+        room ? h('tr', {}, h('td', {}, 'RT60 model'), ...room.perBand.map((b) => h('td', {}, fmt(b.eyring, 2)))) : '',
+      ),
+      h('p', { class: 'stat' }, `Gated ${m.gateMs} ms after the direct sound: the pseudo-anechoic response holds from ${fmt(m.fGate, 0)} Hz up and claims nothing below. Read at 1/${m.perOctave} octave.`),
+      h('p', { class: 'stat' }, m.resonances.length ? `Resonances: ${m.resonances.map((r) => `${fmt(r.f, 1)} Hz +${fmt(r.height, 1)} dB Q ${fmt(r.q, 0)}`).join(' · ')}` : 'No resonance stands 3 dB over its third octave below 300 Hz.'),
+    );
+    return parts;
   }
 
   // --------------------------------------------------------------------- File

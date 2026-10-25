@@ -7,7 +7,7 @@ import { MATERIALS, PRODUCTS, material, paletteItems } from '../acoustics/materi
 import { faceCoords } from '../acoustics/patches.js';
 import { brassMarker } from '../cad/marks.js';
 import { soundingSpeakers } from '../acoustics/layouts.js';
-import { reflectionPanels } from '../acoustics/reflectionPanels.js';
+import { panelOptions, reflectionPanels } from '../acoustics/reflectionPanels.js';
 import { acrossWall, faceArea, snapToGuide, wallAbsorption, wallDetails, wallDivisions, wallGuides, wallLineToSheet, wallOutline, wallRegions, wallSpan, wallTransmission, wallWindows } from '../acoustics/wallPlan.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { FACE_COLOURS } from './glyphs.js';
@@ -261,7 +261,7 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
     const details = wallDetails(regions);
     const mix = store.state.mics.find((m) => m.mix) ?? null;
     const ap = settings.autoPanels ?? {};
-    const panels = reflectionPanels(room, soundingSpeakers(store.state.speakers, settings), mix, { w: ap.w ?? 0.6, h: ap.h ?? 1.2, ceiling: false });
+    const panels = reflectionPanels(room, soundingSpeakers(store.state.speakers, settings), mix, panelOptions(ap, false));
     const guides = wallGuides(room, face, { panels, windows, mix });
     const sel = regions.find((r) => r.tag === picked) ?? null;
     if (!sel) picked = null;
@@ -609,6 +609,7 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
       ${bars}
       <p class="wb-calc">τ = Σ Sᵢ·10^(−TLᵢ/10) / S · TL = −10·log10 τ${windows.length ? ` · glass on the STC contour from its single number` : ''} · rated by the highest contour it clears (no octave &gt; 8 dB under, &gt; 10 dB summed). Treatment on the room side adds next to nothing and is left out.${iso.walls === 'unset' ? ' Build not set: single stud assumed.' : ''}</p>
       ${leak}
+      <p class="wb-calc">Under the rating's bands, where a sub lives: composite TL ${trans.low.freqs.map((f, i) => `${f} Hz ${f0(trans.low.tl[i])} dB`).join(' · ')} — each part's 125 Hz figure carried down the mass law, 6 dB per octave, so at best. A single-number rating (≈STC, NRC) is fitted from 125 Hz up and says nothing here.</p>
       <p class="wb-small">Estimates of design intent from typical published figures, not a test report.</p>`;
   }
 

@@ -25,14 +25,15 @@ Equations use GitHub math syntax.
 | 6 | [Sources and receivers](06-sources-receivers.md) | `devices.js`, `patterns.js` | Speaker level from sensitivity and power, the −10 dB Butterworth range, mounting gain, first-order and horn patterns, the low-frequency fade and directivity $Q$. |
 | 7 | [Image sources](07-image-sources.md) | `images.js` | Plan × height images of an extruded room, mirror matrices, convex pruning, and specular-only reflection factors with the scattered share. |
 | 8 | [The three field methods](08-field-methods.md) | `field.js` | Wave (images with phase), energy (direct + Hopkins–Stryker 4/R) and modal (damped box modes), with their validity ranges. |
-| 9 | [Echogram, ISO 3382-1, critical distance, flutter](09-echogram-iso3382.md) | `analysis.js` | The energy–time curve with diffuse rain, EDT/T20/T30/C50/C80/D50/Ts, $r_c$, and the flutter-echo score. |
+| 9 | [Echogram, ISO 3382-1, critical distance, flutter](09-echogram-iso3382.md) | `analysis.js` | The energy–time curve with diffuse rain, EDT/T20/T30/C50/C80/D50/Ts, $r_c$, the flutter-echo score with its 1 in 20 splay, lateral energy fraction and the reflection-free zone. |
 | 10 | [SBIR and nulls](10-sbir-nulls.md) | `sbir.js`, `nulls.js` | First-order boundary interference, the $c/4d$ notch, absolute deviation, position search and notch detection. |
-| 11 | [First reflections and panel placement](11-first-reflections.md) | `reflectionPanels.js` | Mirror-point reflections with level, delay and Fresnel zone, and where the treatment panels go. |
-| 12 | [Isolation](12-isolation.md) | `isolation.js` | Floor transmissibility of a mass on a damped spring, wall TL by build, and the level that reaches the house. |
-| 13 | [Sub placement and array width](13-subs-width.md) | `subDesigner.js`, `widthFinder.js`, `compute.js` seats | Seat weighting, power means, the sub-crawl flatness/evenness score and the low-end spread over array radius. |
+| 11 | [First reflections and panel placement](11-first-reflections.md) | `reflectionPanels.js` | Mirror-point reflections with level, delay and Fresnel zone, and where the treatment panels go: absorbers, the wall behind each box, side-wall diffusers in their band. |
+| 12 | [Isolation](12-isolation.md) | `isolation.js` | Floor transmissibility of a mass on a damped spring, wall TL by build, the level that reaches the house, and 31 / 63 Hz below the rating's bands. |
+| 13 | [Sub placement, several subs and array width](13-subs-width.md) | `subDesigner.js`, `multiSub.js`, `widthFinder.js`, `compute.js` seats | Seat weighting, power means, the sub-crawl flatness/evenness score, several subs tuned in delay, gain and polarity with a shared cut-only EQ, and the low-end spread over array radius. |
 | 14 | [Layouts, symmetry, console, growth, room library](14-layouts-placement.md) | `layouts.js`, `symmetry.js`, `console.js`, `roomFit.js`, `roomLibrary.js` | ITU-R BS.2051 / BS.775 layouts, placement and checks, mirror twins, console spot, room growth, and library rooms with their furnishing. |
-| 15 | [The advisor](15-advisor.md) | `advisor.js` | Every rule the advisor checks, with its thresholds. |
+| 15 | [The advisor](15-advisor.md) | `advisor.js` | Every rule the advisor checks, with its thresholds, the treatment criteria included. |
 | 16 | [The compute engine](16-compute-engine.md) | `compute/*.js` | Sample grids, what one job computes, scheduling and the sweep-frame ladder. |
+| 17 | [A measured impulse response](17-measurement.md) | `measure.js` | WAV reading, the measured ETC and ISO 3382-1 figures per octave, the gated response, 1/24-octave resolution and the resonances with their Q. |
 
 ## Standards and sources named in the code
 
@@ -43,7 +44,12 @@ says where.
 * Hopkins–Stryker: direct plus reverberant field (ch. 8).
 * Schroeder frequency $2000\sqrt{T/V}$ (ch. 4).
 * ISO 9613-1: air absorption (ch. 1).
-* ISO 3382-1: room-acoustic parameters (ch. 9).
+* ISO 3382-1: room-acoustic parameters, lateral energy fraction (ch. 9, 17).
+* RBJ *Audio EQ Cookbook*: the peaking and band-pass biquads (ch. 13, 17).
+* The room-acoustics literature's treatment criteria: front-wall absorption,
+  bass traps rated below 125 Hz, absorbers ≥ 76 mm, the side-wall diffuser
+  band, carpet on 1.36 kg/m² felt, splay 1 in 20 to 1 in 10, the reflection-free
+  zone (ch. 3, 9, 11, 15).
 * ISO 17497-1: the scattering coefficient, read at 1 kHz (ch. 3).
 * IEC 61260: nominal third-octave centres (ch. 5).
 * Bonello (1981): modal distribution criterion (ch. 5).

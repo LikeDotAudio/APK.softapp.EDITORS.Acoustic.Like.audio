@@ -182,7 +182,7 @@ $r_c = 0.141\sqrt{2.905\cdot5.78} = 0.58$ m.
 
 ## 9.5 Flutter-echo risk
 
-`analysis.js` `flutterRisk(room, { threshold = 0.5, tolDeg = 5, minOverlap = 0.5 })`.
+`analysis.js` `flutterRisk(room, { threshold = 0.5, tolDeg = SPLAY_CURE_DEG, minOverlap = 0.5 })`.
 
 Two parallel, facing surfaces pass a sound back and forth with repetition
 rate $c/2d$. The risk measure is the fraction of energy that survives one
@@ -213,4 +213,42 @@ $(0.96\cdot0.9)^2 = 0.746$, 34.3 Hz; left/right $d = 4$ m, 0.746, 42.9 Hz;
 floor/ceiling 0.723, 63.5 Hz.
 
 **Assumption.** A pair's distance is taken at $B$'s midpoint. Walls splayed
-by more than `tolDeg` are treated as cured.
+by `tolDeg` or more are treated as cured. The default is the published splay
+for flutter control, 1 in 20 to 1 in 10, taken from its lower end:
+`SPLAY_CURE_DEG` $= \arctan(1/20) = 2.862°$. A splay of 1 in 40 (1.43°)
+still pairs, 1 in 20 and 1 in 10 (5.71°) do not *(Node.)*.
+
+## 9.6 Lateral energy fraction (apparent source width)
+
+`analysis.js` `lateralFraction(eg, mic)` is ISO 3382-1 LF, read from an
+echogram:
+
+$$
+\text{LF} = \frac{\sum_{5\,\text{ms}}^{80\,\text{ms}} E\cos^2\theta}{\sum_{0}^{80\,\text{ms}} E}
+$$
+
+$\theta$ is the angle between the direction an arrival comes from (its image
+source, seen from the mic) and the line through the ears, the listener's aim
+turned 90°. That is a figure-of-eight microphone with its null on the
+listener's facing. The diffuse tail has no direction, and the mean of
+$\cos^2\theta$ over a sphere is $1/3$, so its bins count a third in the
+numerator. Times are from the first direct arrival, $t_D$.
+
+Example: the 5 × 7 × 2.7 m gypsum room with two monitors at $y$ = 5.8 m,
+$x$ = 1.6 and 3.4 m, aimed at a seat at (2.5, 4.2, 1.2), order 2, 1 kHz:
+LF = 0.229. With both side walls absorbing (`absorber-100`) it falls to
+0.044 *(Node.)*.
+
+## 9.7 The reflection-free zone
+
+`analysis.js` `reflectionFreeZone(eg, { windowMs = 20, belowDb = -20 })`
+takes, for each speaker, its first order-0 arrival as the direct sound and
+counts that speaker's specular arrivals within `windowMs` after it louder than
+`belowDb` relative to it. The diffuse tail is not a reflection and is not
+counted. Returns `{ ok, worst: { speaker, order, delayMs, db }, count }`,
+`ok` when the count is 0.
+
+Example: the room of §9.6 is not reflection-free. Its worst arrival is the
+floor bounce, −6.7 dB at 3.46 ms. Absorbing the side walls takes the count
+from 20 to 8 but leaves that bounce. With every surface `opening` the zone is
+clear *(Node.)*.

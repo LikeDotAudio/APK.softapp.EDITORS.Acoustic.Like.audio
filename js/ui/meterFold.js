@@ -6,18 +6,26 @@
  *
  * Pick a new frequency — the slider, a click on the frequency response, a
  * sweep — and the field has to be painted again in every view. While it is,
- * the meters along the bottom fold away (body.meters-folded, css/app.css) so
- * the views take their height; once the engine has the new field and nothing
- * has changed for a moment, they come back. A sweep keeps them folded until
- * it stops. The views follow the room they get through their own resize
- * observer (main.js); the meters, which skip their frames while folded,
- * are asked to draw once they are back.
+ * the meters floating over the bottom of the views fade out of the way
+ * (body.meters-folded, css/app.css) so the field is seen as it paints; once
+ * the engine has the new field and nothing has changed for a moment, they
+ * come back. A sweep keeps them away until it stops. The meters, which skip
+ * their frames while folded, are asked to draw once they are back.
+ *
+ * And with every meter popped out into a window of its own there is nothing
+ * left to show down there: the strip folds down to its Undo / Redo / Save
+ * (body.meters-empty) until one comes home.
  */
 
 /** How long the frequency must hold, and the engine be idle, before the meters return. */
 const SETTLE_MS = 700;
 
-export function createMeterFold({ store, engine, onUnfold = () => {}, body = document.body }) {
+export function createMeterFold({ store, engine, meters = null, onUnfold = () => {}, body = document.body }) {
+  if (meters) {
+    const empty = () => body.classList.toggle('meters-empty', !meters.querySelector(':scope > .meter'));
+    new MutationObserver(empty).observe(meters, { childList: true });
+    empty();
+  }
   let last = { freq: store.state.settings.freq, band: store.state.settings.band };
   let changedAt = 0;
   let watch = 0;

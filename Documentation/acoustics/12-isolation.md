@@ -97,3 +97,23 @@ per band for the whole face, so the doors and windows patched onto it
 Example: the chapter 2 room inside a house with single-stud walls at 90 dB
 in every band. The front face ($S$ = 10.8 m²) gives
 $90 - \text{TL} + 10\log_{10}1.08 = [73.3, 59.3, 50.3, 44.3, 51.3, 47.3]$ dB.
+
+## 12.4 Below 125 Hz: the octaves a sub lives in
+
+A single-number rating (STC, and NRC on the absorption side) is fitted from
+125 Hz up and says nothing about 31 and 63 Hz. `LOW_BANDS` = [31, 63] carries
+them. No build in `WALL_BUILDS` is rated there, so `lowWallTl(iso)` takes the
+build's 125 Hz figure (room-in-room leaf included) down the mass law,
+`LOW_SLOPE_DB` = 6 dB per octave:
+
+$$
+\text{TL}_{63} = \text{TL}_{125} - 6,\qquad \text{TL}_{31} = \text{TL}_{125} - 12
+$$
+
+This is **at best**: a double leaf falls faster below its mass–air–mass
+resonance. Examples: single stud [5, 11] dB, double stud [26, 32] dB, block
+plus stud [33, 39] dB at 31 / 63 Hz *(Node.)*.
+`lowHouseLeak(room, iso, [L31, L63])` applies §12.3 at those two bands.
+`wallPlan.js` `wallTransmission(…, lowDb)` returns the same as `low`:
+`{ freqs, tl, leak }`, each part's 125 Hz figure carried down and composited as
+in §12.2, glass included.

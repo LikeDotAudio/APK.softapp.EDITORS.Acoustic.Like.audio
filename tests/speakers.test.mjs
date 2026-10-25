@@ -19,7 +19,7 @@ test('power drive: sensitivity + 10·log10 W, doubling the watts is +3 dB', () =
 });
 
 test('the presets start at the levels they always had', () => {
-  const want = { dmt12: 99, dmt8: 96, monitor: 94, 'horn-90x50': 118, 'horn-60x40': 120, sub: 100 };
+  const want = { dmt12: 99, dmt8: 96, cube: 93, monitor: 94, 'horn-90x50': 118, 'horn-60x40': 120, sub: 100 };
   for (const k of Object.keys(SPEAKER_PRESETS)) near(speakerLevel(makeSpeaker(k, { x: 0, y: 0 })).level, want[k], 0.1);
 });
 

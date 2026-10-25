@@ -92,8 +92,8 @@ export function createMeters({ root, store, engine, onListen }) {
   }
 
   function render() {
-    // folded away while a frequency renders (ui/meterFold.js): nothing to draw into; it draws again on the way back
-    if (root.clientHeight < 24) return;
+    // faded away while a frequency renders (ui/meterFold.js), or hidden: nothing to see; it draws again on the way back
+    if (root.clientHeight < 24 || document.body.classList.contains('meters-folded')) return;
     const out = engine.out;
     const { state } = store;
     const rep = out.reports?.[out.monitorId];

@@ -41,7 +41,8 @@ export const NO_LAYOUT = 'none';
 
 export const LAYOUTS = {
   // one box on the centre line, straight ahead: a mono check, a talkback, a single wedge
-  '1.0': { label: 'Mono 1.0', speakers: [{ name: 'C', az: 0, el: 0, range: [0, 0], side: 'C', line: true }] },
+  // `box`: a mono check is a small cube whatever the mains are (devices.js cube)
+  '1.0': { label: 'Mono 1.0', box: 'cube', speakers: [{ name: 'C', az: 0, el: 0, range: [0, 0], side: 'C', line: true }] },
   '2.0': { label: 'Stereo 2.0', speakers: pair('', 30, 0, [22, 30]) },
   // floor subs right under the mains: one between them on the centre line, or one beneath each
   '2.1': { label: 'Stereo 2.1', speakers: pair('', 30, 0, [22, 30]), lfe: [{ name: 'LFE', az: 0, under: true }] },
@@ -94,20 +95,52 @@ export const LAYOUTS = {
   },
 };
 
+/**
+ * SPEAKER SETS, as a monitor controller switches them: A the mains (the
+ * immersive array, or a big stereo pair with its subs), B a surround set,
+ * C the small stereo nearfields or a single mono cube. Each set is its own
+ * boxes (a speaker's `set`, A when it has none) and its own array — preset,
+ * width, centre and turn. Only the selected set sounds; the others stand in
+ * the room as ghosts. `settings.layout` is always the selected set's array,
+ * the others wait in `settings.layoutSets` until they are picked.
+ */
+export const SPEAKER_SETS = {
+  A: { label: 'A', title: 'A set — the mains', presets: ['2.1', '2.2', '5.1.4', '5.2.4', '7.1', '7.1.4', '7.2.4', '9.1.6', '22.2'], layout: { preset: '7.1.4', radius: 2.0, rotate: 0, mains: 'dmt12', surround: 'dmt8' } },
+  B: { label: 'B', title: 'B set — surround', presets: ['5.1', '5.2'], layout: { preset: '5.1', radius: 1.6, rotate: 0, mains: 'dmt8', surround: 'dmt8' } },
+  C: { label: 'C', title: 'C set — the nearfields, or one mono cube', presets: ['1.0', '2.0'], layout: { preset: '2.0', radius: 1.2, rotate: 0, mains: 'monitor', surround: 'monitor' } },
+};
+
+/** The selected set, and the set a speaker belongs to: A for both when nothing says otherwise. */
+export const activeSet = (settings) => settings.speakerSet ?? 'A';
+export const setOf = (spk) => spk.set ?? 'A';
+
+/** A set's array: the live `layout` for the selected one, else where it waits. */
+export const setLayout = (settings, k) => (k === activeSet(settings) ? settings.layout : { ...SPEAKER_SETS[k]?.layout, ...settings.layoutSets?.[k] });
+
+/** The settings with set `k` selected: its array live, the one that was live put back with the others. */
+export function selectSet(settings, k) {
+  const was = activeSet(settings);
+  if (k === was) return settings;
+  return { ...settings, speakerSet: k, layout: setLayout(settings, k), layoutSets: { ...settings.layoutSets, [was]: settings.layout } };
+}
+
 /** The elevation window a reference speaker is checked against. */
 export const elWindow = (s) => s.elRange ?? (s.el === 0 ? [-10, 10] : [30, 55]);
 
 /**
  * The speakers the highlighted arrangement soloes: those whose role is one of
  * its own (2.0 picks L and R out of a 7.1.4). Every speaker when no
- * arrangement is shown, or when none of them carries one of its roles.
+ * arrangement is shown, or when none of them carries one of its roles —
+ * always of the selected speaker set (SPEAKER_SETS) alone.
  */
 export function arrangedSpeakers(speakers, settings) {
+  const set = activeSet(settings);
+  const mine = speakers.filter((s) => setOf(s) === set);
   const layout = LAYOUTS[settings.layout?.preset];
-  if (!layout || settings.show?.arrangement === false) return speakers;
+  if (!layout || settings.show?.arrangement === false) return mine;
   const roles = new Set([...layout.speakers, ...(layout.lfe ?? [])].map((s) => s.name));
-  const picked = speakers.filter((s) => roles.has(s.role));
-  return picked.length ? picked : speakers;
+  const picked = mine.filter((s) => roles.has(s.role));
+  return picked.length ? picked : mine;
 }
 
 /**

@@ -8,7 +8,7 @@ import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions, s
 import { PRODUCTS, furnitureHeight, material } from '../acoustics/materials.js';
 import { elevationOrigin } from '../acoustics/patches.js';
 import { areaOf, detailBuild, wallRegions } from '../acoustics/wallPlan.js';
-import { firstReflections, heatOf, reflectionPanels } from '../acoustics/reflectionPanels.js';
+import { firstReflections, heatOf, panelOptions, panelProduct, reflectionPanels } from '../acoustics/reflectionPanels.js';
 import { fromFrame } from '../acoustics/room.js';
 import { turbo } from '../views/paint.js';
 import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows.js';
@@ -180,12 +180,12 @@ function labelMarks(room, settings, planLayer) {
 function panelMarks(room, state, mix) {
   const ap = state.settings.autoPanels ?? {};
   const ceilingOn = state.settings.cadMarks?.ceilingPanels !== false;
-  const panels = reflectionPanels(room, state.speakers, mix, { w: ap.w ?? 0.6, h: ap.h ?? 1.2, ceiling: ceilingOn });
+  const panels = reflectionPanels(room, state.speakers, mix, panelOptions(ap, ceilingOn));
   const items = [];
   const text = 0.04;
   for (const p of panels) {
     const layer = p.kind === 'ceiling' ? 'Ceiling' : ELEVATION_LAYER[p.face];
-    const paletteId = p.kind === 'ceiling' ? ap.ceiling ?? 'cloud-1200' : ap.wall ?? 'panel-1200x600x100';
+    const paletteId = panelProduct(p, ap);
     items.push({ kind: 'fill', layer, paletteId, points: p.sheet.map((c) => [c.x, c.y]) });
     const x0 = Math.min(...p.sheet.map((c) => c.x));
     const y1 = Math.max(...p.sheet.map((c) => c.y));
@@ -193,7 +193,7 @@ function panelMarks(room, state, mix) {
   }
   for (const face of ELEVATION_FACES) {
     const mine = panels.filter((p) => p.face === face);
-    if (mine.length) items.push(panelDetails(room, face, mine, PRODUCTS.find((x) => x.id === (ap.wall ?? 'panel-1200x600x100'))?.name ?? ap.wall));
+    if (mine.length) items.push(panelDetails(room, face, mine, (p) => PRODUCTS.find((x) => x.id === panelProduct(p, ap))?.name ?? panelProduct(p, ap)));
   }
   return items;
 }
@@ -204,7 +204,7 @@ function panelMarks(room, state, mix) {
  * below the floor (staggered in rows so the figures never sit on each other),
  * each one's centre marked and its bottom's height written in it, and beside
  * the elevation a schedule — name, the speaker it answers, its size, where its
- * left edge and its bottom are, what it is. All in mm.
+ * left edge and its bottom are, what it is (`product(panel)`, its name). All in mm.
  */
 function panelDetails(room, face, panels, product) {
   const origin = elevationOrigin(room, face);
@@ -242,7 +242,7 @@ function panelDetails(room, face, panels, product) {
   for (const p of sorted) {
     const b = rel(p);
     y -= size * 1.5;
-    texts.push({ text: `${p.name} · answers ${p.speaker} · ${mm(b.x1 - b.x0)} × ${mm(b.y1 - b.y0)} · left edge ${mm(b.x0)} · bottom ${mm(b.y0)} · centre ${mm((b.x0 + b.x1) / 2)} / ${mm((b.y0 + b.y1) / 2)} · ${product}`, x: sx, y: r3(y), height: size * 0.85 });
+    texts.push({ text: `${p.name} · ${p.behind ? 'behind' : 'answers'} ${p.speaker} · ${p.treatment ?? 'absorber'} · ${mm(b.x1 - b.x0)} × ${mm(b.y1 - b.y0)} · left edge ${mm(b.x0)} · bottom ${mm(b.y0)} · centre ${mm((b.x0 + b.x1) / 2)} / ${mm((b.y0 + b.y1) / 2)} · ${product(p)}`, x: sx, y: r3(y), height: size * 0.85 });
   }
   return { kind: 'drawing', layer: ELEVATION_LAYER[face], name: `panel-details-${face}`, at: [r3(origin.x), r3(origin.y)], lines, texts };
 }

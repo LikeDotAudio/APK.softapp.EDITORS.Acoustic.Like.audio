@@ -62,8 +62,10 @@ export function waveAt(prep, pt, freq, mic = null) {
   let re = 0;
   let im = 0;
   for (const { spk, images } of prep) {
-    const A = 10 ** (sourceDb(spk, freq) / 20);
-    if (A < 1e-6) continue;
+    const level = 10 ** (sourceDb(spk, freq) / 20);
+    if (level < 1e-6) continue;
+    // polarity flipped at the monitor controller: the same pressure, upside down
+    const A = spk.invert ? -level : level;
     const tau = (spk.delayMs || 0) / 1000;
     // Below its omniBelow the box is a point source: no pattern to evaluate.
     const omni = spk.pattern === 'omni' || patternWeight(freq, spk.omniBelow) === 0;
@@ -157,7 +159,7 @@ export function prepareModal(room, speakers, freq) {
           const q = toBox(room, s);
           // heights from the floor, as modalDb measures the receiver's
           const psi = Math.cos((nx * Math.PI * q.u) / L) * Math.cos((ny * Math.PI * q.v) / W) * Math.cos((nz * Math.PI * (s.z - (room.zFloor ?? 0))) / H);
-          const A = 10 ** (sourceDb(s, freq) / 20);
+          const A = (s.invert ? -1 : 1) * 10 ** (sourceDb(s, freq) / 20);
           const ph = -w * ((s.delayMs || 0) / 1000);
           sr += A * psi * Math.cos(ph);
           si += A * psi * Math.sin(ph);
@@ -173,15 +175,47 @@ function toBox(room, p) {
   return { u: room.frame.front - (p.x * f.x + p.y * f.y), v: p.x * r.x + p.y * r.y - room.frame.left };
 }
 
+/**
+ * The modes packed flat, for modalDb: their indices and complex weights in
+ * typed arrays, and the highest index along each axis. Made once per prepareModal.
+ */
+function packModes(mp) {
+  const n = mp.modes.length;
+  const p = { n, nx: new Uint8Array(n), ny: new Uint8Array(n), nz: new Uint8Array(n), re: new Float64Array(n), im: new Float64Array(n), top: [0, 0, 0] };
+  mp.modes.forEach((m, i) => {
+    p.nx[i] = m.nx;
+    p.ny[i] = m.ny;
+    p.nz[i] = m.nz;
+    p.re[i] = m.re;
+    p.im[i] = m.im;
+    p.top = [Math.max(p.top[0], m.nx), Math.max(p.top[1], m.ny), Math.max(p.top[2], m.nz)];
+  });
+  return p;
+}
+
+/** cos(k·π·x) for k = 0 … top, into `out`. */
+function cosines(out, top, x) {
+  for (let k = 0; k <= top; k++) out[k] = Math.cos(k * Math.PI * x);
+  return out;
+}
+// an index is at most 40 (prepareModal maxN): one table per axis, reused point after point
+const CX = new Float64Array(41);
+const CY = new Float64Array(41);
+const CZ = new Float64Array(41);
+
 export function modalDb(room, mp, pt) {
   const q = toBox(room, pt);
+  // a mode's shape is a product of three cosines, each taking one of a few dozen values at this point: tabled, not recomputed per mode
+  const p = (mp.packed ??= packModes(mp));
+  const cx = cosines(CX, p.top[0], q.u / mp.L);
+  const cy = cosines(CY, p.top[1], q.v / mp.W);
+  const cz = cosines(CZ, p.top[2], (pt.z - (room.zFloor ?? 0)) / mp.H);
   let re = 0;
   let im = 0;
-  for (const m of mp.modes) {
-    const psi =
-      Math.cos((m.nx * Math.PI * q.u) / mp.L) * Math.cos((m.ny * Math.PI * q.v) / mp.W) * Math.cos((m.nz * Math.PI * (pt.z - (room.zFloor ?? 0))) / mp.H);
-    re += m.re * psi;
-    im += m.im * psi;
+  for (let i = 0; i < p.n; i++) {
+    const psi = cx[p.nx[i]] * cy[p.ny[i]] * cz[p.nz[i]];
+    re += p.re[i] * psi;
+    im += p.im[i] * psi;
   }
   re *= mp.scale;
   im *= mp.scale;

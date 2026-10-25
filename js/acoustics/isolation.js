@@ -130,3 +130,33 @@ export function houseLeak(room, iso, roomDb) {
     return { face, area, tl, leak };
   });
 }
+
+/**
+ * BELOW 125 Hz: WHAT A SUB PUTS THROUGH THE WALL
+ *
+ * A single-number rating (STC, and the NRC that goes with it) is fitted from
+ * 125 Hz up — built for speech in offices and schools — and says nothing about
+ * the octaves a subwoofer lives in. So the two below are carried too, 31 and
+ * 63 Hz (bands.js BANDS_9). No build here was rated there, so each is the
+ * 125 Hz figure carried down the mass law, 6 dB per octave: AT BEST, since a
+ * double leaf falls faster under its mass–air–mass resonance. An estimate
+ * that says it is one, not a test report.
+ */
+export const LOW_BANDS = [31, 63];
+export const LOW_SLOPE_DB = 6;
+
+/** A wall's TL at 31 and 63 Hz, dB (see above). */
+export function lowWallTl(iso) {
+  const at125 = wallTl(iso)[0];
+  return LOW_BANDS.map((_, i) => Math.max(0, at125 - LOW_SLOPE_DB * (LOW_BANDS.length - i)));
+}
+
+/** The house side of each shared wall at 31 and 63 Hz for `roomDb` = [L31, L63] in the room: [{ face, area, tl, leak }]. */
+export function lowHouseLeak(room, iso, roomDb) {
+  const tl = lowWallTl(iso);
+  return sharedFaces(iso).map((face) => {
+    const area = room.walls.filter((w) => w.face === face).reduce((s, w) => s + w.area, 0);
+    return { face, area, tl, leak: roomDb.map((L, b) => (area > 0 ? L - tl[b] + 10 * Math.log10(area / A_HOUSE) : NaN)) };
+  });
+}
+

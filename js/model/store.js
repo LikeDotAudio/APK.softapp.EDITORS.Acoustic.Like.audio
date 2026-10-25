@@ -4,7 +4,8 @@ import { makeMic, makeSpeaker, newId } from '../acoustics/devices.js';
 import { DEFAULT_ISOLATION } from '../acoustics/isolation.js';
 import { mirrorDevice, syncTwin } from '../acoustics/symmetry.js';
 import { clampInside, CLEAR_M, intoRoom, outside } from '../acoustics/inRoom.js';
-import { carryArray, LAYOUTS } from '../acoustics/layouts.js';
+import { DEFAULT_MONITOR } from '../acoustics/monitor.js';
+import { activeSet, carryArray, LAYOUTS, selectSet, setLayout, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
 import { pointInPolygon } from '../acoustics/geometry.js';
 
 const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
@@ -39,7 +40,7 @@ export const DEFAULT_SETTINGS = {
   roomId: null,
   virtualRoom: { w: 5, l: 7 },
   faceMaterials: { floor: 'wood-floor', ceiling: 'acoustic-tile', front: 'gypsum', back: 'absorber-100', left: 'gypsum', right: 'gypsum' },
-  method: 'wave',
+  method: 'modal',
   freq: 80,
   band: 2,
   maxOrder: 3,
@@ -47,9 +48,14 @@ export const DEFAULT_SETTINGS = {
   rangeDb: 30,
   sliceHeight: null,
   aWeight: false,
-  view: 'six',
+  view: '3d',
   symmetric: true,
-  layout: { preset: '7.1.4', radius: 2.0, rotate: 0, mains: 'dmt12', surround: 'dmt8' },
+  layout: SPEAKER_SETS.A.layout,
+  /** The speaker set that sounds (layouts.js SPEAKER_SETS), and the arrays of the others, waiting: `layout` is the selected one's. */
+  speakerSet: 'A',
+  layoutSets: { B: SPEAKER_SETS.B.layout, C: SPEAKER_SETS.C.layout },
+  /** The monitor controller (acoustics/monitor.js): volume, dim, mute and the noise it plays; each channel's own state is on its speaker. */
+  monitor: DEFAULT_MONITOR,
   isolation: DEFAULT_ISOLATION,
   /** What the user has said each wall is, by wallKey: { material?, note? } — its own finish, and what it is in their words. */
   walls: {},
@@ -73,7 +79,7 @@ export const DEFAULT_SETTINGS = {
 const KEY = 'acoustic.like.audio/v1/';
 
 /** Settings that change how the room is looked at, not the room: never an undo step. */
-const VIEW_KEYS = ['freq', 'band', 'view', 'show', 'rangeDb', 'sliceHeight', 'aWeight'];
+const VIEW_KEYS = ['freq', 'band', 'view', 'show', 'rangeDb', 'sliceHeight', 'aWeight', 'monitor'];
 const HISTORY = 100;
 
 export function createStore() {
@@ -174,6 +180,8 @@ export function createStore() {
       autoPanels: { ...DEFAULT_SETTINGS.autoPanels, ...d.autoPanels },
       roomHeights: { ...d.roomHeights },
       windows: { ...d.windows },
+      layoutSets: { ...DEFAULT_SETTINGS.layoutSets, ...d.layoutSets },
+      monitor: { ...DEFAULT_MONITOR, ...d.monitor },
     };
     state.speakers = doc.speakers ?? [];
     state.mics = doc.mics ?? [];
@@ -286,7 +294,8 @@ export function createStore() {
       emit('selection');
     },
     addSpeaker(kind, at, extra) {
-      add('speaker', makeSpeaker(kind, at, extra));
+      // a box placed by hand joins the set that is sounding
+      add('speaker', { ...makeSpeaker(kind, at, extra), set: activeSet(state.settings) });
     },
     addMic(kind, at, extra) {
       const mic = makeMic(kind, at, extra);
@@ -323,12 +332,16 @@ export function createStore() {
         if (dx || dy || dz) state.speakers = state.speakers.map((s) => (carried(s) ? { ...s, x: s.x + dx, y: s.y + dy, z: Math.max(0.1, s.z + dz) } : s));
         const turn = 'aim' in patch && before.aim != null ? wrap180(patch.aim - before.aim) : 0;
         if (turn) {
-          const layout = state.settings.layout;
-          const nextLayout = { ...layout, rotate: wrap180((layout.rotate ?? 0) + turn) };
+          // every set's array swings with the seat, not only the one that sounds
           const seat = { ...before, x: before.x + dx, y: before.y + dy, z: before.z + dz };
-          const by = new Map(carryArray(state.speakers, state.settings, seat, nextLayout).map((m) => [m.id, m]));
-          state.speakers = state.speakers.map((s) => (by.has(s.id) ? { ...s, ...by.get(s.id) } : s));
-          state.settings = { ...state.settings, layout: nextLayout };
+          const live = activeSet(state.settings);
+          for (const k of Object.keys(SPEAKER_SETS)) {
+            const settings = selectSet(state.settings, k);
+            const nextLayout = { ...settings.layout, rotate: wrap180((settings.layout.rotate ?? 0) + turn) };
+            const by = new Map(carryArray(state.speakers, settings, seat, nextLayout).map((m) => [m.id, m]));
+            state.speakers = state.speakers.map((s) => (by.has(s.id) ? { ...s, ...by.get(s.id) } : s));
+            state.settings = k === live ? { ...state.settings, layout: nextLayout } : { ...state.settings, layoutSets: { ...state.settings.layoutSets, [k]: nextLayout } };
+          }
         }
       }
       let next = state[key].map((d) => (d.id === id ? { ...d, ...patch } : d));
@@ -485,7 +498,7 @@ export function strayFromArrangement(before, state) {
   if (a && b && (a.x !== b.x || a.y !== b.y || a.z !== b.z || a.aim !== b.aim)) return null;
   if (JSON.stringify(before.settings.layout) !== JSON.stringify(state.settings.layout)) return null;
   const was = new Map(before.speakers.map((s) => [s.id, s]));
-  const arranged = state.speakers.filter((s) => roles.has(s.role) && was.has(s.id));
+  const arranged = state.speakers.filter((s) => roles.has(s.role) && setOf(s) === activeSet(state.settings) && was.has(s.id));
   const moved = arranged.filter((s) => {
     const p = was.get(s.id);
     return p.x !== s.x || p.y !== s.y || p.z !== s.z || p.aim !== s.aim || p.tilt !== s.tilt;

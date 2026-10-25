@@ -58,5 +58,5 @@ Dragging on a user view also turns it, by 0.5° per pixel of yaw and 0.4° of pi
 ## What is not carried over
 
 - **Per-module save files:** the original's `.mdl`, `.sbr`, `.ray` and `.rtt` files aren't needed, because the app's session file holds the room.
-- **Copy protection:** the original's licence-key scheme isn't reproduced.
+- **Copy protection:** the original's licence-key scheme isn't reproduced. **📂 Open** does ask for a licence key first, in a box like the original's, but it is a placebo: any key, Enter, and the file picker opens (`js/ui/licence.js`).
 - **Help menu:** its inactive items aren't reproduced either.

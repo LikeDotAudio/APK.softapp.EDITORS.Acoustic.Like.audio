@@ -45,6 +45,12 @@ import { SYMBOLS, symbolOf } from './symbols.js';
  * room.js lays onto the surfaces.
  */
 
+/** The felt under a listening room's carpet, kg/m² (40 oz/sq yd). */
+export const CARPET_UNDERLAY = 1.36;
+
+/** The thinnest porous absorber that works across the spectrum, m (3 in): thinner takes the top and leaves the low mids. */
+export const MIN_ABSORBER_DEPTH = 0.076;
+
 const SHAPE = {
   flat: [1, 1, 1, 1, 1, 1],
   rough: [0.5, 0.6, 0.8, 1, 1.1, 1.2],
@@ -89,6 +95,8 @@ export const MATERIALS = [
   m('wood-floor', 'Wood floor', 'Floor', [0.15, 0.11, 0.1, 0.07, 0.06, 0.07], 40, 0.1, 'flat', '#b5834c'),
   m('concrete-floor', 'Concrete / tile floor', 'Floor', [0.01, 0.01, 0.015, 0.02, 0.02, 0.02], 50, 0.05, 'flat', '#8a8a86'),
   m('carpet-pad', 'Heavy carpet on foam rubber', 'Floor', [0.08, 0.24, 0.57, 0.69, 0.71, 0.73], 50, 0.4, 'rough', '#8a3a4a'),
+  // the floor the literature asks of a listening room: the textbook row "heavy carpet on 40 oz hairfelt or foam rubber" is one row, so the same α
+  m('carpet-felt', `Clipped-pile carpet, wall to wall, on ${CARPET_UNDERLAY} kg/m² felt`, 'Floor', [0.08, 0.24, 0.57, 0.69, 0.71, 0.73], 50, 0.4, 'rough', '#7a3444'),
   // ceilings
   m('acoustic-tile', 'Acoustic ceiling tile', 'Ceiling', [0.7, 0.66, 0.72, 0.92, 0.88, 0.75], 20, 0.2, 'rough', '#cfd9c4'),
   m('ceiling-cloud', 'Ceiling cloud, 100 mm suspended', 'Ceiling', [0.55, 0.9, 0.99, 0.99, 0.99, 0.95], 6, 0.2, 'rough', '#8fbf8a'),
@@ -100,11 +108,14 @@ export const MATERIALS = [
   m('mineral-wool-50', 'Acoustic mineral wool, 50 mm (2 in)', 'Absorber', [0.2, 0.6, 0.95, 0.95, 0.95, 0.9], 6, 0.3, 'rough', '#5fa35a'),
   m('absorber-50', 'Porous absorber, 50 mm', 'Absorber', [0.15, 0.55, 0.95, 1, 1, 1], 6, 0.2, 'rough', '#74b86a'),
   m('absorber-100', 'Porous absorber, 100 mm', 'Absorber', [0.45, 0.9, 1, 1, 1, 1], 8, 0.2, 'rough', '#3f8f4a'),
-  m('bass-trap', 'Bass trap, deep corner', 'Absorber', [0.8, 0.95, 1, 1, 1, 1], 8, 0.3, 'rough', '#2d6e3a'),
+  // TRAPS RATED BELOW 125 Hz. A bass trap is bought for the bottom octaves, so it carries them (alpha9, 31 … 8 kHz): a deep
+  // porous corner fill falls off an octave lower than a panel, a membrane has its hump at 50–100 Hz. Estimates in the shape
+  // those absorbers have, like the furniture's below — the maker's measured figures replace them (law 7).
+  m('bass-trap', 'Bass trap, deep corner', 'Absorber', [0.8, 0.95, 1, 1, 1, 1], 8, 0.3, 'rough', '#2d6e3a', [0.2, 0.5, 0.8, 0.95, 1, 1, 1, 1, 1]),
   // resonators — olive: they absorb, but a band, not everything above one
   m('slat-resonator', 'Slat resonator, wood slats over wool', 'Resonator', [0.35, 0.65, 0.75, 0.45, 0.3, 0.2], 20, 0.4, 'rough', '#8a8a3a'),
   m('perforated-wood', 'Perforated wood panel over 50 mm wool', 'Resonator', [0.4, 0.9, 0.8, 0.5, 0.4, 0.3], 20, 0.15, 'flat', '#a39a4a'),
-  m('membrane-trap', 'Membrane bass trap', 'Resonator', [0.65, 0.55, 0.35, 0.2, 0.15, 0.1], 25, 0.1, 'flat', '#6b6b2a'),
+  m('membrane-trap', 'Membrane bass trap', 'Resonator', [0.65, 0.55, 0.35, 0.2, 0.15, 0.1], 25, 0.1, 'flat', '#6b6b2a', [0.25, 0.6, 0.65, 0.55, 0.35, 0.2, 0.15, 0.1, 0.1]),
   // diffusers — golds
   m('diffuser', 'QRD diffuser, wooden wells', 'Diffuser', [0.45, 0.3, 0.15, 0.2, 0.3, 0.4], 20, 0.9, 'qrd', '#d4a52a'),
   // furniture — the desk is a hard reflector at ear height, the couch a big soft absorber
@@ -237,6 +248,12 @@ export function depthOf(mat, product = null) {
   return null;
 }
 
+/** How thick a palette item is, m — a product by its own name first, then its material's — or null when neither says. */
+export function depthOfId(paletteId) {
+  const mat = lookup(paletteId);
+  return mat ? depthOf(mat, productById.get(paletteId) ?? null) : null;
+}
+
 /**
  * What the CAD's palette preview draws an item with: its drafting symbol
  * (acoustics/symbols.js — the standard's name and the acad.pat hatch ride
@@ -248,3 +265,19 @@ function illustration(mat, product = null) {
   const depth = depthOf(mat, product);
   return { symbol, symbolName: SYMBOLS[symbol].name, ...(SYMBOLS[symbol].acad ? { acad: SYMBOLS[symbol].acad } : {}), alpha: mat.alpha.map((a) => +a.toFixed(2)), ...(depth ? { depth } : {}) };
 }
+
+/**
+ * A porous absorber — what a thickness rule is about: the Absorber category,
+ * or a ceiling product or catalogue absorber that soaks up most of 1 kHz. A
+ * resonator, a diffuser or a curtain works some other way and is not one.
+ */
+export function isPorousAbsorber(mat) {
+  if (!mat) return false;
+  if (mat.category === 'Absorber') return true;
+  if (mat.category === 'Resonator' || mat.category === 'Diffuser' || /diffus/i.test(`${mat.name} ${mat.material ?? ''}`)) return false;
+  return (mat.category === 'Ceiling' || Boolean(mat.id1)) && mat.alpha[3] >= 0.5;
+}
+
+/** Is a material rated below 125 Hz — does it carry its own 31 and 63 Hz figures, rather than the 125 Hz one stretched down? */
+export const ratedLow = (mat) => Boolean(mat?.alpha9) && mat.alpha9[1] > 0;
+

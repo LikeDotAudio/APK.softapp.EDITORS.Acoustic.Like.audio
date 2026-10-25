@@ -16,7 +16,12 @@
       <button id="grabBag" title="A room from the library, picked at random, drawn into the CAD">🎲 Room</button>
     </div>
     <!-- the room, then its speakers (the arrangement, then its spacing — main.js puts the fields after it), then what else stands in it -->
-    <div class="group" id="arrangement" title="Speaker arrangement: shows its reference angles over the room; ⤓ places it around the mix seat"></div>
+    <div id="arrangement" title="Speaker sets A, B and C: a row each — pick one to make it sound and show its reference angles over the room; ⤓ places it around the mix seat"></div>
+    <!-- the monitor controller: sets, volume, mute and solo per channel, the noise generator (ui/monitor.js) -->
+    <button id="monitorBtn" title="Monitor controller: the speaker set, volume, dim and mute, mute / solo / polarity / trim per speaker, white, pink or brown noise and calibration">🎛 Monitor ▾</button>
+    <div id="monitor" class="monitor"></div>
+    <!-- furniture, the tour, the song: folded behind a button each, opened over the views (ui/fold.js) -->
+    <button id="furnitureBtn" title="Draw furniture into the CAD plan: a desk, the console, a couch, a rack …">＋ Furniture ▾</button>
     <div class="group" id="furniture">
       <button data-arm="desk-1800x900" title="Draw a desk in the CAD plan — click where it goes">＋ Desk</button>
       <button data-arm="producer-desk-1800x600" title="Draw a producer desk in the CAD plan — behind the mix seat">＋ Producer desk</button>
@@ -45,13 +50,14 @@
       <button data-method="energy" title="Direct + diffuse energy per octave band — coverage">Energy</button>
       <button data-method="modal" title="Room modes — the low end, below Schroeder">Modal</button>
     </div>
-    <label class="freq"><input type="range" id="freq" min="1.30103" max="4.23045" step="0.005" title="Frequency, on a log scale: 20 Hz to 17 kHz"><output id="freqOut"></output><span class="ticks" id="freqTicks"></span></label>
-    <div class="group" id="play">
-      <button id="sweep" title="Sweep the field from 20 Hz to 17 kHz">▶ Sweep</button>
+    <button id="moreBtn" title="The tour, a song, and how fast a room builds up in 3-D">⋯</button>
+    <div id="more">
+      <div class="group">
       <button id="tour" title="A slide show in a window of its own — each view of the room in turn while the frequency sweeps — saved as a video">🎞 Tour</button>
       <label class="button" title="Play a song: the field follows the frequency it excites (WAV, MP3, FLAC…)">🎵 Song<input type="file" id="songFile" accept="audio/*"></label>
+      </div>
+      <label class="reveal" title="How fast a room builds up in 3-D when it arrives — wireframe, grid, surfaces, speakers, treatments. 0: all at once. Moving it plays the reveal again">Reveal <input type="range" id="revealSpeed" min="0" max="4" step="0.25"><output id="revealOut"></output></label>
     </div>
-    <label class="reveal" title="How fast a room builds up in 3-D when it arrives — wireframe, grid, surfaces, speakers, treatments. 0: all at once. Moving it plays the reveal again">Reveal <input type="range" id="revealSpeed" min="0" max="4" step="0.25"><output id="revealOut"></output></label>
     <div id="acx"></div>
     <div class="status" id="status"></div>
     <div id="player" class="player" hidden></div>
@@ -81,15 +87,25 @@
 
   <div id="updated" role="status" hidden><span>⟳ This app was updated on the server — refresh to get the new version. Your room is kept.</span> <button data-act="refresh">⟳ Refresh</button> <button data-act="close" title="Not now">✕</button></div>
   <div id="notice" role="alert" hidden><span></span> <button data-act="undo">↶ Undo</button> <button data-act="close" title="Keep it where it is">✕</button></div>
-  <div id="fieldScale" hidden title="The one colour scale every drawing of the field is painted in"><span class="lo"></span><i class="ramp"></i><span class="hi"></span></div>
-  <footer class="foot">
-    <div id="meters"></div>
-    <div class="group" id="saves">
-      <button id="undo" title="Undo the last change to the speakers, mics, furniture or room (Ctrl+Z) — the drawing has its own undo in the CAD" disabled>↶ Undo</button>
-      <button id="redo" title="Redo (Ctrl+Shift+Z or Ctrl+Y)" disabled>↷ Redo</button>
-      <button id="saveSession" title="Save the CAD drawing, speakers, mics and settings as one file (Ctrl+S)">💾 Save</button>
+  <!-- the field's colour scale and the frequency it is at, one strip: the slider's thumb is the current frequency -->
+  <div id="scaleStrip">
+    <div id="fieldScale" hidden title="The one colour scale every drawing of the field is painted in"><span class="lo"></span><i class="ramp"></i><span class="hi"></span></div>
+    <div id="freqRow">
+      <button id="sweep" title="Sweep the field from 20 Hz to 17 kHz">▶ Sweep</button>
+      <span class="freq"><input type="range" id="freq" min="1.30103" max="4.23045" step="0.005" title="Frequency, on a log scale: 20 Hz to 17 kHz"><span class="ticks" id="freqTicks"></span></span>
+      <output id="freqOut"></output>
     </div>
-  </footer>
+    <!-- the meters float over the bottom of the views, just above this strip, rather than taking a row of their own -->
+    <footer class="foot">
+      <div id="meters"></div>
+      <div class="group" id="saves">
+        <button id="graphsBtn" title="Show or hide the graphs over the views">📈</button>
+        <button id="undo" title="Undo the last change to the speakers, mics, furniture or room (Ctrl+Z) — the drawing has its own undo in the CAD" disabled>↶ Undo</button>
+        <button id="redo" title="Redo (Ctrl+Shift+Z or Ctrl+Y)" disabled>↷ Redo</button>
+        <button id="saveSession" title="Save the CAD drawing, speakers, mics and settings as one file (Ctrl+S)">💾 Save</button>
+      </div>
+    </footer>
+  </div>
 
   <script type="module" src="js/main.js"></script>
 </body>

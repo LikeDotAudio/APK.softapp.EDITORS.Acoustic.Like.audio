@@ -102,7 +102,7 @@ The advisor's mirror test (chapter 15) reports each console bounce. Its delay
 $\Delta t$ puts comb notches at $(2k-1)/(2\Delta t)$. It warns when the
 bounce is $-10$ dB or louder.
 
-## 11.3 `reflectionPanels(room, speakers, mix, { w = 0.6, h = 1.2, cw = 1.2, ch = 1.2, ceiling = true })`
+## 11.3 `reflectionPanels(room, speakers, mix, { w = 0.6, h = 1.2, cw = 1.2, ch = 1.2, ceiling = true, front = false, diffuse = false })`
 
 The construction is the same as in § 11.1, with two differences:
 
@@ -129,3 +129,42 @@ Each wall panel is also returned as its four corners on the face's elevation
 in (chapter 3). Drawing the panel there lands it back where it was computed.
 Panels are named per face, left to right as the elevation shows them
 (`LEFT-1`, `LEFT-2`, …).
+
+### What each panel is
+
+Every panel carries `treatment`: `'absorber'` or `'diffuser'`.
+
+* **The wall behind the box** (`front`). For each free-standing speaker,
+  `wallBehind(room, s)` finds the nearest wall whose inward normal lies within
+  60° of the box's aim, with the box's foot on it inside its length:
+  `{ wall, at, d }`. A $w \times h$ absorber is centred on that foot at the
+  box's height (clamped like the others) and marked `behind: true`. This is
+  where the rear radiation goes: a dipole's whole back lobe, and any box's bass
+  and low mids. It returns $2d/c$ after the direct sound. A box mounted
+  flush, in a corner or trihedral is in that wall and gets no panel.
+* **Side-wall diffusers** (`diffuse`). The mirror points on the left and right
+  walls become diffusers $w$ wide that span the band
+  `diffuserBand(room, mix)`:
+
+$$
+z_{\text{lo}} = \max(z_f,\ z_m - 0.305),\qquad z_{\text{hi}} = \min(z_c,\ z_m + 0.914)
+$$
+
+  This is 305 mm under the ears to 914 mm over them (1 ft and 3 ft), the band
+  the literature puts horizontal diffusers in. The side reflections come back
+  scattered rather than removed, and the room stays alive. Example: ears at
+  1.2 m give 0.895–2.114 m *(Node.)*.
+* **The ceiling** (`ceiling: 'diffuser'`). The same mirror point as the cloud.
+  It scatters the frontal bounce off the ceiling toward the sides instead of
+  into the heads.
+
+`panelOptions(settings.autoPanels, ceilingOn)` turns the settings into these
+options. The wall behind is on unless `front` is false. Side diffusers are on
+only when `sideDiffusers` is true. The ceiling is a diffuser when its chosen
+product is in the Diffuser category. `panelProduct(panel, autoPanels)` names
+the product a panel is drawn as: the wall panel, the ceiling product, or
+`diffuser` (default `qrd-1200x600`).
+
+`finishAt(room, wall, at, z)` returns what a wall is at one point: the patch
+painted there, or the wall's own finish. The advisor reads the wall behind
+each box with it (chapter 15).

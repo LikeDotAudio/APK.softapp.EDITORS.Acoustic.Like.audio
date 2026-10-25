@@ -6,14 +6,19 @@ import { createView3d } from '../views/view3d.js';
 /**
  * THE TOUR, AS A VIDEO
  *
- * A window of its own plays the slide show — the plan, each wall, the
- * ceiling, then the room in 3-D, a few seconds each while the frequency
- * sweeps — and records it: every view drawn full size into its own canvas
- * there (views/faceView.js and view3d.js, the same drawings as the page's
- * tiles), copied with a caption onto a 1920 × 1080 frame, and that frame's
- * stream recorded (MediaRecorder). When the last slide is done the video is
+ * A window of its own plays the slide show and records it, a minute long.
+ * First the plan, each wall, the ceiling and the room in 3-D, held still
+ * at the frequency being looked at, while the engine paints the sweep's
+ * frames behind them; then the room in 3-D swept across the whole range,
+ * bottom to top and back, twice (`tourAt`). The sweep waits for its
+ * frames: while the next one is still being painted the recording pauses and
+ * the tour's clock stands still, so the video is a minute and the sweep
+ * smooth however long the room takes to paint. Every view is drawn full size
+ * into its own canvas there (views/faceView.js and view3d.js, the same
+ * drawings as the page's tiles), copied with a caption onto a 1920 × 1080
+ * frame, and that frame's stream recorded (MediaRecorder). When the sweep is done the video is
  * saved as a WebM and plays back in the window. With a song loaded
- * (ui/player.js) the field follows the song instead of the sweep, the slides
+ * (ui/player.js) there is no sweep: the field follows the song, the slides
  * share its length, and its sound is recorded under the pictures. The page is left alone to
  * work in; closing the window stops the tour and keeps nothing.
  *
@@ -31,17 +36,39 @@ export const SLIDES = [
   { view: '3d', title: 'The room in 3-D' },
 ];
 
-const SECONDS = 5;
+/** Each view held still, then the sweep: 7 × 4 + 32 = a minute. */
+const STILL_SECONDS = 4;
+const SWEEP_SECONDS = 32;
+const LAPS = 2;
+const SWEEP = { view: '3d', title: 'Frequency sweep' };
+
+/**
+ * Where the tour is at `t` seconds: the slide (an index into SLIDES), and in
+ * the sweep `u`, how far up the frequency range (0 the bottom, 1 the top),
+ * there and back LAPS times. With a song the slides just take turns, `still` seconds each.
+ */
+export function tourAt(t, { still = STILL_SECONDS, sweep = SWEEP_SECONDS, laps = LAPS } = {}) {
+  const held = SLIDES.length * still;
+  if (t < held || !sweep) return { slide: Math.min(SLIDES.length - 1, Math.floor(t / still)), u: null };
+  const legs = Math.min(1, (t - held) / sweep) * laps * 2;
+  const leg = Math.min(Math.floor(legs), laps * 2 - 1);
+  const k = legs - leg;
+  return { slide: SLIDES.length - 1, u: leg % 2 ? 1 - k : k, sweeping: true };
+}
+
+/** How long the tour runs. */
+export const tourLength = ({ still = STILL_SECONDS, sweep = SWEEP_SECONDS } = {}) => SLIDES.length * still + sweep;
 const FRAME = { w: 1920, h: 1080 };
 const TYPES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
 
 /**
- * `onStart(seconds, withSong)` / `onStop()` run the page's sweep (or the
- * song) alongside; `soundtrack()` is the song, { stream, duration }, or null; `caption()`
+ * `onStart(seconds, withSong)` / `onStop()` start the song alongside, or the
+ * engine painting the sweep's frames; `sweepTo(u)` puts the field at `u` of
+ * the way up the frequency range, or answers false while that frame is not painted yet; `soundtrack()` is the song, { stream, duration }, or null; `caption()`
  * is the line under each slide's title (the room, the method, the frequency);
  * `name()` what the video is called.
  */
-export function createTour({ store, engine, onStart, onStop, caption, name, soundtrack = () => null }) {
+export function createTour({ store, engine, onStart, onStop, sweepTo, caption, name, soundtrack = () => null }) {
   let run = null;
 
   function start() {
@@ -91,15 +118,28 @@ export function createTour({ store, engine, onStart, onStop, caption, name, soun
     if (recorder) recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     state.textContent = recorder ? '● recording' : 'this browser cannot record — playing only';
 
-    // a song sets the length: its whole duration, shared between the slides
-    const seconds = song?.duration ? Math.max(3, song.duration / SLIDES.length) : SECONDS;
-    const total = SLIDES.length * seconds;
-    const t0 = performance.now();
+    // a song sets the length: its whole duration, shared between the slides, and no sweep
+    const timing = song?.duration ? { still: Math.max(3, song.duration / SLIDES.length), sweep: 0 } : {};
+    const total = tourLength(timing);
+    // the tour's own clock: it runs while the picture is ready, and stands still (the recording paused) while a frame is painted
+    let t = 0;
+    let tick = performance.now();
     run = { win, recorder, chunks, type, frame, state, timer: 0, watch: 0 };
     run.timer = setInterval(() => {
-      const t = (performance.now() - t0) / 1000;
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - tick) / 1000); // a late tick is not a jump in the video
+      tick = now;
       if (t >= total) return finish();
-      const slide = views[Math.min(SLIDES.length - 1, Math.floor(t / seconds))];
+      const at = tourAt(t, timing);
+      const waiting = at.sweeping && !sweepTo(at.u);
+      if (waiting) {
+        if (recorder?.state === 'recording') recorder.pause();
+        state.textContent = `◌ painting the sweep · ${Math.ceil(total - t)} s of video left`;
+        return;
+      }
+      if (recorder?.state === 'paused') recorder.resume();
+      t += dt;
+      const slide = at.sweeping ? { ...views[at.slide], ...SWEEP } : views[at.slide];
       slide.view.render();
       ctx.fillStyle = '#0b0d12';
       ctx.fillRect(0, 0, FRAME.w, FRAME.h);

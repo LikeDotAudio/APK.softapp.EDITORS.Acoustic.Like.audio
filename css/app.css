@@ -19,11 +19,19 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
-body { display: grid; grid-template-rows: auto 1fr auto var(--foot-h, 210px); overflow: hidden; }
-/* a new frequency rendering: the meters fold away, the views take their height (ui/meterFold.js) */
-body { transition: grid-template-rows .22s ease; }
-body.meters-folded { grid-template-rows: auto 1fr auto 0px; }
-body.meters-folded .foot { overflow: hidden; border-top-width: 0; }
+body { display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+/* the meters float over the views' bottom edge, above the frequency strip: the views keep the whole height */
+#scaleStrip { position: relative; }
+.foot { position: absolute; left: 0; right: var(--inspector-w, 360px); bottom: 100%; height: var(--foot-h, 210px); z-index: 25; display: flex; align-items: flex-end; gap: 6px; padding: 0 6px 6px; pointer-events: none; }
+body:has(main.inspector-out) .foot { right: 0; }
+.foot > * { pointer-events: auto; }
+#meters { transition: opacity .2s ease, transform .2s ease; }
+/* a new frequency rendering: the meters fade out of the way so the field is seen as it paints (ui/meterFold.js) */
+body.meters-folded #meters { opacity: 0; transform: translateY(12px); pointer-events: none; }
+/* hidden by hand (📈), or every meter popped out: only Undo / Redo / Save are left */
+body.meters-hidden #meters, body.meters-hidden .foot > .sash, body.meters-empty #meters, body.meters-empty .foot > .sash { display: none; }
+body.meters-hidden .foot, body.meters-empty .foot { justify-content: flex-end; }
+#graphsBtn.on { background: var(--panel-2); color: var(--accent); border-color: var(--accent); }
 
 button, select, input, .button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; }
 button, .button { cursor: pointer; }
@@ -35,19 +43,31 @@ button.danger:hover { border-color: var(--bad); color: var(--bad); }
 /* wrapped rows sit 4 px apart, not the 14 between groups; the forced break adds no gap of its own */
 .bar { display: flex; align-items: center; gap: 4px 14px; padding: 4px 12px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .rowEnd { flex-basis: 100%; height: 0; margin-top: -4px; }
+/* a toolbar strip folded behind a button, opened over the views (ui/fold.js) */
+.fold { position: relative; display: flex; }
+.foldBtn.on { background: var(--panel-2); border-color: var(--accent); color: var(--accent); }
+.foldPanel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: max-content; max-width: min(840px, calc(100vw - 32px)); padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55); }
+.foldPanel[hidden] { display: none; }
+.foldPanel.group { gap: 4px; }
+.foldPanel.group button { border-radius: 4px; }
 .brand { font-weight: 800; letter-spacing: .04em; color: var(--accent); }
 .brand span { color: var(--text); font-weight: 500; }
 .group { display: flex; gap: 2px; }
 .group button { border-radius: 0; }
 .group button:first-child { border-radius: 4px 0 0 4px; }
 .group button:last-child { border-radius: 0 4px 4px 0; }
+/* the speaker sets, a row each: the one that sounds bright, the others' picks dimmed */
+#arrangement { display: flex; flex-direction: column; gap: 2px; }
+.speakerSet button { padding: 1px 7px; }
+.speakerSet .setLetter { min-width: 26px; font-weight: 700; }
+.speakerSet:not(.live) button.on:not(.setLetter) { background: var(--panel-2); color: var(--accent); }
 .freq { display: flex; align-items: center; gap: 6px; font-family: var(--mono); }
-.freq input { width: 160px; accent-color: #fde047; }
-.freq output { min-width: 70px; color: #fde047; display: flex; flex-direction: column; line-height: 1.05; }
+.freq input { width: 100%; margin: 0; accent-color: #fde047; }
+#freqOut { min-width: 70px; color: #fde047; display: flex; flex-direction: column; line-height: 1.05; }
 .reveal { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 .reveal input { width: 70px; }
 .reveal output { min-width: 26px; font-family: var(--mono); color: var(--text); }
-.freq output small { font-size: 8px; color: var(--muted); }
+#freqOut small { font-size: 8px; color: var(--muted); }
 .status { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 
 main { position: relative; display: grid; grid-template-columns: 1fr var(--inspector-w, 360px); min-height: 0; }
@@ -154,17 +174,26 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 .advice li b { display: block; font-size: 12px; }
 .advice li span { color: var(--muted); font-size: 12px; }
 
-#fieldScale { display: flex; gap: 8px; align-items: center; padding: 3px 8px; background: #121418; border-top: 1px solid var(--line); font: 10px var(--mono); color: #ddd; }
-#fieldScale[hidden] { display: flex; visibility: hidden; }
+/* the colour scale over the frequency slider, column for column: dB ends / Sweep and the readout, the ramp / the slider */
+#scaleStrip { display: grid; grid-template-columns: max-content 1fr minmax(70px, max-content); align-items: center; column-gap: 8px; row-gap: 22px; padding: 14px 8px 12px; background: #121418; border-top: 1px solid var(--line); font: 10px var(--mono); color: #ddd; }
+#fieldScale, #fieldScale[hidden], #freqRow { display: contents; }
+#fieldScale[hidden] { visibility: hidden; }
+#freqRow #sweep { padding: 1px 8px; font-size: 11px; }
 #fieldScale .ramp { flex: 1; height: 8px; border: 1px solid rgba(255,255,255,.4); position: relative; }
 /* where the mix seat and the room sit on the scale, at the current frequency */
-#fieldScale .mark { position: absolute; top: -4px; width: 2px; height: 14px; transform: translateX(-1px); }
-#fieldScale .mark span { position: absolute; top: -12px; left: 3px; white-space: nowrap; font-size: 9px; }
-#fieldScale { padding-top: 12px; }
-#fieldScale .freqNow { color: #fde047; }
+/* the dB scale over the ramp, and what the mix seat and the room read: a small triangle under it each, pointing up at its level */
+#fieldScale .ramp { cursor: crosshair; touch-action: none; }
+#fieldScale .ramp::after { content: ''; position: absolute; inset: -8px 0; }
+#fieldScale .dbTick { position: absolute; bottom: 100%; width: 1px; height: 3px; background: var(--muted); transform: translateX(-.5px); }
+#fieldScale .dbTick.major { height: 5px; background: #ddd; }
+#fieldScale .dbNum { position: absolute; bottom: calc(100% + 5px); transform: translateX(-50%); font-size: 8px; line-height: 1; color: var(--muted); pointer-events: none; }
+#fieldScale .mark { position: absolute; top: calc(100% + 2px); width: 0; height: 0; border: 5px solid transparent; border-top: 0; border-bottom: 7px solid var(--c); transform: translateX(-5px); z-index: 1; }
+#fieldScale .mark span { position: absolute; top: 6px; left: 5px; transform: translateX(-50%); white-space: nowrap; font-size: 8px; line-height: 1; color: var(--c); }
+#fieldScale .mark.off { opacity: .45; }
+#fieldScale .sel { position: absolute; top: -3px; bottom: -3px; background: rgba(255, 255, 255, .18); border: 1px solid #fff; pointer-events: none; z-index: 2; font-size: 8px; line-height: 1; color: #fff; white-space: nowrap; }
+#fieldScale .scaleAll { padding: 0 5px; font-size: 10px; line-height: 14px; }
 /* the file end of the app: open on the top left, save and export on the bottom right */
-.foot { position: relative; display: flex; min-height: 0; background: #121418; border-top: 1px solid var(--line); }
-#saves { align-self: flex-end; padding: 6px; }
+#saves { align-self: flex-end; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); border-radius: 4px; }
 /* a warning about the last change, with its undo: one speaker of an arrangement moved on its own */
 #notice { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 40; max-width: min(720px, calc(100vw - 32px)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #2a1d0b; color: #fde68a; border: 1px solid var(--warn); border-radius: 6px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); font-size: 12px; }
 #notice[hidden] { display: none; }
@@ -172,9 +201,9 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 #updated { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 45; max-width: min(720px, calc(100vw - 32px)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #2a1a0b; color: #fed7aa; border: 1px solid var(--accent); border-radius: 6px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); font-size: 12px; }
 #updated[hidden] { display: none; }
 #updated [data-act=refresh] { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
-#meters { flex: 1; min-width: 0; display: flex; gap: 1px; padding: 0; overflow-x: auto; background: var(--line); }
+#meters { flex: 1; min-width: 0; height: 100%; display: flex; gap: 3px; padding: 0; overflow-x: auto; background: transparent; }
 /* the meters flex to fill the strip, each in proportion to what it needs; a sash between two trades their share (ui/sashes.js) */
-.meter { position: relative; flex: 200 1 0; min-width: 60px; display: flex; flex-direction: column; background: #0b0d12; border: 0; border-radius: 0; padding: 4px 6px; min-height: 0; }
+.meter { position: relative; flex: 200 1 0; min-width: 60px; display: flex; flex-direction: column; background: rgba(11, 13, 18, .84); backdrop-filter: blur(4px); border: 1px solid rgba(255, 255, 255, .08); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, .45); padding: 4px 6px; min-height: 0; }
 .meter.wide { flex-grow: 320; }
 .meter.m-spl { flex-grow: 112; }
 .meter h4 { margin: 0 0 2px; font-size: 10px; color: #cbd5e1; display: flex; gap: 6px; align-items: center; }
@@ -204,6 +233,37 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 
 /* Treatments: painted in the CAD, read here. The swatch is drawn the way the views draw the patch. */
 canvas.swatch { display: inline-block; vertical-align: -2px; border-radius: 2px; }
+/* the Acoustics tab's two halves (ui/inspector.js) */
+.subtabs { display: flex; gap: 2px; margin: 2px 0 8px; }
+.subtabs button { padding: 2px 10px; font-size: 12px; }
+.subtabs button.on, .actions button.on { border-color: var(--accent); color: var(--accent); }
+table.wall-bands td:nth-child(3) { width: 40%; }
+.abar { display: block; height: 8px; border-radius: 2px; background: linear-gradient(90deg, #7dd3fc var(--v), var(--panel-2) var(--v)); }
+/* what a transducer looks like and how it throws (views/transducer.js): four tenths of the pane under its numbers */
+.tx-card { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: max(300px, 40vh); margin-top: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: #17181b; }
+.tx-views { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; min-height: 0; }
+.tx-views svg { width: 100%; height: 100%; min-height: 0; }
+.tx-card .t { fill: var(--muted); font: 10px var(--mono); }
+.tx-card .t.mid { text-anchor: middle; }
+.tx-card .t.end { text-anchor: end; }
+.tx-card .t.db { font-size: 7px; opacity: .7; }
+.tx-card .ring { fill: none; stroke: var(--line); stroke-width: .8; }
+.tx-card .ring.six { stroke: #57606d; stroke-dasharray: 3 3; }
+.tx-card .cov { stroke: var(--muted); stroke-dasharray: 2 3; stroke-width: .8; }
+.tx-card .hi { fill-opacity: .18; stroke-width: 1.6; }
+.tx-card .lo { fill: none; stroke: var(--muted); stroke-dasharray: 4 3; stroke-width: 1.2; }
+.tx-face .box { fill: #23252b; stroke: #5b616b; stroke-width: 3; }
+.tx-face .surround { fill: #101114; stroke-width: 4; }
+.tx-face .cone { fill: #1a1c20; stroke: #2e3137; stroke-width: 2; }
+.tx-face .cap, .tx-face .dome { fill: #2a2d33; stroke-width: 3; }
+.tx-face .plate { fill: #15161a; stroke: #2e3137; stroke-width: 2; }
+.tx-face .horn, .tx-face .throat { fill: #101114; stroke-width: 3; }
+.tx-foot .stat { margin: 6px 0 2px; }
+.tx-bands { display: block; width: 100%; height: auto; max-height: 60px; }
+.tx-bands .xo { stroke: #facc15; stroke-dasharray: 3 2; }
+.tx-legend { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 11px; color: var(--muted); }
+.tx-legend i { display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 2px; background: var(--c); }
+.tx-legend b { color: var(--text); font-weight: 600; }
 .spark { display: inline-flex; align-items: flex-end; gap: 1px; height: 14px; vertical-align: middle; }
 .spark i { display: block; width: 4px; background: #7dd3fc; border-radius: 1px 1px 0 0; }
 table.surfaces td .sub { font: 10px system-ui, sans-serif; }
@@ -215,6 +275,36 @@ table.treat tr.name td { overflow-wrap: anywhere; }
 table.grid.treat tr[class~=on] td { background: #3a3a3d; }
 table.grid.treat tr.on td:first-child { color: var(--accent); }
 table.treat.pick tr.name, table.treat.pick tr.vals { cursor: pointer; }
+/* the Materials tab's charts (ui/alphaChart.js): the reflect ↔ absorb dial beside the α graph */
+.mat-charts { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-start; margin: 4px 0 8px; }
+.mat-dial { flex: 0 1 260px; min-width: 200px; }
+.mat-dial .hint { margin-top: 2px; }
+.intent-dial { display: block; width: 100%; height: auto; font-family: var(--mono); }
+.intent-dial .slice { cursor: pointer; transition: fill-opacity .12s; }
+.intent-dial .slice:hover, .intent-dial .slice:focus-visible { fill-opacity: 1; outline: none; stroke: #f4f4f4; }
+.intent-dial .count { font-size: 13px; font-weight: 700; fill: #ffffff; pointer-events: none; }
+.intent-dial .end { font-size: 10px; fill: var(--muted); }
+.intent-dial .pick { font: 600 14px system-ui, sans-serif; fill: var(--text); }
+.intent-dial .sub { font-size: 10px; fill: var(--muted); }
+.alpha-graph-wrap { position: relative; flex: 1 1 300px; min-width: 0; }
+.alpha-graph { display: block; width: 100%; height: auto; font-family: var(--mono); }
+.alpha-graph .tick { font-size: 11px; fill: var(--muted); }
+.alpha-graph .label { font-size: 11px; fill: var(--text); }
+.alpha-tip { position: absolute; top: 6px; z-index: 5; min-width: 150px; max-width: 220px; padding: 6px 8px; background: #1e1e1e; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); font-size: 11px; pointer-events: none; }
+.alpha-tip[hidden] { display: none; }
+.alpha-tip .head { color: var(--muted); margin-bottom: 3px; font-family: var(--mono); }
+.alpha-tip .row { display: flex; align-items: center; gap: 6px; }
+.alpha-tip .v { font: 700 12px var(--mono); color: #f4f4f4; }
+.alpha-tip .n { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alpha-tip .key, .alpha-legend .key { flex: none; width: 12px; border-top: 2px solid; }
+.alpha-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--text); margin-top: 2px; }
+.alpha-legend .item { display: flex; align-items: center; gap: 5px; }
+.alpha-legend button { padding: 0 4px; font-size: 10px; line-height: 14px; }
+.alpha-legend .empty { color: var(--muted); }
+table.treat td.spark { text-align: right; padding: 2px 4px 0; }
+.alpha-spark { display: inline-block; vertical-align: middle; }
+table.treat tr.plotted td { background: #2d2d30; }
+table.treat .linekey { display: inline-block; width: 12px; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
 table.surfaces td, table.surfaces th { white-space: nowrap; vertical-align: top; }
 .hint.warn { color: var(--warn); }
 
@@ -245,7 +335,7 @@ main.inspector-out { grid-template-columns: 1fr; }
 
 /* ---------------------------------------------------------------- the frequency slider, read as a log scale */
 .freq { position: relative; }
-.freq .ticks { position: absolute; left: 0; width: 160px; top: 100%; height: 10px; pointer-events: none; font: 8px var(--mono); color: var(--muted); }
+.freq .ticks { position: absolute; left: 0; width: 100%; top: 100%; height: 10px; pointer-events: none; font: 8px var(--mono); color: var(--muted); }
 .freq .ticks i { position: absolute; top: -3px; width: 1px; height: 4px; background: var(--muted); }
 .freq .ticks span { position: absolute; top: 1px; transform: translateX(-50%); }
 #tour.on, #sweep.on { background: var(--accent); color: #111; }
@@ -352,10 +442,30 @@ td.ok { color: #4ade80; }
 #views > .sashes > .sash { pointer-events: auto; }
 .inspector-sash { right: var(--inspector-w, 360px); margin-left: 0; margin-right: -4px; }
 main.inspector-out > .inspector-sash, .popped > .sash, body.popout .sash { display: none; }
-.foot > .sash.h { top: 0; }
+.foot > .sash.h { position: absolute; top: 0; }
 .meter > .sash.v { right: -4px; margin-left: 0; }
 .meter:last-child > .sash, #meters > .meter:last-of-type > .sash { display: none; }
 /* while a sash drags, the CAD's iframe must not swallow the pointer */
 body.sashing-v, body.sashing-v * { cursor: col-resize !important; }
 body.sashing-h, body.sashing-h * { cursor: row-resize !important; }
 body.sashing-v iframe, body.sashing-h iframe { pointer-events: none; }
+
+/* the monitor controller (ui/monitor.js): its rows, and a strip per channel */
+.monitor { flex-direction: column; align-items: stretch; gap: 8px; min-width: 360px; }
+.monRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.monLabel { color: var(--muted); font-size: 11px; min-width: 38px; }
+.monVol { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.monVol input { width: 140px; }
+.monVol output, .monitor .mono { font-family: var(--mono); color: var(--text); min-width: 56px; }
+.monRead { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.monRead b { color: #f43f5e; }
+.monitor button.on.mute { background: var(--bad); border-color: var(--bad); }
+.monitor button.on.solo { background: #facc15; border-color: #facc15; }
+.monitor button.on.dim { background: #fb923c; border-color: #fb923c; }
+.monStrips { border-collapse: collapse; font-size: 12px; }
+.monStrips th { color: var(--muted); font-weight: 500; text-align: left; padding: 0 4px; }
+.monStrips td { padding: 1px 4px; }
+.monStrips td.name { font-family: var(--mono); min-width: 44px; }
+.monStrips button { padding: 0 6px; }
+.monStrips input { width: 56px; }
+.monStrips tr.silent td.name, .monStrips tr.silent td.mono { opacity: .4; }

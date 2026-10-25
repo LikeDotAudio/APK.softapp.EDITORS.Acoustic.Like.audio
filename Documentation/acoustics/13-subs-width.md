@@ -1,4 +1,4 @@
-# 13. Room-wide low-end scores: sub placement and array width
+# 13. Room-wide low-end scores: sub placement, several subs and array width
 
 Modules: `js/acoustics/subDesigner.js`, `js/acoustics/widthFinder.js`, and the
 seat helpers in `js/compute/compute.js`.
@@ -99,3 +99,48 @@ spread of the arrangement as placed. The sweep advances one radius per
 describes as a starting point rather than a measurement. Below the Schroeder
 frequency, the image series truncated at `settings.maxOrder` approximates the
 modal field only roughly (chapter 8).
+
+## 13.4 Several subs tuned together
+
+Module: `js/acoustics/multiSub.js`.
+
+One sub can only be put where the modes hurt least. Several can be set against
+each other so their modes cancel across the seats. No single position and no
+EQ can do that, because EQ changes every seat alike.
+`optimiseSubs(room, subs, seats, { delayMax = 20, delayStep = 0.25, trimMin = -6, trimStep = 1, passes = 2, eqBands = 4 })`
+keeps every sub where the designer put it and searches only what the
+processor sets: per sub, the delay $\tau_k \in [0, 20]$ ms, the gain
+$g_k \in [-6, 0]$ dB (never a boost) and the polarity $\pm 1$.
+
+Each sub is heard alone once at every seat $i$ and frequency $f_j$ with the
+wave method, $P_{kij}$ (chapter 8, `field.js` `waveAt`). A candidate is
+recombined as
+
+$$
+L_{ij} = 20\log_{10}\Big|\sum_k \pm g_k\, e^{-j2\pi f_j\tau_k} P_{kij}\Big|
+$$
+
+and scored as in §13.2, flat + even, the seats weighted by tier
+(`scoreCurves`). The first sub is the reference (0 ms, 0 dB, normal). The
+others are set by coordinate descent over the full grid, `passes` times.
+
+**The shared EQ.** `fitCutEq(freqs, curve)` fits cut-only RBJ peaking
+filters (`peakingDb`, $f_s$ = 48 kHz) to the seats' weighted power mean
+(`powerMeanCurve`). It takes the worst peak over the curve's own power mean
+first. The cut is that excess, capped at 12 dB, and the Q comes from the width
+where the peak stands half its excess over the mean,
+$Q = \sqrt{2^{B}}/(2^{B}-1)$, with $B$ in octaves. It repeats up to
+`eqBands` times while a peak stands more than 1 dB over the mean. A null is
+never boosted, because it is a cancellation. A filter common to every sub
+turns them all by the same phase, so it may be applied to the sum afterwards,
+magnitude only. It lowers flat and leaves even exactly as it was.
+
+Returns `{ freqs, subs: [{ id, name, delayMs, gainDb, invert }], eq, before, after, eqd }`.
+
+Example: the 5 × 7 × 2.7 m gypsum room on a concrete floor, a sub in each
+corner 0.3 m from both walls, a mixer at (2.5, 4.3) and two clients at
+(1.5, 2.5) and (3.5, 2.5). As placed: flat 7.56, even 5.71, score 13.27 dB.
+Tuned: 5.74 / 3.24 / 8.98 dB (the second sub inverted, 14 ms, −5 dB). With
+three EQ cuts (50.4 Hz −5.1 dB Q 3.45, 75.5 Hz −2.4 dB, 44.9 Hz −1.0 dB):
+flat 4.61, even unchanged at 3.24 *(Node.)*. One sub alone in the first
+corner scores 16.15 dB.

@@ -20,6 +20,29 @@ rounded and intended for design work rather than as test data. The
 categories follow the AcousticRooms library (facebookresearch, CC BY 4.0), as
 the comment says.
 
+Two more figures are read from a material, not stored in its row:
+
+* **depth.** `depthOf(mat, product)` reads it from the name — `…×100`,
+  `100 mm`, `2"` — and `depthOfId(paletteId)` does so for a palette id, the
+  product's name first. `null` when the name says nothing.
+* **low octaves.** `alpha9` is the 31 Hz … 8 kHz series. A material without it
+  has its 125 Hz figure stretched down; `ratedLow(mat)` is true only when it
+  carries its own 31 and 63 Hz figures. `bass-trap` and `membrane-trap` carry
+  them as estimates in the shape those absorbers have (deep porous: 0.2 and
+  0.5; membrane: 0.25 and 0.6 at 31 and 63 Hz), to be replaced by the maker's
+  measured figures. The Acoustic X catalogue's absorbers carry the published
+  manufacturer figures.
+
+`isPorousAbsorber(mat)` is true for the Absorber category, and for a Ceiling
+product or catalogue absorber with $\alpha_{1\text{k}} \ge 0.5$; never for a
+resonator or a diffuser. A porous absorber thinner than `MIN_ABSORBER_DEPTH`
+= 76 mm (3 in) is warned about (chapter 15).
+
+`carpet-felt` is the listening-room floor: wall-to-wall clipped-pile carpet
+on `CARPET_UNDERLAY` = 1.36 kg/m² felt (40 oz/sq yd). The textbook row for
+heavy carpet on 40 oz hairfelt or foam rubber is one row, so it has the same
+$\alpha$ as `carpet-pad`.
+
 ### Clamping
 
 $$

@@ -44,6 +44,8 @@ export const SPEAKER_PRESETS = {
   dmt12: { label: 'Tannoy DMT 12 · 12" coaxial · 44 L', maker: 'Tannoy', driver: 'coaxial 12"', litres: 44, typical: true, pattern: 'horn', hCov: 90, vCov: 90, sensitivity: 93, watts: 4, maxSpl: 116, fLow: 45, fHigh: 20000, omniBelow: 300, lowpass: 0, color: '#e0b04a' },
   // Tannoy DMT 8: its 8" Dual Concentric sibling in a 22 L cabinet — the surrounds and heights round a pair of DMT 12s. Typical figures as above.
   dmt8: { label: 'Tannoy DMT 8 · 8" coaxial · 22 L', maker: 'Tannoy', driver: 'coaxial 8"', litres: 22, typical: true, pattern: 'horn', hCov: 90, vCov: 90, sensitivity: 90, watts: 4, maxSpl: 110, fLow: 55, fHigh: 20000, omniBelow: 400, lowpass: 0, color: '#d4a03c' },
+  // the small mono check box: one full-range 4.5" driver, sealed, no bass to speak of — how the mix sounds on a cheap set
+  cube: { label: 'Mix cube · 4.5" full-range · 3 L', driver: 'full-range 4.5"', litres: 3, pattern: 'cardioid', hCov: 120, vCov: 120, sensitivity: 86, watts: 5, maxSpl: 104, fLow: 150, fHigh: 15000, omniBelow: 800, lowpass: 0, color: '#c9c2b0' },
   monitor: { label: 'Studio monitor', litres: 12, pattern: 'cardioid', hCov: 90, vCov: 60, sensitivity: 87, watts: 5, maxSpl: 112, fLow: 45, fHigh: 22000, omniBelow: 300, lowpass: 0, color: '#5aa9ff' },
   'horn-90x50': { label: 'Projection 90×50 horn', litres: 45, pattern: 'horn', hCov: 90, vCov: 50, sensitivity: 104, watts: 25, maxSpl: 133, fLow: 60, fHigh: 18000, omniBelow: 500, lowpass: 0, color: '#ffb347' },
   'horn-60x40': { label: 'Projection 60×40 horn', litres: 35, pattern: 'horn', hCov: 60, vCov: 40, sensitivity: 107, watts: 20, maxSpl: 135, fLow: 65, fHigh: 18000, omniBelow: 600, lowpass: 0, color: '#ff8c42' },
@@ -203,7 +205,8 @@ const finite = (v) => typeof v === 'number' && Number.isFinite(v);
  */
 export function speakerLevel(spk) {
   const power = spk.drive !== 'spl' && finite(spk.sensitivity) && finite(spk.watts);
-  const demand = power ? spk.sensitivity + 10 * Math.log10(Math.max(spk.watts, 1e-3)) : spk.level;
+  // the monitor controller's volume and trim (acoustics/monitor.js) ride on whatever drives the box
+  const demand = (power ? spk.sensitivity + 10 * Math.log10(Math.max(spk.watts, 1e-3)) : spk.level) + (spk.gainDb ?? 0);
   const max = finite(spk.maxSpl) && spk.maxSpl > 0 ? spk.maxSpl : Infinity;
   return { level: Math.min(demand, max), demand, limited: demand > max, headroom: max - demand, drive: power ? 'power' : 'spl' };
 }

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { buildRoom } from '../js/acoustics/room.js';
 import { makeMic, makeSpeaker } from '../js/acoustics/devices.js';
 import { firstReflections, heatOf } from '../js/acoustics/reflectionPanels.js';
-import { arrangedSpeakers, carryArray, layoutCentre, layoutPositions } from '../js/acoustics/layouts.js';
+import { arrangedSpeakers, carryArray, layoutCentre, layoutPositions, selectSet, setLayout, SPEAKER_SETS } from '../js/acoustics/layouts.js';
 
 const settings = { roomHeight: 3, frontDeg: 90, band: 2, faceMaterials: { floor: 'concrete-floor', ceiling: 'concrete-painted', front: 'concrete-painted', back: 'concrete-painted', left: 'concrete-painted', right: 'concrete-painted' } };
 const room = buildRoom([{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 7 }, { x: 0, y: 7 }], settings);
@@ -52,6 +52,25 @@ test('the highlighted arrangement soloes its own speakers', () => {
   // hidden, or nothing in it placed: every speaker
   assert.equal(arrangedSpeakers(all, settings('2.0', false)).length, 5);
   assert.equal(arrangedSpeakers([box(undefined)], settings('2.0')).length, 1);
+});
+
+test('only the selected speaker set sounds, each with its own array', () => {
+  const box = (role, set) => ({ ...makeSpeaker('monitor', { x: 1, y: 1 }), role, ...(set ? { set } : {}) });
+  const all = [box('L'), box('R'), box('C'), box('L', 'B'), box('R', 'B'), box('C', 'B'), box('L', 'C'), box('R', 'C')];
+  const a = { layout: { preset: '7.1.4', radius: 2 }, show: { arrangement: true }, layoutSets: { B: { preset: '5.1', radius: 1.6 }, C: { preset: '2.0', radius: 1.2 } } };
+  // a speaker with no set, and settings with none selected, are the A set
+  assert.deepEqual(arrangedSpeakers(all, a).map((s) => s.set ?? 'A'), ['A', 'A', 'A']);
+  const b = selectSet(a, 'B');
+  assert.equal(b.layout.preset, '5.1');
+  assert.equal(b.layoutSets.A.preset, '7.1.4', 'the A array waits while B sounds');
+  assert.deepEqual(arrangedSpeakers(all, b).map((s) => s.set), ['B', 'B', 'B']);
+  assert.deepEqual(arrangedSpeakers(all, { ...selectSet(b, 'C'), show: { arrangement: false } }).map((s) => s.set), ['C', 'C']);
+  assert.equal(setLayout(selectSet(b, 'A'), 'B').radius, 1.6, 'switching back keeps B as it was left');
+  // an empty set is silent, not the whole room
+  assert.equal(arrangedSpeakers([box('L')], b).length, 0);
+  // no preset in two rows
+  const rows = Object.values(SPEAKER_SETS).flatMap((k) => k.presets);
+  assert.equal(new Set(rows).size, rows.length);
 });
 
 test('the array centre moves off the seat in mm, as the listener faces', () => {

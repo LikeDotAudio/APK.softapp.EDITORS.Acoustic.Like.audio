@@ -1,13 +1,14 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { advise } from '../acoustics/advisor.js';
-import { arrayFront, layoutCentre, layoutCheck, soundingSpeakers } from '../acoustics/layouts.js';
+import { arrayFront, layoutCentre, layoutCheck } from '../acoustics/layouts.js';
+import { monitoredSpeakers } from '../acoustics/monitor.js';
 import { ELEVATION_FACES, elevationFaceOf } from '../acoustics/elevations.js';
 import { buildRoom } from '../acoustics/room.js';
 import { planFromWalls } from '../acoustics/wallChains.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { buildGrids } from './grids.js';
-import { F_MAX, F_MIN, runJob } from './compute.js';
+import { F_MAX, F_MIN, MODAL_MAX, runJob } from './compute.js';
 
 /**
  * FROM STATE TO NUMBERS
@@ -192,9 +193,14 @@ export function createEngine(store, onResult) {
    * round frequencies — 20, 30, 50, 100, 200, 300, 500, 1k … — then the ones
    * between (40, 60, 70 …), then halves the gaps again and again. The sweep
    * plays whichever are ready, so the loop starts coarse and slowly fills in
-   * smooth. Any change but the frequency starts the frames over.
+   * smooth. Any change but the frequency starts the frames over. The tour
+   * hands its own list instead (`sweepFrames`), in the order it will play them.
+   *
+   * The modal field stops at MODAL_MAX (compute.js): every frame above it is
+   * that one, so it is painted once and kept for them all.
    */
   const LADDER = frameLadder();
+  let wanted = LADDER;
   const cache = new Map(); // freq → { result, job }, for `scene`
   let scene = null;
   let sceneKey = '';
@@ -204,6 +210,8 @@ export function createEngine(store, onResult) {
 
   function keepFrame(job, result) {
     if (job.scene !== scene) return;
+    // painted without the response curve, which is the same at every frequency: the room's, already shown
+    if (result && !result.response) result.response = out.response;
     if (result) cache.set(job.settings.freq, { result, job });
     else failed.add(job.settings.freq);
     syncFrames();
@@ -211,20 +219,30 @@ export function createEngine(store, onResult) {
   }
 
   function syncFrames() {
-    out.frames = { ready: [...cache.keys()].sort((x, y) => x - y), ladder: precalc || cache.size ? LADDER : [] };
+    out.frames = { ready: [...cache.keys()].sort((x, y) => x - y), ladder: precalc || cache.size ? wanted : [] };
   }
 
   /** The worker is free: paint the next frame the sweep has not got yet. */
   function pump() {
     if (!precalc || busy || !last || last.settings.method === 'energy') return;
-    const f = LADDER.find((g) => !cache.has(g) && !failed.has(g));
-    if (f === undefined) return;
-    run({ ...last, settings: { ...last.settings, freq: f }, frame: true });
+    for (;;) {
+      const f = wanted.find((g) => !cache.has(g) && !failed.has(g));
+      if (f === undefined) return;
+      const above = last.settings.method === 'modal' && f > MODAL_MAX;
+      if (above && cache.has(MODAL_MAX)) {
+        cache.set(f, cache.get(MODAL_MAX));
+        syncFrames();
+        onResult(out, 'frame');
+        continue;
+      }
+      return run({ ...last, settings: { ...last.settings, freq: above ? MODAL_MAX : f }, frame: true, withResponse: false });
+    }
   }
 
-  /** Paint frames ahead of the sweep, or stop. The frames already painted stay. */
-  function frames(on) {
+  /** Paint frames ahead of the sweep (the ladder's, or `list` in its order), or stop. The frames already painted stay. */
+  function frames(on, list = LADDER) {
     precalc = on;
+    wanted = list;
     syncFrames();
     if (on) pump();
   }
@@ -253,8 +271,8 @@ export function createEngine(store, onResult) {
       failed.clear();
       syncFrames();
     }
-    // the field hears the highlighted arrangement, as the plan shows it
-    const job = { room, speakers: soundingSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, responsePoints, scene, coarse };
+    // the field hears the highlighted arrangement, as the plan shows it, through the monitor controller
+    const job = { room, speakers: monitoredSpeakers(state.speakers, settings), mics: state.mics, settings, grids, monitorId, responsePoints, scene, coarse };
     out.monitorId = monitorId;
     if (!coarse) last = job;
     const hit = !coarse && cache.get(settings.freq);
@@ -284,6 +302,20 @@ export function createEngine(store, onResult) {
   }
 
   return { update, out, currentRoom, frames, setResponsePoints };
+}
+
+/**
+ * The frames a sweep that moves `step` of an octave at a time plays, bottom
+ * to top: the ladder's frame nearest each step, each once.
+ */
+export function sweepFrames(step = 1 / 12, ladder = frameLadder()) {
+  const sorted = [...ladder].sort((x, y) => x - y);
+  const out = [];
+  for (let f = F_MIN; f <= F_MAX * 1.0001; f *= 2 ** step) {
+    const near = sorted.reduce((best, g) => (Math.abs(Math.log(g / f)) < Math.abs(Math.log(best / f)) ? g : best));
+    if (near !== out.at(-1)) out.push(near);
+  }
+  return out;
 }
 
 /**

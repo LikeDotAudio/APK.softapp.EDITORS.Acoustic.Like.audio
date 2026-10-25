@@ -65,3 +65,54 @@ The comment cites these as AcousticRooms' sampling rules:
 
 * `info` for two speakers less than 1 m apart;
 * `warn` for a speaker and a microphone less than 0.5 m apart.
+
+## 15.5 Treatment
+
+These are the room-acoustics literature's treatment criteria, checked by
+`treatment(room, speakers, mix, settings, add)` at the end of `advise`. Mains
+are every speaker but the subs.
+
+* **The wall behind each box.** For each free-standing main,
+  `wallBehind` and `finishAt` (chapter 11) read the finish at the box's foot
+  on the wall behind it, at its height: `ok` when $\alpha_{500} \ge 0.5$,
+  else `warn`. The warning gives the share kept and the return delay $2d/c$,
+  and asks for ≥ 76 mm of absorption there.
+* **Below 125 Hz.** `info` when the lowest axial mode is under 100 Hz and no
+  finish or patch in the room is `ratedLow` (chapter 3). Below about 100 Hz
+  only engineered absorbers (membrane, Helmholtz, deep porous) work, and only
+  their measured figures say how much.
+* **Thin absorbers.** `warn` once per palette id for porous-absorber patches
+  (`isPorousAbsorber`) whose `depthOfId` is under `MIN_ABSORBER_DEPTH`
+  (76 mm). When any of them lies within 0.3 m of a wall's end, a second
+  `warn`: *Corner foam is not a bass trap*.
+* **Absorption and diffusion.** Over the patches at 1 kHz, absorbed
+  $\sum S\alpha$ against scattered $\sum S(1-\alpha)s$ for $s \ge 0.5$.
+  When the room's mean $\alpha_{1\text{k}} > 0.3$: `ok` when scattering is at
+  least 10 % of the two, else `warn` (all absorption sounds dead).
+* **Hard floor.** `info` when the floor's $\alpha_{500} < 0.3$, naming
+  `carpet-felt`: clipped-pile carpet on 1.36 kg/m² felt.
+* **Diffuser band.** `warn` for a Diffuser-category patch on a side wall with
+  less than half its height inside `diffuserBand` (chapter 11).
+* **Directivity.** Per main, the directivity index $10\log_{10}Q$ at 1, 2 and
+  4 kHz (`cachedQ`, chapter 6): `ok` within 3 dB, `info` within 6 dB, else
+  `warn`. A constant-directivity box's reflections sound like its direct
+  sound. A narrow horn keeps energy off the side walls.
+* **Spaciousness.** `info` with the seat's LF at 1 kHz (chapter 9 §9.6),
+  echogram order $\min(3, \text{maxOrder})$, mains only.
+* **Reflection-free zone.** `ok` / `warn` from `reflectionFreeZone`
+  (chapter 9 §9.7), naming the worst arrival. The cure offered is absorbing
+  its spot or splaying its wall 1 in 20 to 1 in 10.
+* **Several subs.** `info` when there are two or more: tune them together
+  (chapter 13 §13.4).
+* **Sub isolation.** For each wall shared with the house when the room has a
+  sub: the level in the room at 31 and 63 Hz is each sub's
+  $L_{1\,\text{m}} + 11 + 10\log_{10}(4/R_{125})$, power-summed, and is put
+  through `lowHouseLeak` (chapter 12 §12.4). `warn` above 45 dB at 63 Hz,
+  else `info`.
+
+Example: the room of chapter 9 §9.6 with a wood floor, two subs in the front
+corners and the room inside a house. The advisor warns *L: wall behind*,
+*R: wall behind*, *Reflection-free zone* (32 reflections, the worst −6.9 dB,
+3.5 ms after L) and *Sub through the front wall* (TL 5 / 11 dB at
+31 / 63 Hz). It informs *Nothing rated below 125 Hz* (lowest mode 25 Hz),
+*Hard floor*, LF 0.20 and *2 subwoofers* *(Node.)*.
