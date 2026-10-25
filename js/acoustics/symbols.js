@@ -64,7 +64,7 @@ const RULES = [
   [/carpet|linoleum|vinyl (floor|tile|sheet)|\brug\b/, 'carpet'],
   [/cork/, 'cork'],
   [/rubber|neoprene/, 'rubber'],
-  [/qrd|diffus|omniff|diffract|flutter|pyramid|skyline/, (t) => (/skyline|block|blox|pyramid|2-?d/.test(t) ? 'skyline' : 'qrd')],
+  [/qrd|diffus|omniff|diffract|flutter|pyramid|skyline|stick/, (t) => (/skyline|block|blox|pyramid|stick|2-?d/.test(t) ? 'skyline' : 'qrd')],
   [/slat/, 'slat'],
   [/perforat|perf\b|helmholtz/, 'perforated'],
   [/membrane|diaphragm|panel absorber|limp/, 'membrane'],

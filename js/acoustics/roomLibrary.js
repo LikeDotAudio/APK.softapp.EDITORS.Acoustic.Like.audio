@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 
 /**
- * FIFTY-FIVE ROOMS TO PLAY WITH
+ * FIFTY-SIX ROOMS TO PLAY WITH
  *
  * Plans of the kinds of room studios are actually built in, at real sizes:
  * the spare bedroom and the garage, the rooms drawn to a published ratio, the
@@ -31,6 +31,9 @@
  * A room laid out as drawn — a broadcast set's anchor desk — carries its own
  * `furniture` and `seats` (as furnish() returns them), and is furnished with
  * those instead of a mix room's.
+ *
+ * A room may carry `faces`, the finishes it is built with (settings
+ * faceMaterials by face): the Massonberg room comes with its hardwood floor.
  *
  * Every plan is in metres with the listener facing +Y (the front wall at the
  * top, frontDeg 90), centred on x = 0 and starting at y = 0, wound counter-
@@ -190,6 +193,23 @@ export const ROOM_LIBRARY = [
     windows: [...SET_SCREENS.map((sc) => ({ face: 'front', at: SET_MID + sc.x, w: sc.w, h: sc.h, sill: sc.sill, casing: 0, glass: 'led-wall' })), { face: 'back', at: SET_MID, w: 2.4, h: 1.4, sill: 1.0, casing: 0, glass: 'led-wall' }],
     furniture: SET_ARC.deg.map((deg) => ({ paletteId: 'desk-1800x900', ...onArc(SET_ARC.desk, deg), rotation: deg })),
     seats: SET_ARC.deg.map((deg, i) => ({ kind: SET_TALENT[i], ...onArc(SET_ARC.chair, deg), z: 1.2, aim: 90 + deg, ...(i === 0 ? { mix: true } : {}) })),
+  },
+
+  // ---------------------------------------------------------------- the Massonberg room
+  // a live room of five freestanding stick diffusers (materials.js MASSONBERG): one centred on the back wall, two down
+  // each side, every one's sticks facing into the room; hardwood underfoot, a rug in the middle under the players
+  {
+    id: 'massonberg-room', group: 'Live rooms', name: 'Massonberg room — five stick diffusers', live: true,
+    note: 'a 9 × 12 m live room, 4 m high: five 2.4 m Massonberg stick diffusers round a hardwood floor, a 4 × 3 m rug in the middle',
+    h: 4.0,
+    poly: rect(9, 12),
+    faces: { floor: 'wood-floor' },
+    furniture: [
+      { paletteId: 'massonberg-2400x600', x: 0, y: 0.35, rotation: 180 },
+      ...[4, 8].flatMap((y) => [{ paletteId: 'massonberg-2400x600', x: -4.15, y, rotation: 90 }, { paletteId: 'massonberg-2400x600', x: 4.15, y, rotation: -90 }]),
+      { paletteId: 'rug-4000x3000', x: 0, y: 6, rotation: 0 },
+    ],
+    seats: [{ kind: 'mixer', x: 0, y: 6, z: 1.2, aim: 90, mix: true }],
   },
 
   // ---------------------------------------------------------------- Tanda, Saskatoon: the studio's own rooms, traced off its plan

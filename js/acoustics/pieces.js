@@ -26,6 +26,8 @@
  * any one desk.
  */
 
+import { MASSONBERG, STICK_DIFFUSER, stickBalance } from './materials.js';
+
 const BLACK = '#18181b';
 const SHELL = '#b91c1c';
 const HEAD = '#e7e5e4';
@@ -156,7 +158,35 @@ function console_(w, d, strips) {
   return out;
 }
 
+/**
+ * The Massonberg stick diffuser: the board standing up the middle of its
+ * sled, the sticks glued to its face reaching toward the room (−y), each its
+ * own random length, and the steel that balances them on the sled behind
+ * (materials.js stickBalance). Drawn in 4 in bundles of sixteen sticks, so
+ * the view stays quick; the lengths are seeded, the same every time it is drawn.
+ */
+function massonberg() {
+  const { w, h, base, board } = MASSONBERG;
+  const { min, max } = STICK_DIFFUSER;
+  const cell = 0.1016;
+  const nx = Math.floor(w / cell);
+  const nz = Math.floor(h / cell);
+  let seed = 0x5eed;
+  const random = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  const out = [box(0, board / 2, 0, w, board, h, '#a16207'), box(0, 0, 0, w, base, 0.04, BLACK)];
+  const { plate } = stickBalance();
+  out.push(box(0, board + (base / 2 - board) / 2, 0.04, w, base / 2 - board, plate, STEEL));
+  for (let i = 0; i < nx; i++)
+    for (let j = 0; j < nz; j++) {
+      const len = min + (max - min) * random();
+      const shade = ['#c08a3e', '#b07a32', '#d19a4e'][Math.floor(random() * 3)];
+      out.push(box(-w / 2 + cell * (i + 0.5), -len / 2, 0.04 + cell * j, cell, len, cell, shade));
+    }
+  return out;
+}
+
 const PIECES = {
+  'massonberg-2400x600': massonberg,
   'drum-kit-1800x1500': drumKit,
   'grand-piano-1480x2110': grandPiano,
   'hammond-b3-1250x730': hammond,

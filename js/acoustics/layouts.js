@@ -96,19 +96,24 @@ export const LAYOUTS = {
 };
 
 /**
- * SPEAKER SETS, as a monitor controller switches them: A the mains (the
- * immersive array, or a big stereo pair with its subs), B a surround set,
- * C the small stereo nearfields or a single mono cube. Each set is its own
- * boxes (a speaker's `set`, A when it has none) and its own array — preset,
- * width, centre and turn. Only the selected set sounds; the others stand in
- * the room as ghosts. `settings.layout` is always the selected set's array,
- * the others wait in `settings.layoutSets` until they are picked.
+ * SPEAKER SETS, as a monitor controller switches them: three sets of boxes,
+ * each its own drivers — A the mains (Tannoy coaxials), B mid-fields
+ * (Genelec), C the nearfields (Dynaudio) — and each free to be any
+ * arrangement, or none at all. Each set is its own boxes (a speaker's `set`,
+ * A when it has none) and its own array — preset, width, centre and turn, so
+ * its own spacing. Only the selected set sounds; the others stand in the
+ * room as ghosts. `settings.layout` is always the selected set's array, the
+ * others wait in `settings.layoutSets` until they are picked.
  */
+const EVERY = Object.keys(LAYOUTS);
 export const SPEAKER_SETS = {
-  A: { label: 'A', title: 'A set — the mains', presets: ['2.1', '2.2', '5.1.4', '5.2.4', '7.1', '7.1.4', '7.2.4', '9.1.6', '22.2'], layout: { preset: '7.1.4', radius: 2.0, rotate: 0, mains: 'dmt12', surround: 'dmt8' } },
-  B: { label: 'B', title: 'B set — surround', presets: ['5.1', '5.2'], layout: { preset: '5.1', radius: 1.6, rotate: 0, mains: 'dmt8', surround: 'dmt8' } },
-  C: { label: 'C', title: 'C set — the nearfields, or one mono cube', presets: ['1.0', '2.0'], layout: { preset: '2.0', radius: 1.2, rotate: 0, mains: 'monitor', surround: 'monitor' } },
+  A: { label: 'A', title: 'A set — the mains', presets: EVERY, layout: { preset: '7.1.4', radius: 2.0, rotate: 0, mains: 'dmt12', surround: 'dmt8' } },
+  B: { label: 'B', title: 'B set — the mid-fields', presets: EVERY, layout: { preset: '5.1', radius: 1.6, rotate: 0, mains: 'genelec-1032a', surround: 'genelec-1031a' } },
+  C: { label: 'C', title: 'C set — the nearfields', presets: EVERY, layout: { preset: '2.0', radius: 1.2, rotate: 0, mains: 'dynaudio-bm5', surround: 'dynaudio-bm5' } },
 };
+
+/** The boxes a set had before each set was its own drivers: a set still holding them is given its own. */
+export const OLD_SET_BOXES = { B: ['dmt8', 'dmt8'], C: ['monitor', 'monitor'] };
 
 /** The selected set, and the set a speaker belongs to: A for both when nothing says otherwise. */
 export const activeSet = (settings) => settings.speakerSet ?? 'A';

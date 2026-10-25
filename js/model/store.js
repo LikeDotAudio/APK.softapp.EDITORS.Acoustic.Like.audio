@@ -5,7 +5,7 @@ import { DEFAULT_ISOLATION } from '../acoustics/isolation.js';
 import { mirrorDevice, syncTwin } from '../acoustics/symmetry.js';
 import { clampInside, CLEAR_M, intoRoom, outside } from '../acoustics/inRoom.js';
 import { DEFAULT_MONITOR } from '../acoustics/monitor.js';
-import { activeSet, carryArray, LAYOUTS, selectSet, setLayout, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
+import { activeSet, carryArray, LAYOUTS, OLD_SET_BOXES, selectSet, setLayout, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
 import { pointInPolygon } from '../acoustics/geometry.js';
 
 const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
@@ -184,6 +184,13 @@ export function createStore() {
       layoutSets: { ...DEFAULT_SETTINGS.layoutSets, ...d.layoutSets },
       monitor: { ...DEFAULT_MONITOR, ...d.monitor },
     };
+    // B and C once shared the A set's DMT 8s or a generic box: a set still on them is given its own drivers
+    for (const [k, [mains, surround]] of Object.entries(OLD_SET_BOXES)) {
+      const l = setLayout(state.settings, k);
+      if (l.mains !== mains || l.surround !== surround) continue;
+      const own = { ...l, mains: SPEAKER_SETS[k].layout.mains, surround: SPEAKER_SETS[k].layout.surround };
+      state.settings = k === activeSet(state.settings) ? { ...state.settings, layout: own } : { ...state.settings, layoutSets: { ...state.settings.layoutSets, [k]: own } };
+    }
     // ray tracing was a view of its own; it is an overlay now, over the 3-D room it was drawn in
     if (state.settings.view === 'rays') state.settings = { ...state.settings, view: '3d', show: { ...state.settings.show, trace: true } };
     state.speakers = doc.speakers ?? [];

@@ -4,7 +4,7 @@ import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
 import { buildRoom } from './acoustics/room.js';
 import { elevationOrigin, faceCoords } from './acoustics/patches.js';
-import { activeSet, arrangedSpeakers, arrayFront, LAYOUTS, NO_LAYOUT, relayArray, selectSet, setLayout, SPEAKER_SETS } from './acoustics/layouts.js';
+import { activeSet, arrangedSpeakers, arrayFront, LAYOUTS, NO_LAYOUT, relayArray, selectSet, setLayout, setOf, SPEAKER_SETS } from './acoustics/layouts.js';
 import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
 import { widthSweep } from './acoustics/widthFinder.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from './acoustics/roomFit.js';
@@ -653,6 +653,7 @@ const widthLanes = { key: [], list: [] };
       row.append(b);
     }
     const place = document.createElement('button');
+    place.dataset.place = '';
     place.textContent = '⤓';
     place.title = `Place this arrangement around the mix seat (replaces the ${set.title.split(' — ')[0]}'s arranged speakers)`;
     place.onclick = () => {
@@ -907,7 +908,9 @@ function pickDrawnRoom() {
   const heights = { ...store.state.settings.roomHeights, [loop.layerId]: +h.toFixed(3) };
   // its glass, if it has any, belongs to the loop just drawn
   const windows = { ...store.state.settings.windows, [loop.layerId]: (entry.windows ?? []).map(makeWindow) };
-  store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90, roomHeights: heights, windows });
+  // a room built with its own finishes (a hardwood floor) has them; the rest keep what the surfaces were given
+  const faceMaterials = { ...store.state.settings.faceMaterials, ...entry.faces };
+  store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90, roomHeights: heights, windows, faceMaterials });
   // furnished, and with its people in it: the console, couch and rack into the CAD as real blocks, the listeners seated
   if (entry.group) {
     const { furniture, seats, door } = furnish(entry);
@@ -1222,12 +1225,14 @@ const wizard = createWizard({
     seat: () => place('place-mic', 'mic', 'mixer'),
     mic: () => place('place-mic', 'mic', 'cardioid'),
     byHand: () => place('place-speaker'),
-    sets: () => Object.entries(SPEAKER_SETS).map(([k, set]) => ({ k, title: set.title, presets: set.presets.map((id) => ({ id, label: LAYOUTS[id].label })) })),
+    sets: () => Object.entries(SPEAKER_SETS).map(([k, set]) => ({ k, title: set.title, presets: [{ id: NO_LAYOUT, label: 'Nothing in this set', text: 'None' }, ...set.presets.map((id) => ({ id, label: LAYOUTS[id].label }))] })),
     // the arrangement bar's own buttons: the preset picked on its row, then that row's ⤓
     system: (k, preset) => {
       const row = document.querySelector(`#arrangement .speakerSet[data-set="${k}"]`);
       row?.querySelector(`button[data-preset="${preset}"]`)?.click();
-      row?.querySelector('button:last-child')?.click();
+      // nothing in this set: its arranged boxes go, the boxes placed by hand stay
+      if (preset === NO_LAYOUT) store.replaceSpeakers(store.state.speakers.filter((s) => !s.role || setOf(s) !== k));
+      else row?.querySelector('button[data-place]')?.click();
     },
     pickWall: () => {
       store.setMode('pick-wall');

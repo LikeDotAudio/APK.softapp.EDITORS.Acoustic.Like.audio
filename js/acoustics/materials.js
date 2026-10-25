@@ -48,6 +48,42 @@ import { SYMBOLS, symbolOf } from './symbols.js';
 /** The felt under a listening room's carpet, kg/m² (40 oz/sq yd). */
 export const CARPET_UNDERLAY = 1.36;
 
+/** A Massonberg stick diffuser: 1 in sticks, cut to random lengths between `min` and `max`, m; `density` the wood's, kg/m³. */
+export const STICK_DIFFUSER = { stick: 0.0254, min: 0.025, max: 0.3, density: 500 };
+
+/**
+ * What a stick wall weighs, kg per m² of wall: the sticks packed side by side,
+ * each its mean length deep. Random lengths are uniform between min and max,
+ * so the mean is halfway — a foot of maple-ish sticks is ≈80 kg/m², a ton
+ * over a 3 × 4 m wall; `count` the sticks on a square metre.
+ */
+export function stickMass({ stick, min, max, density } = STICK_DIFFUSER) {
+  const count = Math.floor(1 / stick) ** 2;
+  return { count, kgPerM2: count * stick * stick * ((min + max) / 2) * density };
+}
+
+/** The Massonberg as a piece of furniture: `w` wide, `h` tall, standing on a sled `base` deep; the board the sticks are glued to, and the steel that balances them. */
+export const MASSONBERG = { w: 2.4, h: 2.4, base: 0.6, board: 0.025, boardKgPerM2: 15, steel: 7850 };
+
+/**
+ * A freestanding stick wall leans forward: every stick hangs its weight in
+ * front of the board, at half its length — a quarter of (min + max) on
+ * average. Steel on the sled behind the board, centred `back` metres behind
+ * it, brings the whole thing's centre of mass back over the board, the
+ * middle of its sled. { sticks, board, counterweight, total } in kg, and
+ * `plate` the steel's thickness laid across the sled behind the board, m.
+ */
+export function stickBalance(spec = MASSONBERG, sticks = STICK_DIFFUSER) {
+  const area = spec.w * spec.h;
+  const mSticks = stickMass(sticks).kgPerM2 * area;
+  const mBoard = spec.boardKgPerM2 * area;
+  const back = (spec.base / 2 - spec.board) / 2 + spec.board;
+  const lean = mSticks * ((sticks.min + sticks.max) / 4) - mBoard * (spec.board / 2);
+  const counterweight = Math.max(0, lean / back);
+  const plate = counterweight / spec.steel / (spec.w * (spec.base / 2 - spec.board));
+  return { sticks: mSticks, board: mBoard, counterweight, total: mSticks + mBoard + counterweight, plate };
+}
+
 /** The thinnest porous absorber that works across the spectrum, m (3 in): thinner takes the top and leaves the low mids. */
 export const MIN_ABSORBER_DEPTH = 0.076;
 
@@ -57,6 +93,9 @@ const SHAPE = {
   qrd: [0.15, 0.45, 1, 1, 1, 1],
   // knobs, faders, buttons and patch fields: millimetres to centimetres, so a mirror below 1 kHz and a scatterer above
   gear: [0.1, 0.15, 0.3, 0.6, 0.85, 1],
+  // a wall of sticks cut to random lengths up to a foot: no design band like a QRD's, the deepest sticks
+  // reach down a little further (a quarter wave at 300 mm is ≈290 Hz), the 1 in faces scatter to the top
+  sticks: [0.25, 0.55, 0.9, 1, 1, 1],
 };
 
 /** How a category draws in the CAD: a hatch tells a finish apart at a glance even in monochrome. */
@@ -99,6 +138,8 @@ export const MATERIALS = [
   m('carpet-pad', 'Heavy carpet on foam rubber', 'Floor', [0.08, 0.24, 0.57, 0.69, 0.71, 0.73], 50, 0.4, 'rough', '#8a3a4a'),
   // the floor the literature asks of a listening room: the textbook row "heavy carpet on 40 oz hairfelt or foam rubber" is one row, so the same α
   m('carpet-felt', `Clipped-pile carpet, wall to wall, on ${CARPET_UNDERLAY} kg/m² felt`, 'Floor', [0.08, 0.24, 0.57, 0.69, 0.71, 0.73], 50, 0.4, 'rough', '#7a3444'),
+  // a rug laid on a hard floor: the textbook "carpet on concrete" row — it takes the top, not the bottom
+  m('rug', 'Rug, wool pile, laid on the floor', 'Floor', [0.02, 0.06, 0.14, 0.37, 0.6, 0.65], 40, 0.3, 'rough', '#9a3b3b'),
   // ceilings
   m('acoustic-tile', 'Acoustic ceiling tile', 'Ceiling', [0.7, 0.66, 0.72, 0.92, 0.88, 0.75], 20, 0.2, 'rough', '#cfd9c4'),
   m('ceiling-cloud', 'Ceiling cloud, 100 mm suspended', 'Ceiling', [0.55, 0.9, 0.99, 0.99, 0.99, 0.95], 6, 0.2, 'rough', '#8fbf8a'),
@@ -120,6 +161,10 @@ export const MATERIALS = [
   m('membrane-trap', 'Membrane bass trap', 'Resonator', [0.65, 0.55, 0.35, 0.2, 0.15, 0.1], 25, 0.1, 'flat', '#6b6b2a', [0.25, 0.6, 0.65, 0.55, 0.35, 0.2, 0.15, 0.1, 0.1]),
   // diffusers — golds
   m('diffuser', 'QRD diffuser, wooden wells', 'Diffuser', [0.45, 0.3, 0.15, 0.2, 0.3, 0.4], 20, 0.9, 'qrd', '#d4a52a'),
+  // MASSONBERG DIFFUSER: a mammoth wall of hundreds of 1 × 1 in (25.4 mm) wooden sticks, end grain out, each cut to a
+  // random length (STICK_DIFFUSER) — a 2-D skyline with no sequence, so no lobes. Packed solid it is heavy (stickMass), and
+  // that mass is why its TL is a wall's. α and s are design estimates in a wooden skyline's shape, not a test report.
+  m('stick-diffuser', 'Massonberg diffuser, hundreds of 1×1 in sticks, random lengths', 'Diffuser', [0.2, 0.18, 0.15, 0.18, 0.22, 0.28], 40, 0.85, 'sticks', '#c08a3e'),
   // furniture — the desk is a hard reflector at ear height, the couch a big soft absorber
   m('desk-top', 'Desk top, laminate', 'Furniture', [0.05, 0.04, 0.04, 0.04, 0.05, 0.05], 20, 0.1, 'flat', '#6b7280'),
   // a console reflects, it does not absorb: a hard specular top under the boxes (the console bounce, images.js), its controls scattering the highs
@@ -171,6 +216,11 @@ export const PRODUCTS = [
   p('qrd-600', 'QRD 600×600', 'diffuser', [0.6, 0.6]),
   p('qrd-1200x600', 'QRD 1200×600', 'diffuser', [1.2, 0.6]),
   p('skyline-600', 'Skyline diffuser 600×600', 'diffuser', [0.6, 0.6]),
+  // freestanding: 2400 wide on its 600 deep sled, 2400 tall (FURNITURE_HEIGHT), the sticks facing the room (−y)
+  p('massonberg-2400x600', 'Massonberg stick diffuser 2400×600, 2.4 m tall', 'stick-diffuser', [2.4, 0.6]),
+  p('rug-2400x1700', 'Rug 2400×1700', 'rug', [2.4, 1.7]),
+  p('rug-3000x2000', 'Rug 3000×2000', 'rug', [3.0, 2.0]),
+  p('rug-4000x3000', 'Rug 4000×3000', 'rug', [4.0, 3.0]),
   p('panel-600x600x50', 'Absorber panel 600×600×50', 'mineral-wool-50', [0.6, 0.6]),
   p('panel-1200x1200x100', 'Absorber panel 1200×1200×100', 'absorber-100', [1.2, 1.2]),
   p('superchunk-600', 'Superchunk corner trap 600×600', 'bass-trap', [0.6, 0.6]),
@@ -202,7 +252,7 @@ export function lookup(id) {
   return byId.get(id) ?? byId.get(productById.get(id)?.material) ?? null;
 }
 
-const FURNITURE_HEIGHT = { table: 0.75, desk: 0.75, 'producer-desk': 0.8, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3, 'amp-head': 0.28, keyboard: 0.85, hammond: 1.0, leslie: 1.03, 'grand-piano': 1.0 };
+const FURNITURE_HEIGHT = { table: 0.75, desk: 0.75, 'producer-desk': 0.8, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3, 'amp-head': 0.28, keyboard: 0.85, hammond: 1.0, leslie: 1.03, 'grand-piano': 1.0, massonberg: 2.4 };
 
 /** How tall a thing laid on the floor stands, metres: 0 for a finish (a rug, a floor build), a height for furniture and instruments. */
 export function furnitureHeight(paletteId) {

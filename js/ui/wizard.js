@@ -35,7 +35,7 @@ const FACES = ['front', 'back', 'left', 'right', 'ceiling', 'floor'];
 const FACE_LABEL = { front: 'Front wall', back: 'Back wall', left: 'Left wall', right: 'Right wall', ceiling: 'Ceiling', floor: 'Floor' };
 
 /** What each surface may be covered in, hard to soft. */
-const WALL_COVERS = ['concrete-painted', 'brick', 'block-painted', 'plaster', 'gypsum', 'wood-panel', 'glass-heavy', 'curtain-velour', 'drapes', 'slat-resonator', 'perforated-wood', 'diffuser', 'mineral-wool-50', 'absorber-50', 'absorber-100'];
+const WALL_COVERS = ['concrete-painted', 'brick', 'block-painted', 'plaster', 'gypsum', 'wood-panel', 'glass-heavy', 'curtain-velour', 'drapes', 'slat-resonator', 'perforated-wood', 'diffuser', 'stick-diffuser', 'mineral-wool-50', 'absorber-50', 'absorber-100'];
 const COVERS = {
   ...Object.fromEntries(['front', 'back', 'left', 'right'].map((f) => [f, WALL_COVERS])),
   ceiling: ['concrete-painted', 'plaster', 'gypsum', 'wood-panel', 'perforated-wood', 'acoustic-tile', 'ceiling-cloud', 'absorber-100'],
@@ -193,9 +193,9 @@ export function createWizard({ store, engine, rooms, act }) {
       state.className = `wizLive ${!mix() ? 'warn' : n ? 'ok' : ''}`;
     };
     return [
-      h('p', {}, 'Pick an arrangement and it is placed round the listener, at the angles its standard asks for. Drag any box after.'),
+      h('p', {}, 'Three sets, each its own boxes and spacing: pick an arrangement for any of them — or None — and it is placed round the listener, at the angles its standard asks for. Drag any box after.'),
       ...act.sets().map((s) =>
-        h('div', { class: 'wizSet' }, h('span', {}, s.title), h('div', { class: 'wizGrid' }, ...s.presets.map((p) => h('button', { title: p.label, onclick: () => act.system(s.k, p.id) }, p.id)))),
+        h('div', { class: 'wizSet' }, h('span', {}, s.title), h('div', { class: 'wizGrid' }, ...s.presets.map((p) => h('button', { title: p.label, onclick: () => act.system(s.k, p.id) }, p.text ?? p.id)))),
       ),
       h('div', { class: 'wizActs' }, h('button', { onclick: act.byHand }, '🔊 Place speakers by hand')),
       state,

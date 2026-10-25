@@ -3,9 +3,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildRoom } from '../js/acoustics/room.js';
-import { makeMic, makeSpeaker } from '../js/acoustics/devices.js';
+import { ALL_SPEAKER_PRESETS, makeMic, makeSpeaker } from '../js/acoustics/devices.js';
 import { firstReflections, heatOf } from '../js/acoustics/reflectionPanels.js';
-import { arrangedSpeakers, carryArray, layoutCentre, layoutPositions, selectSet, setLayout, SPEAKER_SETS } from '../js/acoustics/layouts.js';
+import { arrangedSpeakers, carryArray, layoutCentre, LAYOUTS, layoutPositions, selectSet, setLayout, SPEAKER_SETS } from '../js/acoustics/layouts.js';
 
 const settings = { roomHeight: 3, frontDeg: 90, band: 2, faceMaterials: { floor: 'concrete-floor', ceiling: 'concrete-painted', front: 'concrete-painted', back: 'concrete-painted', left: 'concrete-painted', right: 'concrete-painted' } };
 const room = buildRoom([{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 7 }, { x: 0, y: 7 }], settings);
@@ -68,9 +68,13 @@ test('only the selected speaker set sounds, each with its own array', () => {
   assert.equal(setLayout(selectSet(b, 'A'), 'B').radius, 1.6, 'switching back keeps B as it was left');
   // an empty set is silent, not the whole room
   assert.equal(arrangedSpeakers([box('L')], b).length, 0);
-  // no preset in two rows
-  const rows = Object.values(SPEAKER_SETS).flatMap((k) => k.presets);
-  assert.equal(new Set(rows).size, rows.length);
+  // every set offers every arrangement, each with its own drivers and its own spacing
+  for (const set of Object.values(SPEAKER_SETS)) assert.deepEqual(set.presets, Object.keys(LAYOUTS));
+  const boxes = Object.values(SPEAKER_SETS).map((k) => k.layout.mains);
+  assert.equal(new Set(boxes).size, boxes.length, 'no two sets share their mains');
+  for (const k of Object.values(SPEAKER_SETS)) for (const box of [k.layout.mains, k.layout.surround]) assert.ok(ALL_SPEAKER_PRESETS[box], `${box} is a box`);
+  const radii = Object.values(SPEAKER_SETS).map((k) => k.layout.radius);
+  assert.equal(new Set(radii).size, radii.length);
 });
 
 test('the array centre moves off the seat in mm, as the listener faces', () => {
