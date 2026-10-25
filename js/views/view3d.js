@@ -69,6 +69,8 @@ const INTRO_END = 5.2;
  * `camera()` and `show()` let a caller (the tour, ui/tour.js) hold the camera
  * where it wants it and turn the overlays on or off without touching the
  * page's settings; null leaves the view's own camera and the settings' show.
+ * A camera with `fit` ({ band }: the share of the height kept clear at the
+ * foot) frames the room to fill the canvas, `zoom` times nearer than that.
  */
 export function createView3d({ canvas, store, engine, introSpeed = () => 1, camera = () => null, show: showOver = () => null }) {
   const cam = { yaw: -55, pitch: 32, dist: 1.9 };
@@ -84,9 +86,9 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
 
   /** The ray from the eye through screen point (sx, sy): { o, d }. */
   function ray(sx, sy) {
-    const { B, focal, w, h } = seen;
-    const a = (sx - w / 2) / focal;
-    const b = -(sy - h / 2) / focal;
+    const { B, focal, ox, oy } = seen;
+    const a = (sx - ox) / focal;
+    const b = -(sy - oy) / focal;
     return { o: B.eye, d: norm({ x: B.fwd.x + B.right.x * a + B.up.x * b, y: B.fwd.y + B.right.y * a + B.up.y * b, z: B.fwd.z + B.right.z * a + B.up.z * b }) };
   }
   /** Where that ray meets the level plane at height z, or null when it runs along it or away. */
@@ -193,12 +195,29 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
     cancelAnimationFrame(introFrame);
     if (t < INTRO_END) introFrame = requestAnimationFrame(render);
     const B = basis(room);
-    const focal = Math.min(w, h) * 1.1;
-    seen = { B, focal, w, h };
+    const view = camera() ?? cam;
+    let focal = Math.min(w, h) * 1.1;
+    let ox = w / 2;
+    let oy = h / 2;
+    // the tour's camera fills its frame with the room: its corners fitted to the frame, a caption band left at the foot
+    if (view.fit) {
+      const corners = room.poly.flatMap((p) => [{ ...p, z: 0 }, { ...p, z: room.Hmax }]).map((p) => {
+        const d = { x: p.x - B.eye.x, y: p.y - B.eye.y, z: p.z - B.eye.z };
+        const zc = Math.max(1e-3, dot(d, B.fwd));
+        return { x: dot(d, B.right) / zc, y: dot(d, B.up) / zc };
+      });
+      const [x0, x1] = [Math.min(...corners.map((c) => c.x)), Math.max(...corners.map((c) => c.x))];
+      const [y0, y1] = [Math.min(...corners.map((c) => c.y)), Math.max(...corners.map((c) => c.y))];
+      const band = view.fit.band ?? 0;
+      focal = Math.min((w * 0.94) / (x1 - x0 || 1), (h * (0.92 - band)) / (y1 - y0 || 1)) * (view.zoom ?? 1);
+      ox = w / 2 - ((x0 + x1) / 2) * focal;
+      oy = (h * (1 - band)) / 2 + ((y0 + y1) / 2) * focal;
+    }
+    seen = { B, focal, w, h, ox, oy };
     const proj = (p) => {
       const d = { x: p.x - B.eye.x, y: p.y - B.eye.y, z: p.z - B.eye.z };
       const zc = dot(d, B.fwd);
-      return { x: w / 2 + (dot(d, B.right) / zc) * focal, y: h / 2 - (dot(d, B.up) / zc) * focal, depth: zc };
+      return { x: ox + (dot(d, B.right) / zc) * focal, y: oy - (dot(d, B.up) / zc) * focal, depth: zc };
     };
 
     const faces = [];
@@ -615,7 +634,7 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
         }
       }
     }
-    if (state.settings.show.talk !== false) drawTalk(ctx, proj, room, state);
+    if (look.talk !== false) drawTalk(ctx, proj, room, state);
     // what the solids do not say: the stand under a box, a measurement mic's dot and aim, every name
     const person = (m) => isListener(m) || m.mix;
     const devices = [
@@ -744,7 +763,7 @@ const STICK_AXES = [
 ];
 // the IEC ratings' colours, bad … excellent (intelligibility.js STI_RATINGS)
 const STI_COLOURS = [[0.75, '#22c55e'], [0.6, '#84cc16'], [0.45, '#eab308'], [0.3, '#f97316'], [0, '#ef4444']];
-const stiColour = (sti) => STI_COLOURS.find(([min]) => sti >= min)[1];
+export const stiColour = (sti) => STI_COLOURS.find(([min]) => sti >= min)[1];
 const talkMemo = { key: '', paths: [] };
 
 /** Every two people, a dashed line between their heads, its colour the worse way's STI, labelled both ways round. */

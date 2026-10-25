@@ -1,7 +1,9 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { createFaceView } from '../views/faceView.js';
-import { createView3d } from '../views/view3d.js';
+import { createView3d, stiColour } from '../views/view3d.js';
+import { talkers, talkPaths } from '../acoustics/talk.js';
+import { STI_RATINGS } from '../acoustics/intelligibility.js';
 
 /**
  * THE TOUR, AS A VIDEO
@@ -18,7 +20,11 @@ import { createView3d } from '../views/view3d.js';
  *    and 20 s down, a twelfth of an octave a frame;
  *  - at the end of a group, the whole group together, up and down;
  *  - the room in 3-D building itself up from several angles, then the sweep
- *    rendered from each of them, the last ones orbiting;
+ *    rendered from each of them, the room filling the frame and the camera
+ *    on a jib: it booms in and down toward the room and back out, the last
+ *    ones orbiting too;
+ *  - with two people or more in the room, a chart of who hears whom: the STI
+ *    of every pair, both ways round (the 3-D room leaves its labels out);
  *  - 30 s of ray tracing, the camera going round the room as the frequency
  *    climbs, so the bounces that carry the low end give way to the top's;
  *  - a summary of every view together, swept up and down;
@@ -67,24 +73,30 @@ const ANGLES = [
 
 /** How long each kind of chapter runs, seconds, in each length. */
 export const LENGTHS = {
-  full: { title: 'Full tour', reveal: 10, summary: 5, sweep: 20, group: 20, build: 6, sweep3d: 20, trace: 30, all: 20, recap: 5 },
-  summary10: { title: 'Summary · 10 s a view', reveal: 10, group: 10, build: 6, sweep3d: 10, trace: 10, all: 10, recap: 5 },
-  summary5: { title: 'Summary · 5 s a view', summary: 5, group: 5, build: 6, sweep3d: 5, trace: 5, all: 5 },
+  full: { title: 'Full tour', reveal: 10, summary: 5, sweep: 20, group: 20, build: 6, sweep3d: 20, talk: 10, trace: 30, all: 20, recap: 5 },
+  summary10: { title: 'Summary · 10 s a view', reveal: 10, group: 10, build: 6, sweep3d: 10, talk: 10, trace: 10, all: 10, recap: 5 },
+  summary5: { title: 'Summary · 5 s a view', summary: 5, group: 5, build: 6, sweep3d: 5, talk: 5, trace: 5, all: 5 },
 };
 
 /** The ray tracing, in the chooser's list of views. */
 export const RAYS = 'rays';
+/** The chart of who hears whom, in the chooser's list of views. */
+export const TALK = 'talk';
+/** Everything the chooser offers, with its label. */
+const OFFERED = [...Object.entries(VIEWS), [TALK, 'Who hears whom (STI chart)'], [RAYS, 'Ray tracing']];
 
 /**
  * The chapters of the tour, in order. Each is { title, views, seconds, from,
  * to } — `from` and `to` how far up the frequency range it starts and ends
  * (0 the bottom, 1 the top; null holds it where it is) — with `reveal` (the
  * field wiped in), `build` (the 3-D room building itself up), `trace` (ray
- * tracing over it), `cam` (where the 3-D room is seen from) and `orbit`
- * (degrees round the room over the chapter). `length` is a key of LENGTHS,
- * `views` the views chosen (VIEWS' keys and RAYS).
+ * tracing over it), `cam` (where the 3-D room is seen from), `orbit`
+ * (degrees round the room over the chapter), `jib` (the camera booming in
+ * and out over it) and `chart` (a chart drawn in place of the views).
+ * `length` is a key of LENGTHS, `views` the views chosen (VIEWS' keys, TALK
+ * and RAYS), `people` how many talk and listen — the chart needs two.
  */
-export function tourPlan({ length = 'full', views = [...Object.keys(VIEWS), RAYS] } = {}) {
+export function tourPlan({ length = 'full', views = OFFERED.map(([k]) => k), people = 2 } = {}) {
   const L = LENGTHS[length] ?? LENGTHS.full;
   const want = new Set(views);
   const out = [];
@@ -109,10 +121,11 @@ export function tourPlan({ length = 'full', views = [...Object.keys(VIEWS), RAYS
     for (const a of angles) add({ title: `${VIEWS['3d']} — building up, ${a.name}`, views: ['3d'], seconds: L.build, build: true, cam: a });
     angles.forEach((a, i) => {
       const up = i % 2 === 0;
-      add({ title: `${VIEWS['3d']} — sweep ${up ? 'up' : 'down'}, ${a.name}`, views: ['3d'], seconds: L.sweep3d, from: up ? 0 : 1, to: up ? 1 : 0, cam: a, orbit: i >= 2 ? 90 : 0 });
+      add({ title: `${VIEWS['3d']} — sweep ${up ? 'up' : 'down'}, ${a.name}`, views: ['3d'], seconds: L.sweep3d, from: up ? 0 : 1, to: up ? 1 : 0, cam: a, orbit: i >= 2 ? 90 : 0, jib: true });
     });
   }
-  if (want.has(RAYS)) add({ title: 'Ray tracing', views: ['3d'], seconds: L.trace, from: 0, to: 1, trace: true, cam: ANGLES[0], orbit: 360 });
+  if (want.has(TALK) && people >= 2) add({ title: 'Who hears whom — speech intelligibility', views: [], seconds: L.talk, chart: TALK });
+  if (want.has(RAYS)) add({ title: 'Ray tracing', views: ['3d'], seconds: L.trace, from: 0, to: 1, trace: true, cam: ANGLES[0], orbit: 360, jib: true });
   const every = Object.keys(VIEWS).filter((v) => want.has(v));
   // the 3-D room nearer in a cell of its own among the drawings
   const near = { ...ANGLES[0], dist: 1.3 };
@@ -151,20 +164,24 @@ export function songPlan(plan, duration) {
   return plan.map((c) => ({ ...c, seconds: c.seconds * scale, from: null, to: null }));
 }
 
-/** The chooser's last choice, kept in this browser. */
+/** The chooser's last choice, kept in this browser; a view it was never offered comes ticked. */
 const CHOICE_KEY = 'acoustic.tour.choice';
 function lastChoice() {
+  const all = OFFERED.map(([k]) => k);
   try {
     const c = JSON.parse(localStorage.getItem(CHOICE_KEY));
-    if (c && LENGTHS[c.length] && Array.isArray(c.views)) return c;
+    if (c && LENGTHS[c.length] && Array.isArray(c.views)) {
+      const offered = c.offered ?? [...Object.keys(VIEWS), RAYS];
+      return { length: c.length, views: [...c.views, ...all.filter((k) => !offered.includes(k))] };
+    }
   } catch {
     /* nothing kept */
   }
-  return { length: 'full', views: [...Object.keys(VIEWS), RAYS] };
+  return { length: 'full', views: all };
 }
 function keepChoice(c) {
   try {
-    localStorage.setItem(CHOICE_KEY, JSON.stringify(c));
+    localStorage.setItem(CHOICE_KEY, JSON.stringify({ ...c, offered: OFFERED.map(([k]) => k) }));
   } catch {
     /* not kept: the next tour opens on the default */
   }
@@ -173,6 +190,101 @@ function keepChoice(c) {
 const FRAME = { w: 1920, h: 1080 };
 const TYPES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
 const clock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+/** The caption band along the foot of the frame, px. */
+const BAND = 92;
+
+/**
+ * The camera on a jib, `k` of the way through a chapter: the boom swings in
+ * toward the room and down, then back out and up, easing at both ends; the
+ * chapter's orbit carries it round as it goes. Single views fill the frame
+ * above the caption; in a grid the cell is the frame.
+ */
+function camAt(c, k) {
+  const s = Math.sin(Math.PI * k) ** 2;
+  const yaw = c.cam.yaw + (c.orbit ?? 0) * k;
+  const fit = { band: c.views.length === 1 ? BAND / FRAME.h : 0 };
+  if (!c.jib) return { ...c.cam, yaw, fit };
+  return { ...c.cam, yaw: yaw + 12 * s, pitch: Math.max(4, c.cam.pitch - 14 * s), dist: c.cam.dist * (1 - 0.3 * s), zoom: 1 + 0.6 * s, fit };
+}
+
+/** The people's names, by id, numbered where two share one. */
+function namesOf(people) {
+  const count = {};
+  for (const p of people) count[p.name] = (count[p.name] ?? 0) + 1;
+  const nth = {};
+  return Object.fromEntries(people.map((p) => [p.id, count[p.name] > 1 ? `${p.name} ${(nth[p.name] = (nth[p.name] ?? 0) + 1)}` : p.name || 'Listener']));
+}
+
+/**
+ * Who hears whom, as a chart: one row for each person talking, one column
+ * for each listening, every cell the STI that way round in its IEC rating's
+ * colour, with the rating and the distance under it; the ratings along the foot.
+ */
+function drawTalkChart(ctx, people, paths, h) {
+  const W = FRAME.w;
+  const n = people.length;
+  const names = namesOf(people);
+  const name = (p) => names[p.id];
+  const labelW = 300;
+  const cell = Math.min(150, (W - labelW - 160) / n, (h - 260) / n);
+  const x0 = (W - labelW - cell * n) / 2 + labelW;
+  const y0 = (h - cell * n) / 2 + 30;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#9aa4b2';
+  ctx.font = '20px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('listening →', x0 + (cell * n) / 2, y0 - 78);
+  ctx.textAlign = 'right';
+  ctx.fillText('talking ↓', x0 - 20, y0 - 78);
+  ctx.font = `${Math.min(20, cell / 5)}px system-ui, sans-serif`;
+  people.forEach((p, i) => {
+    ctx.fillStyle = '#e5e7eb';
+    ctx.textAlign = 'right';
+    ctx.fillText(name(p), x0 - 20, y0 + (i + 0.5) * cell);
+    ctx.textAlign = 'center';
+    ctx.save();
+    ctx.translate(x0 + (i + 0.5) * cell, y0 - 30);
+    if (n > 5) ctx.rotate(-Math.PI / 6);
+    ctx.fillText(name(p), 0, 0);
+    ctx.restore();
+  });
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) {
+      const x = x0 + j * cell;
+      const y = y0 + i * cell;
+      const path = paths.find((q) => q.from === people[i].id && q.to === people[j].id);
+      ctx.fillStyle = path ? stiColour(path.sti) : '#1c212b';
+      ctx.globalAlpha = path ? 0.85 : 1;
+      ctx.fillRect(x + 2, y + 2, cell - 4, cell - 4);
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'center';
+      if (!path) {
+        ctx.fillStyle = '#4b5563';
+        ctx.font = `${cell / 4}px system-ui, sans-serif`;
+        ctx.fillText('—', x + cell / 2, y + cell / 2);
+        continue;
+      }
+      ctx.fillStyle = '#0b0d12';
+      ctx.font = `600 ${cell / 3.4}px ui-monospace, monospace`;
+      ctx.fillText(path.sti.toFixed(2), x + cell / 2, y + cell * 0.42);
+      ctx.font = `${cell / 8.5}px system-ui, sans-serif`;
+      ctx.fillText(`${path.rating} · ${path.r.toFixed(1)} m`, x + cell / 2, y + cell * 0.72);
+    }
+  // the IEC scale, worst to best
+  const sw = 150;
+  const lx = (W - sw * STI_RATINGS.length) / 2;
+  const ly = y0 + cell * n + 50;
+  ctx.font = '18px system-ui, sans-serif';
+  STI_RATINGS.forEach((r, i) => {
+    ctx.fillStyle = stiColour(r.min);
+    ctx.fillRect(lx + i * sw, ly, sw - 6, 10);
+    ctx.fillStyle = '#9aa4b2';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${r.label} ≥ ${r.min.toFixed(2)}`, lx + i * sw, ly + 28);
+  });
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
 
 /**
  * `onStart(seconds, withSong)` / `onStop()` start the song alongside, or the
@@ -214,13 +326,15 @@ export function createTour({ store, engine, onStart, onStop, sweepTo, caption, n
 <fieldset style="border:0;padding:0;margin:0;display:grid;gap:6px"><legend style="color:#9aa4b2;margin-bottom:6px">Length</legend>
 ${Object.entries(LENGTHS).map(([k, l]) => `<label><input type="radio" name="length" value="${k}"${k === choice.length ? ' checked' : ''}> ${l.title}</label>`).join('')}</fieldset>
 <fieldset style="border:0;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:6px"><legend style="color:#9aa4b2;margin-bottom:6px">Views</legend>
-${[...Object.entries(VIEWS), [RAYS, 'Ray tracing']].map(([k, t]) => `<label><input type="checkbox" name="view" value="${k}"${choice.views.includes(k) ? ' checked' : ''}> ${t}</label>`).join('')}</fieldset>
+${OFFERED.map(([k, t]) => `<label><input type="checkbox" name="view" value="${k}"${choice.views.includes(k) ? ' checked' : ''}> ${t}</label>`).join('')}</fieldset>
 <span class="len" style="color:#9aa4b2"></span>
 <button type="submit" style="justify-self:start;padding:6px 18px">▶ Start recording</button>`;
     stage.append(box);
+    const people = talkers(store.state.mics).length;
     const read = () => ({ length: box.querySelector('[name=length]:checked')?.value ?? 'full', views: [...box.querySelectorAll('[name=view]:checked')].map((i) => i.value) });
+    const planOf = (c) => tourPlan({ ...c, people });
     const show = () => {
-      const plan = tourPlan(read());
+      const plan = planOf(read());
       box.querySelector('.len').textContent = !plan.length
         ? 'Choose a view.'
         : song?.duration
@@ -236,13 +350,17 @@ ${[...Object.entries(VIEWS), [RAYS, 'Ray tracing']].map(([k, t]) => `<label><inp
       const c = read();
       keepChoice(c);
       box.remove();
-      record(doc, stage, state, song, song?.duration ? songPlan(tourPlan(c), song.duration) : tourPlan(c));
+      record(doc, stage, state, song, song?.duration ? songPlan(planOf(c), song.duration) : planOf(c));
     });
   }
 
   function record(doc, stage, state, song, plan) {
     // what each view is drawn with this frame: the tour's own, never the page's settings
-    const over = { reveal: 1, show: { trace: false }, cam: null, intro: 0 };
+    // the 3-D room without its talk labels: who hears whom is a chart of its own
+    const over = { reveal: 1, show: { trace: false, talk: false }, cam: null, intro: 0 };
+    // the chart's pairs, worked out once before the recording starts
+    const people = talkers(store.state.mics);
+    const paths = plan.some((c) => c.chart === TALK) && engine.out.room ? talkPaths(engine.out.room, people, { maxOrder: Math.min(store.state.settings.maxOrder ?? 2, 3) }) : [];
     const needed = new Set(plan.flatMap((c) => c.views));
     const views = {};
     for (const v of needed) {
@@ -299,8 +417,8 @@ ${[...Object.entries(VIEWS), [RAYS, 'Ray tracing']].map(([k, t]) => `<label><inp
       if (recorder?.state === 'paused') recorder.resume();
       t += dt;
       over.reveal = c.reveal ? at.k : 1;
-      over.show = { trace: Boolean(c.trace) };
-      over.cam = c.cam ? { ...c.cam, yaw: c.cam.yaw + (c.orbit ?? 0) * at.k } : null;
+      over.show = { trace: Boolean(c.trace), talk: false };
+      over.cam = c.cam ? camAt(c, at.k) : null;
       over.intro = c.build ? 1 : 0;
       if (at.chapter !== current) {
         current = at.chapter;
@@ -314,7 +432,8 @@ ${[...Object.entries(VIEWS), [RAYS, 'Ray tracing']].map(([k, t]) => `<label><inp
       const cw = FRAME.w / cols;
       const ch = Math.min(FRAME.h / rows, (cw * 9) / 16);
       const cwFit = (ch * 16) / 9;
-      const y0 = (FRAME.h - 92 - ch * rows) / 2;
+      const y0 = (FRAME.h - BAND - ch * rows) / 2;
+      if (c.chart === TALK) drawTalkChart(ctx, people, paths, FRAME.h - BAND);
       c.views.forEach((v, i) => {
         const { canvas, view } = views[v];
         view.render();
@@ -327,7 +446,7 @@ ${[...Object.entries(VIEWS), [RAYS, 'Ray tracing']].map(([k, t]) => `<label><inp
         ctx.drawImage(canvas, x + 2, Math.max(0, y0) + row * ch + 2, cwFit - 4, ch - 4);
       });
       ctx.fillStyle = 'rgba(10, 12, 18, .78)';
-      ctx.fillRect(0, FRAME.h - 92, FRAME.w, 92);
+      ctx.fillRect(0, FRAME.h - BAND, FRAME.w, BAND);
       ctx.fillStyle = '#e5e7eb';
       ctx.font = '600 34px system-ui, sans-serif';
       ctx.fillText(c.title, 40, FRAME.h - 50);
