@@ -14,7 +14,7 @@ import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
 import { makeMic } from './acoustics/devices.js';
 import { makeWindow } from './acoustics/windows.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
-import { buildMarks, hashOf, MARK_KEYS } from './cad/marks.js';
+import { buildMarks, furnitureLayer, hashOf, MARK_KEYS } from './cad/marks.js';
 import { F_MAX, F_MIN } from './compute/compute.js';
 import { createAcousticX } from './acoustx/acoustx.js';
 import { makePoppable } from './ui/popout.js';
@@ -547,7 +547,8 @@ function pickDrawnRoom() {
   // furnished, and with its people in it: the console, couch and rack into the CAD as real blocks, the listeners seated
   if (entry.group) {
     const { furniture, seats, door } = furnish(entry);
-    if (furniture.length) cad.link.place('Furniture', furniture.map((f) => ({ paletteId: f.paletteId, at: [+((f.x + ox) / k).toFixed(4), +((f.y + oy) / k).toFixed(4)], rotation: f.rotation })));
+    // each kind of furniture on a layer of its own (marks.js slices)
+    for (const f of furniture) cad.link.place(furnitureLayer(f.paletteId), [{ paletteId: f.paletteId, at: [+((f.x + ox) / k).toFixed(4), +((f.y + oy) / k).toFixed(4)], rotation: f.rotation }]);
     store.seat(seats.map((s) => makeMic(s.kind, { x: s.x + ox, y: s.y + oy, z: s.z }, { aim: s.aim, mix: Boolean(s.mix) })));
     if (door) hangDoor(loop, door, h, ox, oy, k);
   }
@@ -596,7 +597,7 @@ function syncMarks() {
     const wallLines = (g.walls ?? [])
       .map((w) => ({ layer: names.get(w.layerId) ?? w.layerId, a: { x: w.a[0] * k, y: w.a[1] * k }, b: { x: w.b[0] * k, y: w.b[1] * k } }))
       .filter((w) => elevationFaceOf(w.layer));
-    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms, wallPatches, wallLines });
+    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms, wallPatches, wallLines, patches: patchesFromCad(g) });
     const onSheet = g.marks ?? {};
     for (const key of MARK_KEYS) {
       const items = sets[key];

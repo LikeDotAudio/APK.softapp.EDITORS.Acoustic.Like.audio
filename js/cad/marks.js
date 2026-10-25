@@ -60,6 +60,15 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  *                walls each mirrored about their own centre line, the master
  *                half onto the other. The copies are palette fills, so the
  *                room hears them, and the finish schedule lists them.
+ *   slices       the room cut into one layer per thing, so each can be shown,
+ *                hidden and edited on its own, every position in mm from the
+ *                BRASS MARKER (the room's centre, on its own layer): the
+ *                ceiling plan and the floor-height plan as spot heights, the
+ *                speaker plan, the placement plan (mics and seats), each kind
+ *                of furniture (`Plan · Producer desk 1800×600` — what is added
+ *                from the toolbar lands on that layer too), each wall
+ *                (`Wall 3 · LEFT`) and each absorbing material found
+ *                (`Absorption · Porous absorber, 100 mm`), outlined where it is.
  *   sections     the wall build and the floor build as sections, layer by
  *                layer, drawn five times true size so the layers read.
  *   arrangement  the speaker layout's reference lines from the mix seat — the
@@ -81,7 +90,7 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  * Everything here works in sheet METRES; `toCad` scales to drawing units last.
  */
 
-export const MARK_KEYS = ['labels', 'panels', 'finishes', 'symmetry', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup'];
+export const MARK_KEYS = ['labels', 'panels', 'finishes', 'symmetry', 'slices', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup'];
 
 const LAYOUT_LAYER = 'Speaker layout';
 const CUTAWAY_LAYER = '3-D cut-aways';
@@ -101,7 +110,7 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 const mm = (v) => Math.round(v * 1000);
 
 /** Every set of marks for this room: { key: items } in drawing units. */
-export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, rooms = [], wallPatches = [], wallLines = [] }) {
+export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, rooms = [], wallPatches = [], wallLines = [], patches = [] }) {
   const out = Object.fromEntries(MARK_KEYS.map((key) => [key, []]));
   if (!room) return out;
   const { settings } = state;
@@ -117,6 +126,7 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
   const mirrored = symmetryMarks(room, state.settings, wallPatches.filter((p) => !p.host), wallLines);
   out.symmetry = toCad(mirrored);
   if (on.finishes !== false) out.finishes = toCad(finishMarks(room, state.settings, wallPatches, panels));
+  if (on.slices !== false) out.slices = toCad(sliceMarks(room, state, patches));
   if (on.windows !== false) out.windows = toCad(windowMarks(room, settings.windows?.[planLayer] ?? []));
   if (on.arrangement) out.arrangement = toCad(arrangementMarks(room, settings, mix, state));
   // the tower over each plan: its blow-up, and on top of the room being designed the cut-aways
@@ -424,6 +434,120 @@ function detailDrawing(lines, texts, d, x, top, mid, size) {
   texts.push({ text: signed(r.x1 - mid), x: r3(x + W - size * 0.5), y: r3(dy - size * 1.3), height: size * 0.65 });
   return dy - size * 3;
 }
+
+// ------------------------------------------------------------------ slices
+
+export const BRASS_LAYER = 'Brass marker';
+
+/** The brass marker: the middle of the room's plan, what every slice is measured from. */
+export function brassMarker(room) {
+  const b = bboxOf(room.poly);
+  return { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 };
+}
+
+/** The layer a piece of furniture of this palette id is drawn on, and placed on: one per kind. */
+export const furnitureLayer = (paletteId) => `Plan · ${PRODUCTS.find((x) => x.id === paletteId)?.name ?? paletteId}`;
+
+/** A material that takes sound out of the room, for its own Absorption layer. */
+const absorbs = (mat) => ['Absorber', 'Resonator', 'Ceiling', 'Soft furnishing', 'Seating'].includes(mat.category) || mat.alpha[2] >= 0.3;
+
+function sliceMarks(room, state, patches) {
+  const items = [];
+  const c = brassMarker(room);
+  const size = Math.max(0.04, Math.min(0.12, Math.max(room.L, room.W) / 90));
+  const signed = (v) => (Math.round(v * 1000) > 0 ? `+${mm(v)}` : `${mm(v)}`);
+  const xy = (p) => `x ${signed(p.x - c.x)} · y ${signed(p.y - c.y)}`;
+  const cross = (lines, p, k = size) => lines.push([r3(p.x - k), r3(p.y), r3(p.x + k), r3(p.y)], [r3(p.x), r3(p.y - k), r3(p.x), r3(p.y + k)]);
+  const outline = (lines, pts) => pts.forEach((p, i) => {
+    const q = pts[(i + 1) % pts.length];
+    lines.push([r3(p.x), r3(p.y), r3(q.x), r3(q.y)]);
+  });
+  const slice = (layer, color, name, lines, texts) => items.push({ kind: 'drawing', layer, layerColor: color, name, at: [0, 0], lines, texts });
+
+  // the brass marker itself: a ringed cross, and the axes it measures along
+  {
+    const lines = [];
+    cross(lines, c, size * 2.5);
+    circleLines(lines, c.x, c.y, size * 1.2);
+    slice(BRASS_LAYER, '#b08d57', 'brass', lines, [{ text: `BRASS MARKER · 0, 0 · every slice is measured from here, mm`, x: r3(c.x + size * 2), y: r3(c.y + size * 1.4), height: size }]);
+  }
+  // the ceiling plan and the floor-height plan: spot heights on a grid over the room
+  const b = bboxOf(room.poly);
+  const step = Math.max(0.5, Math.round(Math.max(room.L, room.W) / 8 * 2) / 2);
+  for (const [layer, color, which, title] of [['Plan · Ceiling', '#93c5fd', 'ceiling', 'CEILING PLAN · ceiling height above the floor datum'], ['Plan · Floor heights', '#a3e635', 'floor', 'FLOOR HEIGHT PLAN · floor above its datum']]) {
+    const lines = [];
+    const texts = [];
+    outline(lines, room.poly);
+    for (let x = c.x - Math.floor((c.x - b.x0) / step) * step; x <= b.x1 + 1e-9; x += step)
+      for (let y = c.y - Math.floor((c.y - b.y0) / step) * step; y <= b.y1 + 1e-9; y += step) {
+        if (!pointInPolygon(x, y, room.poly)) continue;
+        const h = heightsAtXY(room, x, y)[which];
+        cross(lines, { x, y }, size * 0.4);
+        texts.push({ text: `${mm(h)}`, x: r3(x + size * 0.3), y: r3(y + size * 0.3), height: size * 0.7 });
+      }
+    texts.push({ text: title, x: r3(b.x0), y: r3(b.y1 + size * 3), height: size });
+    slice(layer, color, which, lines, texts);
+  }
+  // the speaker plan and the placement plan
+  const devices = (list, layer, color, name, label) => {
+    if (!list.length) return;
+    const lines = [];
+    const texts = [];
+    for (const d of list) {
+      cross(lines, d, size * 0.8);
+      const aim = Number.isFinite(d.aim) ? d.aim * DEG : null;
+      if (aim !== null) lines.push([r3(d.x), r3(d.y), r3(d.x + Math.cos(aim) * size * 2), r3(d.y + Math.sin(aim) * size * 2)]);
+      texts.push({ text: `${label(d)} · ${xy(d)} · z ${mm(d.z ?? 0)}`, x: r3(d.x + size), y: r3(d.y + size * 0.4), height: size * 0.75 });
+    }
+    slice(layer, color, name, lines, texts);
+  };
+  devices(state.speakers, 'Plan · Speakers', '#facc15', 'speakers', (d) => d.role || d.name || d.kind);
+  devices(state.mics, 'Plan · Placement', '#a78bfa', 'placement', (d) => `${d.mix ? 'MIX · ' : ''}${d.name || d.kind}`);
+  // each kind of furniture on its own layer
+  const pieces = [...furnitureOf(room).map((f) => ({ paletteId: f.paletteId, name: f.name, x: f.x, y: f.y, corners: f.corners }))];
+  const kinds = new Map();
+  for (const f of pieces) (kinds.get(f.paletteId) ?? kinds.set(f.paletteId, []).get(f.paletteId)).push(f);
+  for (const [paletteId, list] of kinds) {
+    const lines = [];
+    const texts = [];
+    for (const f of list) {
+      outline(lines, f.corners);
+      cross(lines, f, size * 0.6);
+      texts.push({ text: `${f.name} · centre ${xy(f)}`, x: r3(f.x + size), y: r3(f.y + size * 0.4), height: size * 0.75 });
+    }
+    slice(furnitureLayer(paletteId), '#9ca3af', `furniture:${paletteId}`, lines, texts);
+  }
+  // each wall on its own layer
+  room.walls.forEach((w, n) => {
+    const lines = [[r3(w.a.x), r3(w.a.y), r3(w.b.x), r3(w.b.y)]];
+    const m = { x: (w.a.x + w.b.x) / 2 + w.nIn.x * size * 1.5, y: (w.a.y + w.b.y) / 2 + w.nIn.y * size * 1.5 };
+    const texts = [{ text: `WALL ${n + 1} · ${w.face.toUpperCase()} · ${mm(w.len)} long · from ${xy(w.a)} to ${xy(w.b)} · ${w.material.name}`, x: r3(m.x), y: r3(m.y), height: size * 0.75 }];
+    slice(`Wall ${n + 1} · ${w.face.toUpperCase()}`, FACE_COLOURS_SLICE[w.face] ?? '#e5e7eb', `wall:${n}`, lines, texts);
+  });
+  // each absorbing material found, outlined wherever it is painted
+  const byMat = new Map();
+  for (const p of patches) {
+    const mat = material(p.paletteId);
+    if (!absorbs(mat) || furnitureHeight(p.paletteId) > 0) continue;
+    (byMat.get(mat.id) ?? byMat.set(mat.id, { mat, list: [] }).get(mat.id)).list.push(p);
+  }
+  [...byMat.values()].forEach(({ mat, list }, row) => {
+    const lines = [];
+    const texts = [];
+    let area = 0;
+    for (const p of list) {
+      outline(lines, p.poly);
+      area += areaOf(p.poly);
+      const pb = bboxOf(p.poly);
+      texts.push({ text: `${mat.name.split(',')[0]} · ${p.layer}`, x: r3(pb.x0), y: r3(pb.y1 + size * 0.3), height: size * 0.6 });
+    }
+    texts.push({ text: `ABSORPTION · ${mat.name} · ${list.length} patch${list.length === 1 ? '' : 'es'} · ${area.toFixed(2)} m² · α125 ${mat.alpha[0].toFixed(2)} α500 ${mat.alpha[2].toFixed(2)} α2k ${mat.alpha[4].toFixed(2)}`, x: r3(b.x0), y: r3(b.y0 - size * (3 + 1.4 * row)), height: size * 0.85 });
+    slice(`Absorption · ${mat.name}`, mat.color ?? '#3f8f4a', `absorption:${mat.id}`, lines, texts);
+  });
+  return items;
+}
+
+const FACE_COLOURS_SLICE = { front: '#f97316', back: '#38bdf8', left: '#a3e635', right: '#f472b6' };
 
 // ------------------------------------------------------------------ symmetry
 

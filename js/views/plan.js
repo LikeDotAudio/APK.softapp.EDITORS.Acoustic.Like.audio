@@ -19,6 +19,7 @@ import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, dr
 import { nullLines } from './guides.js';
 import { gridCanvas } from './paint.js';
 import { gripAt, gripsOf, othersThan, snapPoint } from './wallGrips.js';
+import { furnitureLayer } from '../cad/marks.js';
 
 /**
  * THE PLAN IS THE CAD
@@ -124,7 +125,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       const paletteId = placeKind.furniture || 'desk-1800x900';
       // with the CAD there, the piece is ONE block in the drawing — gear on the plan, like a library room's; only
       // without it is it kept here (both at once was two couches in one place, each counted in the room)
-      if (cad?.link) cad.link.place('Furniture', [{ paletteId, at: [+(at.x / k()).toFixed(4), +(at.y / k()).toFixed(4)], rotation: 0 }]);
+      if (cad?.link) cad.link.place(furnitureLayer(paletteId), [{ paletteId, at: [+(at.x / k()).toFixed(4), +(at.y / k()).toFixed(4)], rotation: 0 }]);
       else store.addFurniture(paletteId, { x: at.x, y: at.y, z: 0 }, 0);
     }
     hoverPos = null;
