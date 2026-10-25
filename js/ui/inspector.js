@@ -35,7 +35,7 @@ import { button, check, download, h, num, row, select, slider, text } from './do
  * palette blocks stand for.
  */
 
-const TABS = ['Room', 'Inspect', 'Build', 'Treatments', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
+const TABS = ['Room', 'Inspect', 'Acoustics', 'Build', 'Treatments', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
 
 const HOW_TO_TREAT = 'Treatments are placed in the CAD: click a wall’s elevation (or the ceiling) to open its drawing, pick a finish or a product from the Acoustic palette, then drag a region to fill it or click to drop a product. Each lands on that surface and mixes into its α and s.';
 
@@ -240,6 +240,14 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const up = (patch) => store.update('speaker', d.id, patch);
     const mix = S().mics.find((m) => m.mix);
     const room = engine.out.room;
+    const actions = h(
+      'div',
+      { class: 'actions' },
+      mix ? button('Aim at mix', () => up(aimAt(d, mix))) : '',
+      room ? button('Flush into nearest wall', () => up(snapToWall(d, room))) : '',
+      d.pairId ? button('Unpair', () => store.unpair('speaker', d.id)) : mirrorPairButton('speaker', d),
+      button('Delete', () => store.remove('speaker', d.id), { class: 'danger' }),
+    );
     return [
       h('h3', {}, `Speaker · ${d.role || d.name}`),
       row('Name', text(d.name, (v) => up({ name: v }))),
@@ -257,7 +265,29 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Z (acoustic centre)', num(d.z, (v) => up({ z: v }), { unit: 'm', min: 0 })),
       row('Aim', num(d.aim, (v) => up({ aim: v }), { step: 1, unit: '°' })),
       row('Tilt', num(d.tilt, (v) => up({ tilt: v }), { step: 1, unit: '°', min: -90, max: 90 })),
-      h('h4', {}, 'Acoustics'),
+      row('Colour', h('input', { type: 'color', value: d.color, onchange: (e) => up({ color: e.target.value }) })),
+      h('p', { class: 'hint' }, 'How it sounds — drive, range, pattern, coverage, mount — is on the ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); tab = 'Acoustics'; render(); } }, 'Acoustics'), ' tab.'),
+      actions,
+    ];
+  }
+
+  /**
+   * THE ACOUSTICS TAB: how the selected speaker sounds — its drive, range,
+   * pattern and coverage, crossover, delay and mount — a page of its own,
+   * so its placement on Inspect stays short. Nothing selected: every speaker,
+   * to pick one.
+   */
+  function acousticsPane() {
+    const sel = S().selected;
+    const d = sel?.kind === 'speaker' ? S().speakers.find((x) => x.id === sel.id) : null;
+    if (!d) {
+      const list = S().speakers.map((x) => h('button', { onclick: () => store.select({ kind: 'speaker', id: x.id }) }, x.role || x.name));
+      return [h('h3', {}, 'Acoustics'), h('p', { class: 'hint' }, list.length ? 'Pick a speaker to see how it sounds:' : 'No speakers yet — place one with ＋ Speaker.'), h('div', { class: 'actions' }, ...list)];
+    }
+    const up = (patch) => store.update('speaker', d.id, patch);
+    const room = engine.out.room;
+    return [
+      h('h3', {}, `Acoustics · ${d.role || d.name}`),
       ...driveRows(d, up),
       row('Range low (−10 dB)', num(d.fLow ?? 0, (v) => up({ fLow: v }), { step: 1, unit: 'Hz (0 = none)', min: 0 })),
       row('Range high (−10 dB)', num(d.fHigh ?? 0, (v) => up({ fHigh: v }), { step: 100, unit: 'Hz (0 = none)', min: 0 })),
@@ -268,15 +298,6 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Low-pass', num(d.lowpass, (v) => up({ lowpass: v }), { step: 10, unit: 'Hz (0 = off)', min: 0 })),
       row('Delay', num(d.delayMs, (v) => up({ delayMs: v }), { step: 0.1, unit: 'ms', min: 0 })),
       row('Mount', select(d.mount, Object.entries(MOUNTS).map(([value, m]) => ({ value, label: m.label })), (v) => up({ mount: v }))),
-      row('Colour', h('input', { type: 'color', value: d.color, onchange: (e) => up({ color: e.target.value }) })),
-      h(
-        'div',
-        { class: 'actions' },
-        mix ? button('Aim at mix', () => up(aimAt(d, mix))) : '',
-        room ? button('Flush into nearest wall', () => up(snapToWall(d, room))) : '',
-        d.pairId ? button('Unpair', () => store.unpair('speaker', d.id)) : mirrorPairButton('speaker', d),
-        button('Delete', () => store.remove('speaker', d.id), { class: 'danger' }),
-      ),
       d.mount === 'free' && room ? h('p', { class: 'hint' }, sbirHint(d, room)) : '',
     ];
   }
@@ -963,7 +984,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     else store.select({ kind: 'wall', id: key });
   }
 
-  const PANES = { Inspect: inspectPane, Room: roomPane, Build: buildPane, Treatments: treatmentsPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Subs: subsPane, Advisor: advisorPane, File: filePane };
+  const PANES = { Inspect: inspectPane, Acoustics: acousticsPane, Room: roomPane, Build: buildPane, Treatments: treatmentsPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Subs: subsPane, Advisor: advisorPane, File: filePane };
 
   return {
     render,
