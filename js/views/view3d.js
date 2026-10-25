@@ -7,6 +7,7 @@ import { boxSize, isListener, MIC_PRESETS } from '../acoustics/devices.js';
 import { arrangedSpeakers, soundingSpeakers } from '../acoustics/layouts.js';
 import { furnitureHeight } from '../acoustics/materials.js';
 import { rayPaths } from '../acoustics/rayPaths.js';
+import { talkers, talkPaths } from '../acoustics/talk.js';
 import { firstReflections, heatOf } from '../acoustics/reflectionPanels.js';
 import { css, colourOf, turbo } from './paint.js';
 import { fitCanvas } from './glyphs.js';
@@ -36,6 +37,10 @@ import { drawPatch } from './treatments.js';
  * direct sound, cool when the box's pattern or a treatment tames it. The
  * highlighted arrangement soloes its own speakers'; select a speaker to see
  * only its own, labelled.
+ *
+ * And the people talk to each other (acoustics/talk.js): a dashed line
+ * between every two of them, coloured by the worse of the two ways' STI,
+ * labelled both ways round — select one person to see only theirs.
  *
  * The things in the room stand in it as solids, shaded from over the camera's
  * shoulder and sorted in with the cells: each speaker its cabinet at its size
@@ -542,6 +547,7 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
         }
       }
     }
+    if (state.settings.show.talk !== false) drawTalk(ctx, proj, room, state);
     // what the solids do not say: the stand under a box, a measurement mic's dot and aim, every name
     const person = (m) => isListener(m) || m.mix;
     const devices = [
@@ -663,6 +669,61 @@ const STICK_AXES = [
   { key: 'Y', dir: { x: 0, y: 1, z: 0 }, rgb: [34, 197, 94] },
   { key: 'Z', dir: { x: 0, y: 0, z: 1 }, rgb: [59, 130, 246] },
 ];
+// the IEC ratings' colours, bad … excellent (intelligibility.js STI_RATINGS)
+const STI_COLOURS = [[0.75, '#22c55e'], [0.6, '#84cc16'], [0.45, '#eab308'], [0.3, '#f97316'], [0, '#ef4444']];
+const stiColour = (sti) => STI_COLOURS.find(([min]) => sti >= min)[1];
+const talkMemo = { key: '', paths: [] };
+
+/** Every two people, a dashed line between their heads, its colour the worse way's STI, labelled both ways round. */
+function drawTalk(ctx, proj, room, state) {
+  const people = talkers(state.mics);
+  if (people.length < 2) return;
+  // the image sources of every mouth to every ear: worked out again only when the room or a person moves
+  const maxOrder = Math.min(state.settings.maxOrder ?? 2, 3);
+  const key = JSON.stringify([people.map((p) => [p.id, p.x, p.y, p.z, p.aim]), maxOrder]);
+  if (talkMemo.key !== key || talkMemo.room !== room) Object.assign(talkMemo, { key, room, paths: talkPaths(room, people, { maxOrder }) });
+  const way = (a, b) => talkMemo.paths.find((p) => p.from === a.id && p.to === b.id);
+  const picked = people.find((p) => p.id === state.selected?.id);
+  const labelled = picked || people.length <= 5;
+  ctx.save();
+  // the reveal's fade rides on everything drawn here
+  const fade = ctx.globalAlpha;
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.setLineDash([5, 4]);
+  for (let i = 0; i < people.length; i++)
+    for (let j = i + 1; j < people.length; j++) {
+      const [a, b] = [people[i], people[j]];
+      if (picked && a !== picked && b !== picked) continue;
+      const [ab, ba] = [way(a, b), way(b, a)];
+      if (!ab || !ba) continue;
+      const pa = proj({ ...a, z: a.z + 0.02 });
+      const pb = proj({ ...b, z: b.z + 0.02 });
+      if (pa.depth <= 0.01 || pb.depth <= 0.01) continue;
+      const colour = stiColour(Math.min(ab.sti, ba.sti));
+      ctx.strokeStyle = colour;
+      ctx.globalAlpha = fade * (labelled ? 0.9 : 0.5);
+      ctx.lineWidth = picked ? 1.8 : 1.2;
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+      ctx.stroke();
+      if (!labelled) continue;
+      // read from the picked person's side: what they are heard at, then what they hear
+      const [say, hear, other] = picked === b ? [ba, ab, a] : [ab, ba, b];
+      const text = picked ? `${other.name}: heard ${say.sti.toFixed(2)} · hears ${hear.sti.toFixed(2)} · ${say.r.toFixed(1)} m` : `STI ${ab.sti.toFixed(2)} → ← ${ba.sti.toFixed(2)}`;
+      const mx = (pa.x + pb.x) / 2;
+      const my = (pa.y + pb.y) / 2;
+      ctx.globalAlpha = fade;
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(8,10,14,.75)';
+      ctx.fillRect(mx - 2, my - 11, ctx.measureText(text).width + 4, 14);
+      ctx.fillStyle = colour;
+      ctx.fillText(text, mx, my);
+      ctx.setLineDash([5, 4]);
+    }
+  ctx.restore();
+}
+
 function drawMetreStick(ctx, proj, room, B, level) {
   const corner = room.poly.reduce((a, p) => (Math.hypot(p.x - B.eye.x, p.y - B.eye.y) < Math.hypot(a.x - B.eye.x, a.y - B.eye.y) ? p : a));
   const o = { x: corner.x, y: corner.y, z: level('floor', corner.x, corner.y) };

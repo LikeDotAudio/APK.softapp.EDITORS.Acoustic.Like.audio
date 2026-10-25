@@ -100,6 +100,22 @@ const tanda = (px, front) => traced(px, TANDA_PX_PER_M, front);
  */
 const SET_ARC = { x: 0, y: 4.55, desk: 2.7, chair: 3.6, deg: [0, 38, -38, 76, -76] };
 const SET_TALENT = ['mixer', 'producer', 'producer', 'client', 'client'];
+/**
+ * The set's front wall, the one the desks face: a screen wall centred on it.
+ * In the middle a 98" screen on its end over a 98" one on its side, a 85"
+ * on its end either side of them, and a 75" TV on its side either side of
+ * those, out on the splayed walls. 16 : 9 panels, sizes off a datasheet's
+ * active area; x off the centre line, metres. Hung on the wall, no casing.
+ */
+const SET_MID = (872 - 108) / 120;
+const SET_SCREENS = [
+  { x: 0, w: 2.17, h: 1.22, sill: 0.6 },
+  { x: 0, w: 1.22, h: 2.17, sill: 1.95 },
+  { x: -1.95, w: 1.06, h: 1.88, sill: 1.0 },
+  { x: 1.95, w: 1.06, h: 1.88, sill: 1.0 },
+  { x: -4.1, w: 1.66, h: 0.93, sill: 1.45 },
+  { x: 4.1, w: 1.66, h: 0.93, sill: 1.45 },
+];
 const onArc = (r, deg) => ({ x: +(SET_ARC.x + r * Math.sin(deg * Math.PI / 180)).toFixed(3), y: +(SET_ARC.y - r * Math.cos(deg * Math.PI / 180)).toFixed(3) });
 
 export const ROOM_LIBRARY = [
@@ -165,16 +181,13 @@ export const ROOM_LIBRARY = [
   { id: 'sun-studio', group: 'Famous studios', name: 'Sun Studio, Memphis', note: 'published size about 18 × 30 ft; the ceiling height is assumed. A box that size, not a survey', h: 3.0, live: true, poly: ft(rect(18, 30)) },
 
   // ---------------------------------------------------------------- broadcast sets
-  // traced off a set plan: backgrounds on the two back diagonals, the aux-monitor TV on the back wall behind the anchor, an LED wall facing the desk between the cameras
+  // traced off a set plan: backgrounds on the two back diagonals, the aux-monitor TV on the back wall behind the anchor, the screen wall facing the desk between the cameras
   {
     id: 'broadcast-set', group: 'Broadcast sets', name: 'Five-seat anchor-desk set',
-    note: 'an arc of five desks between two backgrounds, a big TV behind the anchor and an LED wall facing them: two hard screens the voices bounce between. Traced without a scale; ceiling assumed',
+    note: 'an arc of five desks between two backgrounds, a big TV behind the anchor and a wall of six screens facing them — portrait over landscape in the middle, portraits then TVs either side: hard faces the voices bounce between. Traced without a scale; ceiling assumed',
     h: 4.5,
     poly: traced([[490, 17], [318, 44], [108, 262], [150, 385], [163, 425], [325, 437], [655, 437], [817, 425], [830, 385], [872, 262], [662, 44]], 60, 'down'),
-    windows: [
-      { face: 'front', at: (872 - 108) / 120, w: 5.4, h: 3.0, sill: 0.3, casing: 0.05, glass: 'led-wall' },
-      { face: 'back', at: (872 - 108) / 120, w: 2.4, h: 1.4, sill: 1.0, casing: 0.03, glass: 'led-wall' },
-    ],
+    windows: [...SET_SCREENS.map((sc) => ({ face: 'front', at: SET_MID + sc.x, w: sc.w, h: sc.h, sill: sc.sill, casing: 0, glass: 'led-wall' })), { face: 'back', at: SET_MID, w: 2.4, h: 1.4, sill: 1.0, casing: 0, glass: 'led-wall' }],
     furniture: SET_ARC.deg.map((deg) => ({ paletteId: 'desk-1800x900', ...onArc(SET_ARC.desk, deg), rotation: deg })),
     seats: SET_ARC.deg.map((deg, i) => ({ kind: SET_TALENT[i], ...onArc(SET_ARC.chair, deg), z: 1.2, aim: 90 + deg, ...(i === 0 ? { mix: true } : {}) })),
   },

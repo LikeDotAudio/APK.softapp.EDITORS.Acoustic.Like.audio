@@ -45,7 +45,7 @@ test('the casing and the sill follow the numbers', () => {
   assert.ok(Math.abs(Math.max(...ys('casing-wood')) - floor - (1.0 + 1.4 + 0.15)) < 1e-9);
 });
 
-test('the broadcast set hears its two screens: an LED wall on the front, the aux TV on the back, both laid on a wall', () => {
+test('the broadcast set hears its screens: six on the front wall, the aux TV on the back, every one laid on a wall', () => {
   const set = roomById('broadcast-set');
   const s = { ...DEFAULT_SETTINGS, roomHeight: set.h, frontDeg: 90, cadMarks: { windows: true }, windows: { Room: set.windows } };
   const r = buildRoom(set.poly.map(([x, y]) => ({ x, y })), s);
@@ -55,7 +55,14 @@ test('the broadcast set hears its two screens: an LED wall on the front, the aux
   const screens = pieces.filter((p) => p.paletteId === 'led-wall');
   assert.deepEqual([...new Set(screens.map((p) => p.face))].sort(), ['back', 'front']);
   const area = (face) => screens.filter((p) => p.face === face).reduce((a, p) => a + p.area, 0);
-  assert.ok(Math.abs(area('front') - 5.4 * 3.0) < 0.05, `LED wall ${area('front')} m²`);
+  const front = set.windows.filter((w) => w.face === 'front');
+  assert.equal(front.length, 6);
+  assert.equal(screens.filter((p) => p.face === 'front').length, 6, 'each front screen a piece of its own');
+  assert.ok(Math.abs(area('front') - front.reduce((a, w) => a + w.w * w.h, 0)) < 0.05, `screen wall ${area('front')} m²`);
+  // the middle pair stacked, portrait over landscape, and nothing overlapping
+  const [low, high] = front.filter((w) => w.at === front[0].at).sort((a, b) => a.sill - b.sill);
+  assert.ok(low.w > low.h && high.h > high.w && high.sill >= low.sill + low.h + 2 * low.casing, 'portrait on top of landscape');
+  assert.ok(high.sill + high.h + high.casing <= set.h, 'under the ceiling');
   assert.ok(Math.abs(area('back') - 2.4 * 1.4) < 0.05, `TV ${area('back')} m²`);
   assert.ok(screens[0].material.alpha.every((a) => a <= 0.1), 'a screen is a reflector');
 });

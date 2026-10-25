@@ -41,12 +41,36 @@ export const STI_RATINGS = [
 
 export const stiRating = (sti) => STI_RATINGS.filter((r) => sti >= r.min).at(-1).label;
 
-/** STI from six octave RTs (125 Hz … 4 kHz), seconds. */
-export function stiFromRt(rt) {
-  const t7 = [...rt.slice(0, 6), rt[5]];
-  const mti = t7.map((T) => {
-    const ti = MOD_F.map((F) => {
-      const m = 1 / Math.sqrt(1 + ((2 * Math.PI * F * Math.max(T, 0)) / 13.8) ** 2);
+/** The modulation transfer a diffuse field of reverberation time T passes, at each modulation frequency. */
+export const mtfOfRt = (T) => MOD_F.map((F) => 1 / Math.sqrt(1 + ((2 * Math.PI * F * Math.max(T, 0)) / 13.8) ** 2));
+
+/**
+ * The modulation transfer of an energy impulse response, Schroeder's formula
+ * (IEC 60268-16 indirect method): m(F) = |Σ e(t)·e^(−j2πFt)| / Σ e(t), `e`
+ * the energy in each bin of `dt` seconds — direct sound, reflections and tail
+ * alike, so a talker close by is understood better than the room alone says.
+ */
+export function mtfOfEnergy(e, dt) {
+  let total = 0;
+  for (const v of e) total += v;
+  return MOD_F.map((F) => {
+    if (!(total > 0)) return 0;
+    const w = 2 * Math.PI * F * dt;
+    let re = 0;
+    let im = 0;
+    for (let i = 0; i < e.length; i++) {
+      if (!e[i]) continue;
+      re += e[i] * Math.cos(w * i);
+      im -= e[i] * Math.sin(w * i);
+    }
+    return Math.hypot(re, im) / total;
+  });
+}
+
+/** STI from six octaves' modulation transfer (125 Hz … 4 kHz), each at the 14 modulation frequencies; 8 kHz takes 4 kHz's. */
+export function stiFromMtf(mtf) {
+  const mti = [...mtf.slice(0, 6), mtf[5]].map((ms) => {
+    const ti = ms.map((m) => {
       const snr = m >= 1 ? 15 : Math.min(15, Math.max(-15, 10 * Math.log10(m / (1 - m))));
       return (snr + 15) / 30;
     });
@@ -57,6 +81,9 @@ export function stiFromRt(rt) {
   for (let k = 0; k < 6; k++) sti -= BETA[k] * Math.sqrt(mti[k] * mti[k + 1]);
   return Math.min(1, Math.max(0, sti));
 }
+
+/** STI from six octave RTs (125 Hz … 4 kHz), seconds. */
+export const stiFromRt = (rt) => stiFromMtf(rt.slice(0, 6).map(mtfOfRt));
 
 /** Sabine RT per octave with `faceMats` ({ face: materialId }) laid over those faces in place of what is there. */
 export function rtWith(room, faceMats = {}) {

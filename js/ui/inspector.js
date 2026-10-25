@@ -739,6 +739,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
         check(sh.devices, (v) => store.setShow({ devices: v }), 'Devices'),
         check(sh.coverage, (v) => store.setShow({ coverage: v }), 'Coverage'),
         check(sh.rays, (v) => store.setShow({ rays: v }), 'Reflections'),
+        check(sh.talk, (v) => store.setShow({ talk: v }), 'Talk paths (STI)'),
         check(sh.rc, (v) => store.setShow({ rc: v }), 'Critical distance'),
         check(sh.rings, (v) => store.setShow({ rings: v }), 'Distance rings'),
         check(sh.nulls, (v) => store.setShow({ nulls: v }), 'Modal nulls'),

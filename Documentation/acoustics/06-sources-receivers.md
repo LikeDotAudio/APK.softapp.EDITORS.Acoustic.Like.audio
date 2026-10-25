@@ -235,3 +235,44 @@ averages (chapters 13, 16):
 
 Measurement presets (omni, cardioid, supercardioid, figure8) have no tier.
 `isListener(m)` tests for a tier.
+
+## 6.7 Talkers — every person speaks, every person hears
+
+`talk.js`: each listener (and the mix seat) is also a TALKER. Their mouth is
+a source at their ear height, facing their aim. Every other listener is an
+ear. For each ordered pair the echogram (chapter 9) is built per octave, and
+the STI comes from it by Schroeder's formula (`intelligibility.js`
+`mtfOfEnergy` → `stiFromMtf`):
+
+    m(F) = |Σ e(t)·e^(−j2πFt)| / Σ e(t)
+
+This counts the direct sound, the reflections and the tail. On a pure
+exponential decay it gives the diffuse field's `1/√(1 + (2πFT/13.8)²)`
+(tested), so `stiFromRt` is the same sum without a talker.
+
+**Assumptions.** The mouth is a design figure: subcardioid (−3 dB to the side,
+−8 dB behind), omni an octave under 500 Hz. Levels are given re 1 m in front of
+the mouth. There is no background noise and no auditory masking, so the figure
+is the room's share of intelligibility, for a quiet room.
+
+**Executed on the broadcast set** (`broadcast-set`, five seats on the arc, 3rd
+order, 1 kHz levels):
+
+| pair | distance | direct | STI |
+|---|---|---|---|
+| anchor → next seat | 2.34 m | −9.4 dB | 0.76 |
+| anchor → end seat | 4.43 m | −14.0 dB | 0.80 |
+| end → other end | 6.99 m | −17.0 dB | 0.81 |
+
+The neighbours score lowest even though their direct sound is the loudest.
+Between them, 52 % of the energy arrives 20–40 ms after the direct sound,
+from the front wall and the splays. At the 12.5 Hz modulation that lag is
+nearly half a period, so it cancels. The end seats' reflections bunch within
+10–20 ms of their direct sound. With images off (order 0) only the
+direct-to-reverberant ratio is left, and the nearer pair wins, as it should
+(tested).
+
+The 3-D view draws a dashed line between every two people. Its colour is the
+IEC rating of the worse direction, and its label shows both directions.
+Selecting a person shows only their lines, as "heard / hears". Toggle it with
+Field → Show → Talk paths.

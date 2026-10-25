@@ -76,6 +76,26 @@ export function rgba(hex, a) {
  * along its top when the patch is big enough to hold it. Returns the outline
  * as a Path2D, so a caller can reuse it.
  */
+/** A screen, switched on: opaque over the field, lit from its top corner down to its foot, a sheen across it. */
+function screenFace(ctx, path, pts) {
+  const [a, , c] = pts;
+  const lit = ctx.createLinearGradient(a.x, a.y, c.x, c.y);
+  lit.addColorStop(0, '#1e3a8a');
+  lit.addColorStop(0.55, '#0e7490');
+  lit.addColorStop(1, '#0b1220');
+  ctx.fillStyle = lit;
+  ctx.fill(path);
+  ctx.save();
+  ctx.clip(path);
+  const sheen = ctx.createLinearGradient(a.x, a.y, c.x, c.y);
+  sheen.addColorStop(0.3, 'rgba(255,255,255,0)');
+  sheen.addColorStop(0.42, 'rgba(255,255,255,.18)');
+  sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sheen;
+  ctx.fill(path);
+  ctx.restore();
+}
+
 export function drawPatch(ctx, pts, mat, { alpha = 0.4, selected = false, label = '' } = {}) {
   if (!pts || pts.length < 3 || pts.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return null;
   const path = new Path2D();
@@ -94,12 +114,15 @@ export function drawPatch(ctx, pts, mat, { alpha = 0.4, selected = false, label 
   }
 
   ctx.save();
-  ctx.fillStyle = rgba(colour, alpha);
-  ctx.fill(path);
-  ctx.save();
-  ctx.clip(path);
-  strokePattern(ctx, patternOf(mat?.category), colour, x0, y0, x1, y1);
-  ctx.restore();
+  if (mat?.id === 'led-wall') screenFace(ctx, path, pts);
+  else {
+    ctx.fillStyle = rgba(colour, alpha);
+    ctx.fill(path);
+    ctx.save();
+    ctx.clip(path);
+    strokePattern(ctx, patternOf(mat?.category), colour, x0, y0, x1, y1);
+    ctx.restore();
+  }
   if (selected) {
     ctx.shadowColor = '#fff';
     ctx.shadowBlur = 8;
