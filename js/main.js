@@ -18,6 +18,7 @@ import { buildMarks, furnitureLayer, hashOf, MARK_KEYS, spacesOf } from './cad/m
 import { F_MAX, F_MIN } from './compute/compute.js';
 import { createAcousticX } from './acoustx/acoustx.js';
 import { makePoppable } from './ui/popout.js';
+import { createMeterFold } from './ui/meterFold.js';
 import { installSashes } from './ui/sashes.js';
 import { crossings, DIRECT_MARKS_MS, GAP_MARKS_MS, radiusLanes } from './acoustics/radiusScale.js';
 import { hz } from './ui/meters.js';
@@ -122,6 +123,8 @@ try {
   // no storage: 1×
 }
 const view3d = createView3d({ canvas: document.querySelector('.tile.t3d canvas'), store, engine, introSpeed: () => reveal.speed });
+// a new frequency rendering: the meters fold away and the views take their height until it is done (ui/meterFold.js)
+createMeterFold({ store, engine, onUnfold: () => meters.render() });
 {
   const input = document.getElementById('revealSpeed');
   const out = document.getElementById('revealOut');

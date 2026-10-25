@@ -92,6 +92,8 @@ export function createMeters({ root, store, engine, onListen }) {
   }
 
   function render() {
+    // folded away while a frequency renders (ui/meterFold.js): nothing to draw into; it draws again on the way back
+    if (root.clientHeight < 24) return;
     const out = engine.out;
     const { state } = store;
     const rep = out.reports?.[out.monitorId];
@@ -526,6 +528,7 @@ function drawPolar(canvas, dev, settings, nameEl) {
   const cx = w / 2;
   const cy = h / 2 + 4;
   const R = Math.min(w, h) / 2 - 12;
+  if (R <= 0) return;
   ctx.strokeStyle = GRID;
   for (const db of [0, -6, -12, -18, -24]) {
     ctx.beginPath();
