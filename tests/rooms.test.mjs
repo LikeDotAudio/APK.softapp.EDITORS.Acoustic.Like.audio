@@ -10,9 +10,16 @@ test('at least forty rooms, unique ids, every plan a counter-clockwise loop of r
   for (const r of ROOM_LIBRARY) {
     const a = planArea(r.poly);
     assert.ok(a > 2 && a < 600, `${r.id}: ${a} m²`);
-    assert.ok(r.h >= 2.2 && r.h <= 12, `${r.id}: h ${r.h}`);
+    assert.ok(r.h >= 2.2 && r.h <= 13, `${r.id}: h ${r.h}`); // Abbey Road Studio One is 12.2 m
     assert.ok(r.poly.length >= 4);
   }
+});
+
+test('a famous studio is its published size, and says it is not a survey', () => {
+  const two = ROOM_LIBRARY.find((x) => x.id === 'abbey-road-2');
+  const sqft = planArea(two.poly) / 0.3048 ** 2;
+  assert.ok(Math.abs(sqft - 60 * 38) < 1, `${sqft}`);
+  for (const r of ROOM_LIBRARY.filter((x) => x.group === 'Famous studios')) assert.match(r.note, /not a survey/);
 });
 
 test('the 400 sq ft hexagon is about 400 sq ft', () => {

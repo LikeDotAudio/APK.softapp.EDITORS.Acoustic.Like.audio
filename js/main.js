@@ -10,7 +10,7 @@ import { widthSweep } from './acoustics/widthFinder.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from './acoustics/roomFit.js';
 import { consoleOf, consoleSettled, consoleSpot } from './acoustics/console.js';
 import { paletteItems } from './acoustics/materials.js';
-import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
+import { ROOM_LIBRARY, furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
 import { makeMic } from './acoustics/devices.js';
 import { makeWindow } from './acoustics/windows.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
@@ -871,6 +871,22 @@ function hangDoor(loop, door, h, ox, oy, k) {
 }
 
 document.getElementById('grabBag').addEventListener('click', () => drawRoom(grabBag(store.state.settings.lastLibraryRoom)));
+
+// the library by name, a group per kind of room: the one picked is drawn into the CAD, as the grab bag's is
+const roomPick = document.getElementById('roomPick');
+roomPick.append(new Option('Room shapes …', ''));
+for (const group of [...new Set(ROOM_LIBRARY.map((r) => r.group))]) {
+  const og = document.createElement('optgroup');
+  og.label = group;
+  for (const r of ROOM_LIBRARY.filter((x) => x.group === group)) og.append(Object.assign(new Option(r.name, r.id), { title: r.note }));
+  roomPick.append(og);
+}
+roomPick.value = roomById(store.state.settings.lastLibraryRoom) ? store.state.settings.lastLibraryRoom : '';
+roomPick.addEventListener('change', () => drawRoom(roomById(roomPick.value)));
+store.subscribe(() => {
+  const id = store.state.settings.lastLibraryRoom;
+  if (roomById(id) && roomPick.value !== id) roomPick.value = id;
+});
 
 // ------------------------------------------------------------------ what this app draws into the CAD file
 /**

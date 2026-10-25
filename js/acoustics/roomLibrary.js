@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 
 /**
- * FIFTY-ONE ROOMS TO PLAY WITH
+ * FIFTY-FOUR ROOMS TO PLAY WITH
  *
  * Plans of the kinds of room studios are actually built in, at real sizes:
  * the spare bedroom and the garage, the rooms drawn to a published ratio, the
@@ -10,6 +10,10 @@
  * rooms from a vocal booth to a scoring stage, and the mix rooms of film and
  * broadcast. They are TYPES — the shape and size such a room usually has —
  * not surveys of any one studio, so treat a name as "a room like this".
+ *
+ * A few famous studios are here by their PUBLISHED sizes only (`Famous
+ * studios`): a plain box of that length, width and height, so a famous name can
+ * be heard at its scale. Not its shape, its finishes or a measurement.
  *
  * Except one studio's own rooms: TANDA in Saskatoon — control rooms Tanda A
  * and Tanda B (B under construction), each with its live room and iso booth —
@@ -137,6 +141,12 @@ export const ROOM_LIBRARY = [
   // ---------------------------------------------------------------- immersive and film
   { id: 'atmos-home', group: 'Immersive & film', name: 'Home Atmos mix room', note: 'the minimum a 7.1.4 fits in', h: 2.7, poly: rect(4.5, 5.5) },
   { id: 'dub-stage', group: 'Immersive & film', name: 'Film dubbing stage', note: 'a mixing theatre: screen wall, console mid-room', h: 7, poly: rect(12, 16) },
+
+  // ---------------------------------------------------------------- famous studios
+  // their published sizes only, as plain boxes: a room OF THAT SIZE, not a survey of its shape or finishes (law 7)
+  { id: 'abbey-road-1', group: 'Famous studios', name: 'Abbey Road Studio One, London', note: 'published size about 28 × 16.5 m, 12 m high: the orchestral room. A box that size, not a survey', h: 12.2, live: true, poly: rect(16.5, 28.2) },
+  { id: 'abbey-road-2', group: 'Famous studios', name: 'Abbey Road Studio Two, London', note: 'published size about 60 × 38 ft, 28 ft high: the Beatles’ room. A box that size, not a survey', h: 28 * FT, live: true, poly: ft(rect(38, 60)) },
+  { id: 'sun-studio', group: 'Famous studios', name: 'Sun Studio, Memphis', note: 'published size about 18 × 30 ft; the ceiling height is assumed. A box that size, not a survey', h: 3.0, live: true, poly: ft(rect(18, 30)) },
 
   // ---------------------------------------------------------------- Tanda, Saskatoon: the studio's own rooms, traced off its plan
   // control rooms face the console's front wall; the live rooms and booths face their glass
