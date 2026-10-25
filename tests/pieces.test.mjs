@@ -42,3 +42,17 @@ test('a console has a strip of knobs and a meter for each of its channels', () =
   assert.equal(desk.filter((pc) => pc.colour === '#fef3c7').length, 20);
   assert.equal(desk.filter((pc) => pc.colour === '#dc2626').length, 20);
 });
+
+test('floorSolids: a block’s pieces turn and move with it; a patch without one is its footprint stood up', async () => {
+  const { floorSolids } = await import('../js/acoustics/pieces.js');
+  const square = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 1, y: 1, z: 0 }, { x: 0, y: 1, z: 0 }];
+  const [plain] = floorSolids({ paletteId: 'rack-600x800', points3d: square, material: { color: '#3f4652' } }, 1.2);
+  assert.equal(plain.faces.length, 6);
+  assert.equal(Math.max(...plain.faces.flat().map((p) => p.z)), 1.2);
+  // the broadcast console at (5, 2), turned a quarter: its width now runs along y
+  const desk = floorSolids({ paletteId: 'console-broadcast-2000x1100', points3d: square, at: { x: 5, y: 2 }, rotation: 90 }, 0.85);
+  const pts = desk.flatMap((d) => d.faces.flat());
+  const span = (k) => Math.max(...pts.map((p) => p[k])) - Math.min(...pts.map((p) => p[k]));
+  assert.ok(Math.abs(span('y') - 2.0) < 1e-9 && Math.abs(span('x') - 1.1) < 1e-9, `${span('x')} × ${span('y')}`);
+  assert.ok(Math.abs(Math.max(...pts.map((p) => p.z)) - 1.2) < 1e-9, 'up to the meter bridge');
+});

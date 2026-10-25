@@ -3,10 +3,12 @@
 import { silhouette, silhouetteLoop } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
+import { furnitureHeight } from '../acoustics/materials.js';
+import { floorSolids } from '../acoustics/pieces.js';
 import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
 import { gridCanvas, sampleGrid } from './paint.js';
-import { drawPatch, patchName, shortName } from './treatments.js';
+import { drawPatch, patchName, rgba, shortName } from './treatments.js';
 
 /**
  * FIVE OF THE SIX DRAWINGS
@@ -175,8 +177,56 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     drawGuides(ctx, room, show);
     // over the guides too: a panel on the wall is a thing in the room, the guides are only ideas about it
     drawPatches(ctx, room, state, outline);
+    drawFloorThings(ctx, room);
     drawDevices(ctx, state);
     drawCaption(ctx, w, room, state);
+  }
+
+  /**
+   * What stands on the floor — the console on its legs, the desks, a kit in its
+   * pieces (acoustics/pieces.js): seen from the side in an elevation, the far
+   * faces first; from below on the ceiling, its footprint dashed.
+   */
+  function drawFloorThings(ctx, room) {
+    const things = (room.patches ?? []).filter((p) => p.surface === 'floor' && furnitureHeight(p.paletteId));
+    if (!things.length) return;
+    ctx.save();
+    ctx.lineWidth = 1;
+    if (top) {
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)';
+      for (const p of things) {
+        ctx.beginPath();
+        p.points3d.forEach((q, i) => {
+          const s = map.toS(q.x, q.y);
+          if (i) ctx.lineTo(s.x, s.y);
+          else ctx.moveTo(s.x, s.y);
+        });
+        ctx.closePath();
+        ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
+    // looking at the wall from inside: the farther from you, the nearer the wall, the sooner drawn
+    const look = { x: -map.ra.y, y: map.ra.x };
+    const faces = things.flatMap((p) => floorSolids(p, furnitureHeight(p.paletteId)).flatMap((sol) => sol.faces.map((f) => ({ f, colour: sol.colour, depth: f.reduce((a, q) => a + q.x * look.x + q.y * look.y, 0) / f.length }))));
+    faces.sort((a, b) => b.depth - a.depth);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+    for (const { f, colour } of faces) {
+      ctx.beginPath();
+      f.forEach((q, i) => {
+        const { u, v } = map.project(q);
+        const s = map.toS(u, v);
+        if (i) ctx.lineTo(s.x, s.y);
+        else ctx.moveTo(s.x, s.y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = rgba(colour, 0.8);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /** One line: the view's name, its finish, its size in mm, and ✎ when the CAD is drawing it. Zoomed past the edge, it sits on a band. */
@@ -328,6 +378,8 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       if (patch) {
         if (onPickPatch) onPickPatch(patch.id);
         else store.select({ kind: 'patch', id: patch.id });
+        // the panel is drawn on this view's sheet: the CAD goes there too
+        onJump?.();
         return;
       }
       // the empty room: a drag pans a zoomed drawing, a click jumps the CAD here

@@ -192,3 +192,45 @@ export function pieceFootprint(pc) {
 
 /** How high a piece reaches, metres. */
 export const pieceTop = (pc) => (pc.shape === 'box' ? pc.z0 + pc.h : pc.shape === 'extrude' ? Math.max(...pc.pts.map(([, z]) => z)) : pc.z1);
+
+/** A plan outline raised between z0 and z1, as faces: the bottom, the top and a side per edge. */
+function raisedFaces(base, z0, z1) {
+  const lo = base.map(([x, y]) => [x, y, z0]);
+  const hi = base.map(([x, y]) => [x, y, z1]);
+  return [lo, hi, ...base.map((_, i) => {
+    const j = (i + 1) % base.length;
+    return [lo[i], lo[j], hi[j], hi[i]];
+  })];
+}
+
+/** A piece as faces in the product's frame: [[x, y, z]…] each. */
+export function pieceFaces(pc) {
+  if (pc.shape === 'extrude') {
+    const P = (t, u, z) => (pc.axis === 'x' ? [t, u, z] : [u, t, z]);
+    return [pc.pts.map(([u, z]) => P(pc.a, u, z)), pc.pts.map(([u, z]) => P(pc.b, u, z)), ...pc.pts.map(([u0, z0], i) => {
+      const [u1, z1] = pc.pts[(i + 1) % pc.pts.length];
+      return [P(pc.a, u0, z0), P(pc.a, u1, z1), P(pc.b, u1, z1), P(pc.b, u0, z0)];
+    })];
+  }
+  const [z0, z1] = pc.shape === 'box' ? [pc.z0, pc.z0 + pc.h] : [pc.z0, pc.z1];
+  return raisedFaces(pieceFootprint(pc), z0, z1);
+}
+
+/**
+ * What stands on the floor, as solids in the room: for a floor patch with a
+ * height, its pieces set where its block sits and turned with it, or — with
+ * none, or no block — its footprint stood up to its height. Each solid
+ * { colour, faces: [[{ x, y, z }…]…] }, for a view that draws them flat.
+ */
+export function floorSolids(patch, height) {
+  const floor = patch.points3d?.[0]?.z ?? 0;
+  const parts = patch.at ? piecesOf(patch.paletteId) : null;
+  if (!parts) {
+    const base = patch.points3d.map((q) => [q.x, q.y]);
+    return [{ colour: patch.material?.color ?? '#6b7280', faces: raisedFaces(base, floor, floor + height).map((f) => f.map(([x, y, z]) => ({ x, y, z }))) }];
+  }
+  const th = ((patch.rotation ?? 0) * Math.PI) / 180;
+  const [c, s] = [Math.cos(th), Math.sin(th)];
+  const W = ([x, y, z]) => ({ x: patch.at.x + x * c - y * s, y: patch.at.y + x * s + y * c, z: floor + z });
+  return parts.map((pc) => ({ colour: pc.colour, faces: pieceFaces(pc).map((f) => f.map(W)) }));
+}

@@ -98,7 +98,9 @@ const onDrag = () => {};
  * plan seen from below, so it shows the plan with the `Ceiling` layer
  * current — clouds and tiles placed there land on the ceiling. A wall not drawn yet is seeded
  * with the room's current outline in that view, under the plan, so there is
- * something to drag into a slope or a vault.
+ * something to drag into a slope or a vault. The CAD zooms to that sheet's
+ * lines by itself — every drawing is a model space of its own on one sheet,
+ * so a `fit` here would show them all instead of the one asked for.
  */
 function jumpTo(sheet) {
   if (!cad.link) return;
@@ -110,13 +112,12 @@ function jumpTo(sheet) {
     cad.link.sheet(engine.out.planLayer ?? '0', { color: '#e5e7eb', seed });
     // A layer with nothing drawn on it does not move the view, so this leaves the plan in sight.
     if (sheet === 'ceiling') cad.link.sheet(CEILING_LAYER, { color: FACE_COLOURS.ceiling });
-    cad.link.fit();
     return;
   }
   const drawn = engine.out.elevations?.some((e) => e.face === sheet);
   const seed = !drawn && room ? seedOutline(room, sheet).map((p) => [+(p.x / k).toFixed(4), +(p.y / k).toFixed(4)]) : undefined;
+  // the CAD zooms to the sheet's own lines; a `fit` after it would zoom back out to every drawing on the sheet
   cad.link.sheet(ELEVATION_LAYER[sheet], { color: FACE_COLOURS[sheet], seed });
-  cad.link.fit();
 }
 
 const plan = createPlanView({ tile: document.querySelector('.tile.plan .stage'), iframe, store, engine, onDrag, cad });
