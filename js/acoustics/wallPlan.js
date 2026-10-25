@@ -135,6 +135,88 @@ export function wallDivisions(room, face, lines) {
 }
 
 /**
+ * The divisions a wall offers, before any is drawn: the lines worth putting
+ * a division on, in the wall's own metres — { xs: [{ v, why, kind }], zs }.
+ * The centre line (the brass marker's); each first-reflection panel's edges
+ * on this face (reflectionPanels.js, `panels` as it returns them); the
+ * glass's edges (wallWindows); the ears' height at the mix seat; and the
+ * board module — a sheet's width out each way from the centre line. The
+ * ruler and the pencil settle on them (snapToGuide).
+ */
+export function wallGuides(room, face, { panels = [], windows = [], mix = null, module = 1.2 } = {}) {
+  const origin = elevationOrigin(room, face);
+  const { span, top } = wallSpan(room, face);
+  const xs = [{ v: span / 2, why: 'centre line', kind: 'centre' }];
+  const zs = [];
+  if (origin) {
+    for (const p of panels.filter((q) => q.kind === 'wall' && q.face === face)) {
+      const px = p.sheet.map((c) => c.x - origin.x);
+      const pz = p.sheet.map((c) => c.y - origin.y);
+      const why = `${p.name} · ${p.speaker}’s first reflection`;
+      xs.push({ v: Math.min(...px), why, kind: 'panel' }, { v: Math.max(...px), why, kind: 'panel' });
+      zs.push({ v: Math.min(...pz), why, kind: 'panel' }, { v: Math.max(...pz), why, kind: 'panel' });
+    }
+  }
+  for (const w of windows) {
+    xs.push({ v: w.x0, why: 'window jamb', kind: 'window' }, { v: w.x1, why: 'window jamb', kind: 'window' });
+    zs.push({ v: w.y0, why: 'window sill', kind: 'window' }, { v: w.y1, why: 'window head', kind: 'window' });
+  }
+  if (mix) zs.push({ v: mix.z ?? 1.2, why: 'ear height at the mix seat', kind: 'ears' });
+  if (module > 0) {
+    for (let d = module; d < span / 2 - 1e-3; d += module) {
+      xs.push({ v: span / 2 - d, why: `${Math.round(module * 1000)} mm board module`, kind: 'module' }, { v: span / 2 + d, why: `${Math.round(module * 1000)} mm board module`, kind: 'module' });
+    }
+  }
+  // on the wall, and one line per place (the first reason wins: a panel edge on the centre line is the centre line)
+  const keep = (list, lim) => {
+    const out = [];
+    for (const g of list) if (g.v > 1e-3 && g.v < lim - 1e-3 && !out.some((o) => Math.abs(o.v - g.v) < 5e-4)) out.push({ ...g, v: Math.round(g.v * 1000) / 1000 });
+    return out.sort((a, b) => a.v - b.v);
+  };
+  return { xs: keep(xs, span), zs: keep(zs, top) };
+}
+
+/**
+ * A ruler or pencil position on one axis, settled: onto the nearest guide
+ * within `reach` metres (its reason with it), else onto the `grid` (10 mm).
+ * { v, guide } — guide null when it fell on the grid.
+ */
+export function snapToGuide(guides, v, reach, grid = 0.01) {
+  let best = null;
+  for (const g of guides) if (Math.abs(g.v - v) <= reach && (!best || Math.abs(g.v - v) < Math.abs(best.v - v))) best = g;
+  return best ? { v: best.v, guide: best } : { v: Math.round(v / grid) * grid, guide: null };
+}
+
+/**
+ * A ruler line right across the wall: where the line x = v (axis 'x') or
+ * y = v (axis 'y') meets the wall's outline, [lo, hi] along the other axis —
+ * floor to a sloping top, end to end of a stepped one — or null off the wall.
+ */
+export function acrossWall(outline, axis, v) {
+  const other = axis === 'x' ? 'y' : 'x';
+  const hits = [];
+  outline.forEach((p, i) => {
+    const q = outline[(i + 1) % outline.length];
+    const [lo, hi] = [Math.min(p[axis], q[axis]), Math.max(p[axis], q[axis])];
+    if (v < lo - 1e-9 || v > hi + 1e-9) return;
+    if (hi - lo < 1e-9) hits.push(p[other], q[other]);
+    else hits.push(p[other] + ((q[other] - p[other]) * (v - p[axis])) / (q[axis] - p[axis]));
+  });
+  return hits.length >= 2 ? [Math.min(...hits), Math.max(...hits)] : null;
+}
+
+/**
+ * What the wall's lines are in the CAD: an elevation line in the wall's own
+ * metres → its two ends in CAD units on the sheet, for the CAD's walls `add`.
+ */
+export function wallLineToSheet(room, face, a, b, metresPerUnit = 1) {
+  const origin = elevationOrigin(room, face);
+  if (!origin) return null;
+  const at = (p) => [+((origin.x + p.x) / metresPerUnit).toFixed(6), +((origin.y + p.y) / metresPerUnit).toFixed(6)];
+  return { a: at(a), b: at(b) };
+}
+
+/**
  * What a palette id is built of, for its detail — { depth (m), infill, face }
  * — or null for a finish with no depth worth a section (plaster, glass, a
  * curtain). The depth is the product's or the material's own (…×100, 100 mm),

@@ -278,6 +278,26 @@ export function carryArray(speakers, settings, mix, next, ceiling = Infinity, ro
     });
 }
 
+/**
+ * The array moved to `next`, its speakers laid over it afresh: each one with
+ * a role of the arrangement goes back to its reference place in the new array
+ * (layoutPositions), so a spread squeezed against a wall opens out again as
+ * the room allows — carrying would scale the squeezed places. A speaker with
+ * no reference place in it is carried (carryArray). Same shape as carryArray.
+ */
+export function relayArray(speakers, settings, mix, next, room) {
+  const carried = carryArray(speakers, settings, mix, next, room?.H, room);
+  if (!carried.length || !room) return carried;
+  const front = settings.frontDeg + (next.rotate ?? 0);
+  const centre = layoutCentre(mix, front, next.offset);
+  const ref = new Map(layoutPositions(settings.layout.preset, centre, front, next.radius ?? 2, room.H, room).map((p) => [p.role, p]));
+  const byId = new Map(speakers.map((s) => [s.id, s]));
+  return carried.map((c) => {
+    const p = ref.get(byId.get(c.id).role);
+    return p ? { id: c.id, x: p.x, y: p.y, z: p.z, aim: +p.aim.toFixed(1), tilt: +p.tilt.toFixed(1) } : c;
+  });
+}
+
 /** Each layout speaker's actual angles, distance, and the delay/trim that would align it. */
 export function layoutCheck(speakers, mix, frontDeg, layout) {
   const ref = new Map(LAYOUTS[layout]?.speakers.map((s) => [s.name, s]) ?? []);

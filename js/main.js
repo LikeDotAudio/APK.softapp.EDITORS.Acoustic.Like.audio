@@ -4,7 +4,7 @@ import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
 import { buildRoom } from './acoustics/room.js';
 import { elevationOrigin, faceCoords } from './acoustics/patches.js';
-import { arrangedSpeakers, arrayFront, carryArray, LAYOUTS, NO_LAYOUT } from './acoustics/layouts.js';
+import { arrangedSpeakers, arrayFront, LAYOUTS, NO_LAYOUT, relayArray } from './acoustics/layouts.js';
 import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
 import { widthSweep } from './acoustics/widthFinder.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from './acoustics/roomFit.js';
@@ -20,6 +20,7 @@ import { createAcousticX } from './acoustx/acoustx.js';
 import { makePoppable } from './ui/popout.js';
 import { createMeterFold } from './ui/meterFold.js';
 import { installSashes } from './ui/sashes.js';
+import { watchForUpdates } from './ui/freshness.js';
 import { crossings, DIRECT_MARKS_MS, GAP_MARKS_MS, radiusLanes } from './acoustics/radiusScale.js';
 import { hz } from './ui/meters.js';
 import { createEngine, patchesFromCad } from './compute/engine.js';
@@ -155,14 +156,28 @@ const meters = createMeters({
 const inspector = createInspector({ root: document.getElementById('inspector'), store, engine, cad, jumpTo, drawRoom: (id) => drawRoom(roomById(id)), onSubs: () => plan.render(), moveArray, findWidth });
 document.getElementById('toPlan').addEventListener('click', () => jumpTo('plan'));
 document.getElementById('popCad').addEventListener('click', () => {
-  if (cad.link.popped) cad.link.dockIn();
-  else if (!cad.link.popOut()) status.textContent = '⚠ the browser blocked the CAD window — allow pop-ups here';
+  if (cad.link.popped) {
+    autoPop.wanted = false;
+    cad.link.dockIn();
+  } else if (!cad.link.popOut()) status.textContent = '⚠ the browser blocked the CAD window — allow pop-ups here';
 });
 
-/** Under 300 px the CAD's menus no longer fit: ⇱ Pop out pulses, asking to give it a window of its own. */
+/**
+ * The CAD belongs in a window of its own: it pops out by itself as soon as the docked one is ready. A browser
+ * that blocks a window nobody clicked for gets it on the first click anywhere on the page instead. Docked by
+ * hand (⇲ Dock, or its window closed), it stays docked until this page is reloaded.
+ */
+const autoPop = { wanted: true };
+function popCadByItself() {
+  if (!autoPop.wanted || !cad.link || cad.link.popped || !store.state.cad.connected) return;
+  if (cad.link.popOut()) autoPop.wanted = false;
+}
+document.addEventListener('pointerdown', popCadByItself, true);
+
+/** Docked, ⇱ Pop out pulses for as long as it is: the CAD wants its own window. */
 function askToPop() {
   const pop = inPlan('popCad');
-  pop.classList.toggle('ask', !store.state.cad.popped && iframe.getBoundingClientRect().width < 300);
+  pop.classList.toggle('ask', !store.state.cad.popped);
 }
 new ResizeObserver(askToPop).observe(iframe);
 
@@ -216,7 +231,10 @@ function renderAll() {
 }
 
 cad.link = connectCad(iframe, {
-  onReady: () => store.setCad({ connected: true }),
+  onReady: () => {
+    store.setCad({ connected: true });
+    popCadByItself();
+  },
   onView: (msg) => {
     store.setCad({ view: msg, connected: true }, 'view');
     plan.render();
@@ -233,6 +251,8 @@ cad.link = connectCad(iframe, {
     engine.update();
   },
   onPopped: (popped) => {
+    // its window closed: the user wants it here
+    if (!popped) autoPop.wanted = false;
     store.setCad({ popped }, 'view');
     syncToolbar();
     plan.render();
@@ -610,7 +630,8 @@ function moveArray(key, mm, live = false) {
     : key === 'rotate' ? { ...layout, rotate: ((((mm + 180) % 360) + 360) % 360) - 180 }
     : { ...layout, offset: { ...layout.offset, [key]: mm } };
   const mix = mics.find((m) => m.mix);
-  const moved = carryArray(speakers, settings, mix, next, engine.out.room?.H, engine.out.room);
+  // the arrangement laid over the moved array again, not its squeezed places scaled (layouts.js relayArray)
+  const moved = relayArray(speakers, settings, mix, next, engine.out.room);
   // mid-drag: the quick recompute (field, response, meters) on every step; the release saves and runs it in full
   if (moved.length) store.updateMany('speaker', moved, true);
   // turning the array turns the mixer with it: the listener always faces the array's front
@@ -938,3 +959,6 @@ if (new URLSearchParams(location.search).has('debug')) window.acoustic = { store
 
 store.load(null);
 engine.update();
+
+// a newer copy of this app on the server: a banner offers the refresh (ui/freshness.js)
+watchForUpdates({ banner: document.getElementById('updated') });

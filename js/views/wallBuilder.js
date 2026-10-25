@@ -6,7 +6,10 @@ import { DEFAULT_ISOLATION } from '../acoustics/isolation.js';
 import { MATERIALS, PRODUCTS, material, paletteItems } from '../acoustics/materials.js';
 import { faceCoords } from '../acoustics/patches.js';
 import { brassMarker } from '../cad/marks.js';
-import { faceArea, wallAbsorption, wallDetails, wallDivisions, wallOutline, wallRegions, wallSpan, wallTransmission, wallWindows } from '../acoustics/wallPlan.js';
+import { soundingSpeakers } from '../acoustics/layouts.js';
+import { reflectionPanels } from '../acoustics/reflectionPanels.js';
+import { acrossWall, faceArea, snapToGuide, wallAbsorption, wallDetails, wallDivisions, wallGuides, wallLineToSheet, wallOutline, wallRegions, wallSpan, wallTransmission, wallWindows } from '../acoustics/wallPlan.js';
+import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { FACE_COLOURS } from './glyphs.js';
 
 /**
@@ -23,8 +26,22 @@ import { FACE_COLOURS } from './glyphs.js';
  *
  * The drawing is the CAD's: division lines and regions are drawn there (this
  * page jumps the CAD to the wall's elevation), and everything here is read
- * back from what it reports, so the two never disagree.
+ * back from what it reports, so the two never disagree. The ruler and the
+ * pencil draw a division from here too — straight into the CAD, on the
+ * wall's elevation layer — settling on the divisions the wall offers
+ * (wallPlan.js wallGuides): the centre line, the first-reflection panels'
+ * edges, the glass, the ears' height and the board module, shown faintly.
  */
+
+/** How each kind of guide is drawn on the elevation. */
+const GUIDE_COLOUR = { centre: '#d6b27a', panel: '#4ade80', window: '#9cc7e8', ears: '#f472b6', module: '#64748b' };
+const GUIDE_NAME = { panel: 'reflection panels', window: 'glass', ears: 'ears', module: 'board module' };
+const TOOL_HINT = {
+  pick: 'Click a region to see it',
+  rulerV: 'Click to draw a division up the wall — it settles on the guides, else every 10 mm',
+  rulerH: 'Click to draw a division across the wall — it settles on the guides, else every 10 mm',
+  pencil: 'Click, then click again to draw a line — Shift keeps it level or plumb · Esc stops',
+};
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const mm = (v) => Math.round(v * 1000);
@@ -75,15 +92,30 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
   let lastSheet = null;
   /** The selected region's tag on this wall (F4), or null. */
   let picked = null;
+  /** What a click on the elevation does: 'pick' a region, 'rulerV' / 'rulerH' a division right across, 'pencil' a line. */
+  let tool = 'pick';
+  let showGuides = true;
+  /** The pencil's first point, wall metres, while a line is being drawn. */
+  let pen = null;
+  /** The last drawing, for the pointer: { room, span, top, outline, guides, div, u } — set by render. */
+  let geo = null;
 
   root.addEventListener('click', (e) => {
+    if (tool !== 'pick' && e.target.closest('.wb-svg')) {
+      draw(e);
+      return;
+    }
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const act = t.dataset.act;
     if (act === 'face') {
       face = t.dataset.face;
       picked = null;
-    } else if (act === 'pick') picked = t.dataset.tag === picked ? null : t.dataset.tag;
+      pen = null;
+    } else if (act === 'tool') {
+      tool = t.dataset.tool === tool ? 'pick' : t.dataset.tool;
+      pen = null;
+    } else if (act === 'guides') showGuides = !showGuides; else if (act === 'pick') picked = t.dataset.tag === picked ? null : t.dataset.tag;
     else if (act === 'open') jumpTo(face);
     else if (act === 'paint') {
       const id = root.querySelector('select[data-act-change="repaint"]')?.value;
@@ -99,6 +131,113 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
     // a region painted in the CAD (a fill) changes what it is there; the CAD reports it back and this redraws
     cad.link?.repaint([sel.dataset.id], sel.value);
   });
+
+  root.addEventListener('pointermove', (e) => {
+    if (tool !== 'pick' && e.target.closest('.wb-svg')) ghost(aimAt(e));
+  });
+  root.addEventListener('pointerleave', () => ghost(null));
+  root.ownerDocument.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || tool === 'pick' || !root.isConnected || !root.offsetParent) return;
+    if (pen) pen = null;
+    else tool = 'pick';
+    render();
+  });
+
+  // ---------------------------------------------------------------- the ruler and the pencil
+
+  /** The pointer on the elevation, in the wall's metres, or null off it. */
+  function local(e) {
+    const svg = root.querySelector('.wb-svg');
+    const m = svg?.getScreenCTM();
+    if (!m || !geo) return null;
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+    return { x: p.x / 1000, y: (geo.top * 1000 - p.y) / 1000 };
+  }
+
+  /**
+   * What a click here would draw: { a, b, label, guides } in wall metres — the ruler's division right across the
+   * wall where it settles, or the pencil's line from its first point (its first point alone before that).
+   */
+  function aimAt(e) {
+    const p = local(e);
+    if (!p || !geo) return null;
+    const { span, top, outline, guides, div, u } = geo;
+    const reach = (u / 1000) * 0.8;
+    // the guides, the lines already drawn and the wall's own edges all hold the ruler
+    const xs = [...guides.xs, ...div.xs.map((v) => ({ v, why: 'a division drawn', kind: 'drawn' })), { v: 0, why: 'wall end', kind: 'edge' }, { v: span, why: 'wall end', kind: 'edge' }];
+    const zs = [...guides.zs, ...div.zs.map((v) => ({ v, why: 'a division drawn', kind: 'drawn' })), { v: 0, why: 'floor', kind: 'edge' }, { v: top, why: 'top', kind: 'edge' }];
+    if (tool === 'rulerV' || tool === 'rulerH') {
+      const vert = tool === 'rulerV';
+      const s = snapToGuide(vert ? xs : zs, vert ? p.x : p.y, reach);
+      const ends = acrossWall(outline, vert ? 'x' : 'y', s.v);
+      if (!ends) return null;
+      const [a, b] = vert ? [{ x: s.v, y: ends[0] }, { x: s.v, y: ends[1] }] : [{ x: ends[0], y: s.v }, { x: ends[1], y: s.v }];
+      // the two bays it makes, between the neighbouring divisions
+      const marks = (vert ? [0, ...div.xs, span] : [0, ...div.zs, top]).sort((m, n) => m - n);
+      const lo = Math.max(...marks.filter((m) => m < s.v - 1e-4));
+      const hi = Math.min(...marks.filter((m) => m > s.v + 1e-4));
+      const at = vert ? `${signed(s.v - span / 2)} from the centre` : `${mm(s.v)} up`;
+      return { a, b, label: `${at} · bays ${mm(s.v - lo)} | ${mm(hi - s.v)}${s.guide ? ` · ${s.guide.why}` : ''}`, held: s.guide };
+    }
+    let x = snapToGuide(xs, p.x, reach);
+    let y = snapToGuide(zs, p.y, reach);
+    if (pen && e.shiftKey) {
+      // level or plumb, whichever it is nearer
+      if (Math.abs(p.x - pen.x) > Math.abs(p.y - pen.y)) y = { v: pen.y, guide: null };
+      else x = { v: pen.x, guide: null };
+    }
+    const q = { x: Math.max(0, Math.min(span, x.v)), y: Math.max(0, Math.min(top, y.v)) };
+    const why = [x.guide?.why, y.guide?.why].filter(Boolean).join(' × ');
+    if (!pen) return { a: q, b: null, label: `${signed(q.x - span / 2)}, ${mm(q.y)} up${why ? ` · ${why}` : ''}` };
+    const len = Math.hypot(q.x - pen.x, q.y - pen.y);
+    const deg = Math.round((Math.atan2(q.y - pen.y, q.x - pen.x) * 180) / Math.PI);
+    return { a: pen, b: q, label: `${mm(len)} mm at ${deg}° · to ${signed(q.x - span / 2)}, ${mm(q.y)} up${why ? ` · ${why}` : ''}` };
+  }
+
+  /** The line a click would draw, and its read-out, over the elevation — drawn straight in, without a re-render. */
+  function ghost(aim) {
+    const g = root.querySelector('.wb-ghost');
+    if (!g || !geo) return;
+    const { top, u } = geo;
+    const X = (v) => v * 1000;
+    const Y = (v) => (top - v) * 1000;
+    if (!aim) {
+      g.innerHTML = '';
+      return;
+    }
+    const out = [];
+    if (aim.b) out.push(`<path d="M${X(aim.a.x)} ${Y(aim.a.y)}L${X(aim.b.x)} ${Y(aim.b.y)}" stroke="#facc15" stroke-width="${u * 0.16}" stroke-dasharray="${u * 0.6} ${u * 0.3}"/>`);
+    const tip = aim.b ?? aim.a;
+    out.push(`<circle cx="${X(tip.x)}" cy="${Y(tip.y)}" r="${u * 0.35}" fill="none" stroke="#facc15" stroke-width="${u * 0.12}"/>`);
+    if (pen) out.push(`<circle cx="${X(pen.x)}" cy="${Y(pen.y)}" r="${u * 0.3}" fill="#facc15"/>`);
+    g.innerHTML = out.join('');
+    const read = root.querySelector('.wb-read');
+    if (read) read.textContent = aim.label;
+  }
+
+  /** A click with the ruler or the pencil: the line into the CAD, on this wall's elevation layer. */
+  function draw(e) {
+    const aim = aimAt(e);
+    if (!aim) return;
+    if (tool === 'pencil' && !pen) {
+      pen = aim.a;
+      ghost(aimAt(e));
+      return;
+    }
+    const g = store.state.cad.geometry;
+    const layer = g?.layers?.find((l) => l.name === ELEVATION_LAYER[face]);
+    const read = root.querySelector('.wb-read');
+    if (!cad.link || !layer) {
+      if (read) read.textContent = `⚠ the CAD has no ${ELEVATION_LAYER[face]} layer yet — ✎ Open the ${face} elevation in the CAD once, then draw here`;
+      return;
+    }
+    const line = wallLineToSheet(geo.room, face, aim.a, aim.b, METRES_PER_UNIT[g.units] ?? 1);
+    if (!line || (Math.abs(aim.a.x - aim.b.x) < 1e-4 && Math.abs(aim.a.y - aim.b.y) < 1e-4)) return;
+    cad.link.walls({ op: 'add', a: line.a, b: line.b, layer: layer.id });
+    // the pencil carries on from where the line ended, as a pencil does
+    if (tool === 'pencil') pen = aim.b;
+    ghost(aimAt(e));
+  }
 
   function render() {
     // a choice being made is not pulled out from under the pointer
@@ -120,6 +259,10 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
     const div = wallDivisions(room, face, lines);
     const windows = wallWindows(room, face, settings.windows?.[engine.out.planLayer] ?? []);
     const details = wallDetails(regions);
+    const mix = store.state.mics.find((m) => m.mix) ?? null;
+    const ap = settings.autoPanels ?? {};
+    const panels = reflectionPanels(room, soundingSpeakers(store.state.speakers, settings), mix, { w: ap.w ?? 0.6, h: ap.h ?? 1.2, ceiling: false });
+    const guides = wallGuides(room, face, { panels, windows, mix });
     const sel = regions.find((r) => r.tag === picked) ?? null;
     if (!sel) picked = null;
     const iso = { ...DEFAULT_ISOLATION, ...settings.isolation };
@@ -139,8 +282,8 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
         </div>
         <div class="wb-grid">
           <div class="wb-col">
-            <section class="wb-card wb-elev">${elevation(room, regions, div, windows, details, sel, span, top)}
-              ${regions.length ? '' : `<p class="wb-hint">No regions on this wall yet. <button data-act="open">✎ Open the ${face} elevation in the CAD</button> — draw division lines across the wall, then pick a finish or a product from the Acoustic palette and click a bay to fill it.</p>`}
+            <section class="wb-card wb-elev">${toolbar(guides)}${elevation(room, regions, div, windows, details, sel, span, top, guides)}
+              ${regions.length ? '' : `<p class="wb-hint">No regions on this wall yet. Draw division lines with the │ ─ Ruler or the ✎ Pencil above — they settle on the faint guides — or <button data-act="open">✎ Open the ${face} elevation in the CAD</button>; then pick a finish or a product from the Acoustic palette and click a bay to fill it.</p>`}
             </section>
             <div class="wb-row">
               <section class="wb-card wb-key"><h4>Key plan · where the ${face} wall is split</h4>${keyPlan(room, div, regions)}</section>
@@ -160,10 +303,23 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
 
   // ---------------------------------------------------------------- the elevation
 
-  function elevation(room, regions, div, windows, details, sel, span, top) {
+  /** The ruler, the pencil and the guides, over the elevation; the read-out of what a click would draw. */
+  function toolbar(guides) {
+    const b = (id, label, title) => `<button data-act="tool" data-tool="${id}" class="${tool === id ? 'on' : ''}" title="${title}">${label}</button>`;
+    const kinds = [...new Set([...guides.xs, ...guides.zs].map((g) => g.kind))].filter((k) => GUIDE_NAME[k]);
+    return `<div class="wb-tools">
+      ${b('rulerV', '│ Ruler', 'Draw a division up the wall, floor to top')}${b('rulerH', '─ Ruler', 'Draw a division across the wall, end to end')}${b('pencil', '✎ Pencil', 'Draw a line of any length and angle')}
+      <button data-act="guides" class="${showGuides ? 'on' : ''}" title="The divisions this wall offers: the centre line, the first-reflection panels, the glass, the ears' height, the board module">┆ Guides</button>
+      ${showGuides ? `<span class="wb-legend">${kinds.map((k) => `<i style="--c:${GUIDE_COLOUR[k]}"></i>${GUIDE_NAME[k]}`).join(' ')}</span>` : ''}
+      <span class="wb-read">${TOOL_HINT[tool]}</span>
+    </div>`;
+  }
+
+  function elevation(room, regions, div, windows, details, sel, span, top, guides) {
     const W = span * 1000;
     const H = top * 1000;
     const u = Math.max(W, H) / 60;
+    geo = { room, span, top, outline: wallOutline(room, face), guides, div, u };
     const fs = u * 1.05;
     const padL = u * 10;
     const padR = u * 2;
@@ -172,7 +328,7 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
     const X = (x) => x * 1000;
     const Y = (z) => H - z * 1000;
     const out = [];
-    out.push(`<svg class="wb-svg" viewBox="${-padL} ${-padT} ${W + padL + padR} ${H + padT + padB}" role="img" aria-label="${TITLE[face]} elevation, its regions and division lines">`);
+    out.push(`<svg class="wb-svg${tool === 'pick' ? '' : ' drawing'}" viewBox="${-padL} ${-padT} ${W + padL + padR} ${H + padT + padB}" role="img" aria-label="${TITLE[face]} elevation, its regions and division lines">`);
     out.push(patterns(u));
     const outline = wallOutline(room, face);
     const outlinePath = outline.length >= 3 ? `M${outline.map((p) => `${X(p.x)} ${Y(p.y)}`).join('L')}Z` : `M0 0H${W}V${H}H0Z`;
@@ -187,6 +343,13 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
     out.push('</g>');
     if (sel) out.push(`<path d="M${sel.pts.map((p) => `${X(p.x)} ${Y(p.y)}`).join('L')}Z" fill="none" stroke="#f4902c" stroke-width="${u * 0.3}" pointer-events="none"/>`);
     out.push(`<path d="${outlinePath}" fill="none" stroke="#e8e8e8" stroke-width="${u * 0.18}"/>`);
+    // the divisions the wall offers, faint, each saying why — not where one is already drawn
+    if (showGuides) {
+      out.push(`<g clip-path="url(#wbClip)" class="wb-guides">`);
+      for (const g of guides.xs) if (!div.xs.some((x) => Math.abs(x - g.v) < 1e-3)) out.push(`<path d="M${X(g.v)} 0V${H}" stroke="${GUIDE_COLOUR[g.kind]}" stroke-opacity=".55" stroke-width="${u * 0.07}" stroke-dasharray="${u * 0.25} ${u * 0.35}"><title>${esc(g.why)} · ${signed(g.v - span / 2)}</title></path>`);
+      for (const g of guides.zs) if (!div.zs.some((z) => Math.abs(z - g.v) < 1e-3)) out.push(`<path d="M0 ${Y(g.v)}H${W}" stroke="${GUIDE_COLOUR[g.kind]}" stroke-opacity=".55" stroke-width="${u * 0.07}" stroke-dasharray="${u * 0.25} ${u * 0.35}"><title>${esc(g.why)} · ${mm(g.v)} up</title></path>`);
+      out.push('</g>');
+    }
     // the division lines as drawn, and a dot where each meets the wall's edge
     for (const l of div.lines) out.push(`<path d="M${X(l.a.x)} ${Y(l.a.y)}L${X(l.b.x)} ${Y(l.b.y)}" stroke="#f4902c" stroke-width="${u * 0.13}"/>`);
     for (const x of div.xs) out.push(`<circle cx="${X(x)}" cy="0" r="${u * 0.3}" fill="#f4902c"/><circle cx="${X(x)}" cy="${H}" r="${u * 0.3}" fill="#f4902c"/>`);
@@ -234,7 +397,9 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
     const xd = -u * 0.9;
     out.push(`<g font-size="${fs * 0.9}" fill="#9aa4b2" text-anchor="end"><path d="M${xd} 0V${H}" stroke="#6b7280" stroke-width="${u * 0.07}"/>`);
     for (const z of zs) out.push(`<path d="M${xd - u * 0.4} ${Y(z)}H${xd + u * 0.4}" stroke="#6b7280" stroke-width="${u * 0.07}"/><text x="${xd - u * 0.6}" y="${Y(z) + fs * 0.35}">${mm(z)}</text>`);
-    out.push('</g></svg>');
+    out.push('</g>');
+    // what the ruler or the pencil would draw (ghost)
+    out.push('<g class="wb-ghost" pointer-events="none"></g></svg>');
     return out.join('');
   }
 

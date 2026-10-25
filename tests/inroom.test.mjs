@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { clampInside, CLEAR_M, intoRoom, middleOf, outside } from '../js/acoustics/inRoom.js';
-import { layoutPositions } from '../js/acoustics/layouts.js';
+import { carryArray, layoutPositions, relayArray } from '../js/acoustics/layouts.js';
 import { buildRoom } from '../js/acoustics/room.js';
 import { DEFAULT_SETTINGS } from '../js/model/store.js';
 
@@ -58,6 +58,26 @@ test('layout placement brings all speakers into the room', () => {
     assert.ok(s.x >= CLEAR_M - 0.01, `speaker ${s.role} x (${s.x}) should clear left wall`);
     assert.ok(s.x <= 5 - CLEAR_M + 0.01, `speaker ${s.role} x (${s.x}) should clear right wall`);
   }
+});
+
+test('the Width slider lays the arrangement over the room again, not the squeezed places scaled', () => {
+  const seat = { x: 2.5, y: 3.5, z: 1.2, mix: true };
+  const settings = { ...structuredClone(DEFAULT_SETTINGS), frontDeg: 90, layout: { ...structuredClone(DEFAULT_SETTINGS.layout), preset: '5.1', radius: 2 } };
+  const apply = (speakers, moved) => speakers.map((s) => ({ ...s, ...(moved.find((m) => m.id === s.id) ?? {}) }));
+  let speakers = layoutPositions('5.1', seat, 90, 2, 3, room).map((p, i) => ({ ...p, id: `s${i}`, kind: p.sub ? 'sub' : 'monitor' }));
+  // out to 4 m: the walls squeeze the spread
+  const wide = { ...settings.layout, radius: 4 };
+  speakers = apply(speakers, relayArray(speakers, settings, seat, wide, room));
+  // back to 2 m: every speaker is where 5.1 at 2 m puts it
+  const back = relayArray(speakers, { ...settings, layout: wide }, seat, settings.layout, room);
+  const want = new Map(layoutPositions('5.1', seat, 90, 2, 3, room).map((p) => [p.role, p]));
+  for (const s of apply(speakers, back)) {
+    const p = want.get(s.role);
+    assert.ok(Math.hypot(s.x - p.x, s.y - p.y) < 1e-9, `${s.role} back at its reference place`);
+  }
+  // carrying the squeezed places would not have got there
+  const carried = apply(speakers, carryArray(speakers, { ...settings, layout: wide }, seat, settings.layout, 3, room));
+  assert.ok(carried.some((s) => Math.hypot(s.x - want.get(s.role).x, s.y - want.get(s.role).y) > 0.05));
 });
 
 test('store manages furniture placement, updates, drag clamping, and removal', async () => {

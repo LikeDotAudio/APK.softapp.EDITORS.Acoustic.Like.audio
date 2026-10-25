@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import { buildRoom } from '../js/acoustics/room.js';
 import { elevationOrigin } from '../js/acoustics/patches.js';
 import { DEFAULT_ISOLATION, WALL_BUILDS } from '../js/acoustics/isolation.js';
-import { contourTl, stcRating, wallAbsorption, wallDetails, wallDivisions, wallRegions, wallTransmission, wallWindows } from '../js/acoustics/wallPlan.js';
+import { acrossWall, contourTl, snapToGuide, stcRating, wallAbsorption, wallDetails, wallDivisions, wallGuides, wallLineToSheet, wallRegions, wallTransmission, wallWindows } from '../js/acoustics/wallPlan.js';
 import { DEFAULT_SETTINGS } from '../js/model/store.js';
 
 // the mockup's front wall: 4200 wide, 3000 high, split at ±1500 and ±600, at 900 and 2100
@@ -80,4 +80,37 @@ test('a wall shared with the house says how loud it is on the other side', () =>
   const t = wallTransmission(room, 'front', iso, [], 100);
   assert.equal(t.shared, true);
   assert.ok(Math.abs(t.leak[2] - (100 - 40 + 10 * Math.log10(12.6 / 10))) < 1e-9);
+});
+
+test('the wall offers its divisions: centre line, panel edges, glass, ears, board module', () => {
+  const panel = { kind: 'wall', face: 'front', name: 'FRONT-1', speaker: 'L', sheet: [{ x: o.x + 0.3, y: o.y + 0.6 }, { x: o.x + 0.9, y: o.y + 0.6 }, { x: o.x + 0.9, y: o.y + 1.8 }, { x: o.x + 0.3, y: o.y + 1.8 }] };
+  const other = { ...panel, face: 'back' };
+  const g = wallGuides(room, 'front', { panels: [panel, other], windows: [{ x0: 3, x1: 3.6, y0: 0.9, y1: 2.1 }], mix: { z: 1.2 } });
+  const at = (list, kind) => list.filter((x) => x.kind === kind).map((x) => x.v);
+  assert.deepEqual(at(g.xs, 'centre'), [2.1]);
+  assert.deepEqual(at(g.xs, 'panel'), [0.3, 0.9]);
+  assert.deepEqual(at(g.zs, 'panel'), [0.6, 1.8]);
+  assert.deepEqual(at(g.xs, 'window'), [3, 3.6]);
+  assert.deepEqual(at(g.zs, 'ears'), [1.2]);
+  // 1200 out each way from the centre: 0.9 is a panel edge already, so only 3.3 is the module's
+  assert.deepEqual(at(g.xs, 'module'), [3.3]);
+  assert.ok(g.xs.every((x, i) => !i || x.v > g.xs[i - 1].v), 'sorted, one line per place');
+});
+
+test('the ruler settles on a guide within reach, else every 10 mm', () => {
+  const guides = [{ v: 0.9, why: 'panel' }, { v: 2.1, why: 'centre line' }];
+  assert.deepEqual(snapToGuide(guides, 0.93, 0.05), { v: 0.9, guide: guides[0] });
+  const free = snapToGuide(guides, 1.234, 0.05);
+  assert.equal(free.guide, null);
+  assert.ok(Math.abs(free.v - 1.23) < 1e-9);
+});
+
+test('a ruler line runs floor to a sloping top, and lands on the sheet where the CAD reads it back', () => {
+  const shed = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 2.4 }, { x: 0, y: 3.2 }];
+  assert.deepEqual(acrossWall(shed, 'x', 2).map((v) => +v.toFixed(3)), [0, 2.8]);
+  assert.deepEqual(acrossWall(shed, 'y', 1), [0, 4]);
+  assert.equal(acrossWall(shed, 'x', 5), null);
+  const sheet = wallLineToSheet(room, 'front', { x: 0.6, y: 0 }, { x: 0.6, y: 3 }, 0.001);
+  const back = wallDivisions(room, 'front', [{ layer: 'Elevation Front', a: { x: sheet.a[0] * 0.001, y: sheet.a[1] * 0.001 }, b: { x: sheet.b[0] * 0.001, y: sheet.b[1] * 0.001 } }]);
+  assert.deepEqual(back.xs, [0.6]);
 });
