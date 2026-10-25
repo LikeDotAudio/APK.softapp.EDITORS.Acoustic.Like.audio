@@ -7,6 +7,7 @@ import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
 import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions, soundingSpeakers } from '../acoustics/layouts.js';
 import { PRODUCTS, furnitureHeight, material } from '../acoustics/materials.js';
 import { elevationOrigin } from '../acoustics/patches.js';
+import { areaOf, detailBuild, wallRegions } from '../acoustics/wallPlan.js';
 import { firstReflections, heatOf, reflectionPanels } from '../acoustics/reflectionPanels.js';
 import { fromFrame } from '../acoustics/room.js';
 import { turbo } from '../views/paint.js';
@@ -248,13 +249,6 @@ function panelDetails(room, face, panels, product) {
 
 // ------------------------------------------------------------------ finishes
 
-const FACE_TAG = { front: 'F', back: 'B', left: 'L', right: 'R' };
-
-const areaOf = (pts) => Math.abs(pts.reduce((s, p, i) => s + p.x * pts[(i + 1) % pts.length].y - pts[(i + 1) % pts.length].x * p.y, 0) / 2);
-
-/** A palette id's name on a drawing: the product's, else the finish's. */
-const paletteName = (id) => PRODUCTS.find((x) => x.id === id)?.name ?? material(id).name;
-
 /**
  * Every wall's regions as the user finished them, on its elevation: a tag in
  * each — its code and what it is, boxed — and beside the elevation, under the
@@ -265,29 +259,16 @@ function finishMarks(room, settings, patches, panelItems) {
   const items = [];
   const size = Math.max(0.035, Math.min(0.15, Math.max(room.L, room.W) / 100));
   for (const face of ELEVATION_FACES) {
-    const mine = patches.filter((p) => elevationFaceOf(p.layer) === face);
-    if (!mine.length) continue;
     const origin = elevationOrigin(room, face);
     if (!origin) continue;
     const span = face === 'left' || face === 'right' ? room.L : room.W;
     const top = room.Hmax ?? room.H;
-    const regions = mine
-      .map((p) => {
-        const pts = p.poly.map((q) => ({ x: q.x - origin.x, y: q.y - origin.y }));
-        const xs = pts.map((q) => q.x);
-        const ys = pts.map((q) => q.y);
-        return { p, pts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), area: areaOf(pts) };
-      })
-      // only what lies on this wall's drawing
-      .filter((r) => r.x1 > 0 && r.x0 < span && r.y1 > 0 && r.y0 < top)
-      // left to right, then top down
-      .sort((a, b) => a.x0 - b.x0 || b.y1 - a.y1);
+    // tagged left to right, then top down (acoustics/wallPlan.js, which the wall builder reads too)
+    const regions = wallRegions(room, face, patches);
     if (!regions.length) continue;
     const lines = [];
     const texts = [];
-    regions.forEach((r, i) => {
-      r.tag = `${FACE_TAG[face]}${i + 1}`;
-      r.name = paletteName(r.p.paletteId);
+    regions.forEach((r) => {
       const short = r.name.length > 18 ? `${r.name.slice(0, 17)}…` : r.name;
       const w = Math.max(r.tag.length, short.length) * size * 0.62 + size;
       const h = size * 2.4;
@@ -308,9 +289,8 @@ function finishMarks(room, settings, patches, panelItems) {
     const signed = (v) => (v > 0 ? `+${mm(v)}` : `${mm(v)}`);
     for (const r of regions) {
       const mat = material(r.p.paletteId);
-      const how = r.p.host === 'symmetry' ? 'mirrored' : String(r.p.id).startsWith('block:') ? 'block' : PRODUCTS.some((x) => x.id === r.p.paletteId) ? 'fill' : 'finish';
       y -= size * 1.5;
-      texts.push({ text: `${r.tag} · ${r.name} · ${how} · ${mm(r.x1 - r.x0)} × ${mm(r.y1 - r.y0)} · x ${signed(r.x0 - mid)} → ${signed(r.x1 - mid)} · z ${mm(r.y0)} → ${mm(r.y1)} · ${r.area.toFixed(2)} m² · α125 ${mat.alpha[0].toFixed(2)} α500 ${mat.alpha[2].toFixed(2)} α2k ${mat.alpha[4].toFixed(2)} · s ${mat.scatter[3].toFixed(2)}`, x: sx, y: r3(y), height: size * 0.85 });
+      texts.push({ text: `${r.tag} · ${r.name} · ${r.how} · ${mm(r.x1 - r.x0)} × ${mm(r.y1 - r.y0)} · x ${signed(r.x0 - mid)} → ${signed(r.x1 - mid)} · z ${mm(r.y0)} → ${mm(r.y1)} · ${r.area.toFixed(2)} m² · α125 ${mat.alpha[0].toFixed(2)} α500 ${mat.alpha[2].toFixed(2)} α2k ${mat.alpha[4].toFixed(2)} · s ${mat.scatter[3].toFixed(2)}`, x: sx, y: r3(y), height: size * 0.85 });
     }
     const wallArea = room.walls.filter((w) => w.face === face).reduce((s, w) => s + (w.area ?? 0), 0);
     const left = Math.max(0, wallArea - regions.reduce((s, r) => s + r.area, 0));
@@ -331,23 +311,6 @@ function finishMarks(room, settings, patches, panelItems) {
     items.push({ kind: 'drawing', layer: ELEVATION_LAYER[face], name: `finish-schedule-${face}`, at: [r3(origin.x), r3(origin.y)], lines, texts });
   }
   return items;
-}
-
-/**
- * What a palette id is built of, for its detail — { depth (m), infill, face }
- * — or null for a finish with no depth worth a section (plaster, glass, a
- * curtain). The depth is the product's or the material's own (…×100, 100 mm),
- * else what that kind of thing usually is.
- */
-function detailBuild(paletteId) {
-  const mat = material(paletteId);
-  const product = PRODUCTS.find((x) => x.id === paletteId);
-  const KIND = { Absorber: { depth: 100, infill: 'insulation', face: 'fabric face' }, Diffuser: { depth: 200, infill: 'wells', face: 'wells, open to the room' }, Resonator: { depth: 150, infill: 'insulation', face: /slat/.test(mat.id) ? 'wood slats over the wool' : 'membrane panel' } };
-  const kind = KIND[mat.category];
-  if (!kind) return null;
-  const named = Number((product?.name.match(/\d+×\d+×(\d+)/) ?? mat.name.match(/(\d+)\s*mm/) ?? [])[1]);
-  const depth = (named >= 20 && named <= 1000 ? named : /trap/.test(mat.id) ? 300 : kind.depth) / 1000;
-  return { ...kind, depth };
 }
 
 /** A circle as line segments, for a drawing that is lines and words. */

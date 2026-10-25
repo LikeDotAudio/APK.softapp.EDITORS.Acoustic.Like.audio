@@ -24,6 +24,7 @@ import { createStore } from './model/store.js';
 import { createInspector } from './ui/inspector.js';
 import { createMeters } from './ui/meters.js';
 import { createFaceView } from './views/faceView.js';
+import { createWallBuilder } from './views/wallBuilder.js';
 import { FACE_COLOURS } from './views/glyphs.js';
 import { fieldScale, rampGradient } from './views/paint.js';
 import { createPlanView, planLabel } from './views/plan.js';
@@ -110,6 +111,7 @@ function jumpTo(sheet) {
 const plan = createPlanView({ tile: document.querySelector('.tile.plan .stage'), iframe, store, engine, onDrag, cad });
 const faces = ['ceiling', 'front', 'back', 'left', 'right'].map((face) => createFaceView({ tile: document.querySelector(`.tile[data-face="${face}"]`), face, store, engine, onDrag, onJump: () => jumpTo(face), onPickPatch: (id) => inspector.showPatch(id) }));
 const view3d = createView3d({ canvas: document.querySelector('.tile.t3d canvas'), store, engine });
+const wallBuilder = createWallBuilder({ root: document.querySelector('.tile.wall'), store, engine, cad, inputs: () => wallInputs(store.state.cad.geometry), jumpTo });
 const meters = createMeters({
   root: document.getElementById('meters'),
   store,
@@ -138,6 +140,7 @@ function renderGeometry() {
   plan.render();
   for (const f of faces) f.render();
   view3d.render();
+  if (store.state.settings.view === 'wall') wallBuilder.render();
 }
 function renderAll() {
   cancelAnimationFrame(frame);
@@ -282,7 +285,7 @@ function syncToolbar() {
   for (const b of document.querySelectorAll('#viewmode button')) b.classList.toggle('on', b.dataset.view === settings.view);
   for (const b of document.querySelectorAll('#method button')) b.classList.toggle('on', b.dataset.method === settings.method);
   for (const b of document.querySelectorAll('#furniture button[data-arm]')) b.classList.toggle('on', mode === 'place-furniture' && b.dataset.arm === placeKind?.furniture);
-  views.className = settings.view === '3d' || settings.view === 'rays' ? 'three' : 'six';
+  views.className = settings.view === '3d' || settings.view === 'rays' ? 'three' : settings.view === 'wall' ? 'wall' : 'six';
   const { sheet } = store.state;
   inPlan('sheetName').textContent = sheet === 'plan' ? '' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
   inPlan('toPlan').hidden = sheet === 'plan';
@@ -578,6 +581,22 @@ function hangDoor(loop, door, h, ox, oy, k) {
 document.getElementById('grabBag').addEventListener('click', () => drawRoom(grabBag(store.state.settings.lastLibraryRoom)));
 
 // ------------------------------------------------------------------ what this app draws into the CAD file
+/**
+ * What is drawn on the walls' elevations, in sheet metres: the user's own regions and the mirrored copies
+ * the symmetry made (the schedule and the wall builder list both), and the lines drawn there.
+ */
+function wallInputs(g) {
+  if (!g) return { patches: [], lines: [] };
+  const k = METRES_PER_UNIT[g.units] ?? 1;
+  const names = new Map((g.layers ?? []).map((l) => [l.id, l.name]));
+  return {
+    patches: patchesFromCad(g).filter((p) => elevationFaceOf(p.layer) && (!p.host || p.host === 'symmetry')),
+    lines: (g.walls ?? [])
+      .map((w) => ({ layer: names.get(w.layerId) ?? w.layerId, a: { x: w.a[0] * k, y: w.a[1] * k }, b: { x: w.b[0] * k, y: w.b[1] * k } }))
+      .filter((w) => elevationFaceOf(w.layer)),
+  };
+}
+
 let marksTimer = 0;
 function syncMarks() {
   clearTimeout(marksTimer);
@@ -597,11 +616,7 @@ function syncMarks() {
       name: String(names.get(loop.layerId) ?? loop.layerId).replace(/^Room · /, ''),
       room: loop.layerId === engine.out.planLayer && !engine.out.virtual ? engine.out.room : buildRoom(loop.poly, { ...settings, roomHeight: settings.roomHeights?.[loop.layerId] ?? settings.roomHeight }, [], patches),
     }));
-    // the user's own on the walls, and the mirrored copies the symmetry made (the schedule lists both)
-    const wallPatches = patchesFromCad(g).filter((p) => elevationFaceOf(p.layer) && (!p.host || p.host === 'symmetry'));
-    const wallLines = (g.walls ?? [])
-      .map((w) => ({ layer: names.get(w.layerId) ?? w.layerId, a: { x: w.a[0] * k, y: w.a[1] * k }, b: { x: w.b[0] * k, y: w.b[1] * k } }))
-      .filter((w) => elevationFaceOf(w.layer));
+    const { patches: wallPatches, lines: wallLines } = wallInputs(g);
     const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms, wallPatches, wallLines, patches: patchesFromCad(g) });
     const onSheet = g.marks ?? {};
     for (const key of MARK_KEYS) {

@@ -116,6 +116,8 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     move: (items) => send('move', { items }),
     /** Take placed products out of the drawing: ['block:<n>', …] (right-click → Remove on the plan). One undo step in the CAD. */
     remove: (ids) => send('remove', { ids }),
+    /** Make painted regions ('fill:<n>', …) another palette item where they lie (the wall builder's region select). One undo step in the CAD. */
+    repaint: (ids, paletteId) => send('repaint', { ids, paletteId }),
     /** Reshape the room's lines (Walls mode): { op: 'begin' | 'vertex' | 'edge' | 'end' | 'add', … } in CAD units (hostWalls.ts). */
     walls: (op) => send('walls', op),
     /** Layers on or off by name: { 'Blow-up': false, … }. Hidden, nothing on them can be clicked in the CAD. */
