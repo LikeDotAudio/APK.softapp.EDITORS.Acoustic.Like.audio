@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { ACOUSTX_ABSORBERS } from '../acoustx/database.js';
+import { SYMBOLS, symbolOf } from './symbols.js';
 
 /**
  * SURFACES
@@ -214,8 +215,36 @@ const note = (mat) => `α500 ${mat.alpha[2].toFixed(2)} · s ${mat.scatter[3].to
 export function paletteItems() {
   const products = PRODUCTS.map((x) => {
     const mat = byId.get(x.material);
-    return { id: x.id, name: x.name, category: 'Products', color: mat.color, hatch: HATCH[mat.category] ?? 'SOLID', size: [...x.size], note: `${mat.name} · ${note(mat)}` };
+    return { id: x.id, name: x.name, category: 'Products', color: mat.color, hatch: HATCH[mat.category] ?? 'SOLID', size: [...x.size], note: `${mat.name} · ${note(mat)}`, ...illustration(mat, x) };
   });
-  const finishes = MATERIALS.map((mat) => ({ id: mat.id, name: mat.name, category: mat.category, color: mat.color, hatch: HATCH[mat.category] ?? 'SOLID', note: note(mat) }));
+  const finishes = MATERIALS.map((mat) => ({ id: mat.id, name: mat.name, category: mat.category, color: mat.color, hatch: HATCH[mat.category] ?? 'SOLID', note: note(mat), ...illustration(mat) }));
   return [...products, ...finishes];
+}
+
+/** How thick a thing is, metres, when its name says: …×100, 100 mm, 2", 1-1/2" — else null. */
+export function depthOf(mat, product = null) {
+  const name = `${product?.name ?? ''} ${mat.name}`;
+  const triple = name.match(/\d+×\d+×(\d+)/);
+  if (triple) return Number(triple[1]) / 1000;
+  const mm = name.match(/(\d+(?:\.\d+)?)\s*mm\b/);
+  if (mm) return Number(mm[1]) / 1000;
+  const inch = name.match(/(?:(\d+)-)?(\d+)(?:\/(\d+))?\s*(?:"|”|in\b)/);
+  if (inch) {
+    const whole = inch[1] ? Number(inch[1]) : 0;
+    const v = inch[3] ? whole + Number(inch[2]) / Number(inch[3]) : whole + Number(inch[2]);
+    if (v > 0 && v < 40) return +(v * 0.0254).toFixed(4);
+  }
+  return null;
+}
+
+/**
+ * What the CAD's palette preview draws an item with: its drafting symbol
+ * (acoustics/symbols.js — the standard's name and the acad.pat hatch ride
+ * along, so the CAD can say what it is drawing), α per octave 125 Hz … 4 kHz,
+ * and its depth when its name gives one.
+ */
+function illustration(mat, product = null) {
+  const symbol = symbolOf(mat, product);
+  const depth = depthOf(mat, product);
+  return { symbol, symbolName: SYMBOLS[symbol].name, ...(SYMBOLS[symbol].acad ? { acad: SYMBOLS[symbol].acad } : {}), alpha: mat.alpha.map((a) => +a.toFixed(2)), ...(depth ? { depth } : {}) };
 }
