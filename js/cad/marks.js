@@ -47,6 +47,12 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  *                SCHEDULE: tag, what it is, how it was laid, its size, its
  *                stretch from the wall's centre line, area, α at 125 / 500 /
  *                2k and s, and the wall's base finish over what is left.
+ *                Every region with depth to it (an absorber, a trap, a
+ *                diffuser, a resonator) is cut by a section line ending in a
+ *                callout bubble — n over Dn — and DETAIL Dn is drawn under the
+ *                schedule: the section through that bay, true size, wall,
+ *                frame at its division lines, the build and its face, its
+ *                width and depth in mm and its edges from the centre line.
  *   sections     the wall build and the floor build as sections, layer by
  *                layer, drawn five times true size so the layers read.
  *   arrangement  the speaker layout's reference lines from the mix seat — the
@@ -290,9 +296,123 @@ function finishMarks(room, settings, patches, panelItems) {
     const left = Math.max(0, wallArea - regions.reduce((s, r) => s + r.area, 0));
     y -= size * 1.5;
     texts.push({ text: `BASE · ${material(settings.faceMaterials[face]).name} · the rest of the wall · ${left.toFixed(2)} m²`, x: sx, y: r3(y), height: size * 0.85 });
+    // the details: one per build on this wall, each region of it called out
+    const details = [];
+    regions.forEach((r, i) => {
+      const build = detailBuild(r.p.paletteId);
+      if (!build) return;
+      let d = details.find((x) => x.paletteId === r.p.paletteId);
+      if (!d) details.push((d = { paletteId: r.p.paletteId, n: details.length + 1, build, name: r.name, regions: [] }));
+      d.regions.push(r);
+      calloutBubble(lines, texts, r, d.n, i, size);
+    });
+    y -= size * 3;
+    for (const d of details) y = detailDrawing(lines, texts, d, sx, y, mid, size);
     items.push({ kind: 'drawing', layer: ELEVATION_LAYER[face], name: `finish-schedule-${face}`, at: [r3(origin.x), r3(origin.y)], lines, texts });
   }
   return items;
+}
+
+/**
+ * What a palette id is built of, for its detail — { depth (m), infill, face }
+ * — or null for a finish with no depth worth a section (plaster, glass, a
+ * curtain). The depth is the product's or the material's own (…×100, 100 mm),
+ * else what that kind of thing usually is.
+ */
+function detailBuild(paletteId) {
+  const mat = material(paletteId);
+  const product = PRODUCTS.find((x) => x.id === paletteId);
+  const KIND = { Absorber: { depth: 100, infill: 'insulation', face: 'fabric face' }, Diffuser: { depth: 200, infill: 'wells', face: 'wells, open to the room' }, Resonator: { depth: 150, infill: 'insulation', face: /slat/.test(mat.id) ? 'wood slats over the wool' : 'membrane panel' } };
+  const kind = KIND[mat.category];
+  if (!kind) return null;
+  const named = Number((product?.name.match(/\d+×\d+×(\d+)/) ?? mat.name.match(/(\d+)\s*mm/) ?? [])[1]);
+  const depth = (named >= 20 && named <= 1000 ? named : /trap/.test(mat.id) ? 300 : kind.depth) / 1000;
+  return { ...kind, depth };
+}
+
+/** A circle as line segments, for a drawing that is lines and words. */
+function circleLines(lines, cx, cy, rad, n = 20) {
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * 2 * Math.PI;
+    const b = ((i + 1) / n) * 2 * Math.PI;
+    lines.push([r3(cx + rad * Math.cos(a)), r3(cy + rad * Math.sin(a)), r3(cx + rad * Math.cos(b)), r3(cy + rad * Math.sin(b))]);
+  }
+}
+
+/**
+ * A region's section callout on its elevation: a dashed cut across it a
+ * quarter of the way up (clear of its tag), arrowheads at both ends, and a
+ * leader out past the wall's left edge to a bubble — the detail's number over
+ * D and the number. Bubbles alternate between two columns so neighbours clear.
+ */
+function calloutBubble(lines, texts, r, n, i, size) {
+  const y = r.y0 + (r.y1 - r.y0) * 0.25;
+  const x0 = r.x0 + size * 0.3;
+  const x1 = r.x1 - size * 0.3;
+  const dash = size * 0.9;
+  for (let x = x0; x < x1; x += dash * 1.5) lines.push([r3(x), r3(y), r3(Math.min(x1, x + dash)), r3(y)]);
+  for (const [x, dir] of [[x0, 1], [x1, -1]]) lines.push([r3(x), r3(y), r3(x + dir * size * 0.5), r3(y + size * 0.35)], [r3(x), r3(y), r3(x + dir * size * 0.5), r3(y - size * 0.35)]);
+  const rad = size * 1.2;
+  const bx = -size * (3 + (i % 2) * 3);
+  lines.push([r3(bx + rad), r3(y), r3(x0), r3(y)]);
+  circleLines(lines, bx, y, rad);
+  lines.push([r3(bx - rad), r3(y), r3(bx + rad), r3(y)]);
+  texts.push({ text: String(n), x: r3(bx - size * 0.3), y: r3(y + size * 0.2), height: size * 0.75 });
+  texts.push({ text: `D${n}`, x: r3(bx - size * 0.45), y: r3(y - size * 0.85), height: size * 0.55 });
+}
+
+/**
+ * DETAIL Dn under the schedule, its top at `top`: the section through the
+ * first bay of that build, true size — the wall behind (masonry), a 45 mm
+ * frame member at each division line, the build between them hatched, its
+ * face — labelled beside, the width and depth dimensioned in mm, and each
+ * edge's place from the wall's centre line. Returns where the next one starts.
+ */
+function detailDrawing(lines, texts, d, x, top, mid, size) {
+  const r = d.regions[0];
+  const W = r.x1 - r.x0;
+  const D = d.build.depth;
+  const wall = 0.1;
+  const frame = Math.min(0.045, W / 6);
+  const y0 = top - size * 2 - wall - D;
+  const rect = (a, b, c, e) => lines.push([r3(a), r3(b), r3(c), r3(b)], [r3(c), r3(b), r3(c), r3(e)], [r3(c), r3(e), r3(a), r3(e)], [r3(a), r3(e), r3(a), r3(b)]);
+  const signed = (v) => (v > 0 ? `+${mm(v)}` : `${mm(v)}`);
+  texts.push({ text: `DETAIL D${d.n} · section through ${d.regions.map((q) => q.tag).join(', ')} · ${d.name} · plan section, true size, mm`, x: r3(x), y: r3(top - size * 1.1), height: size * 0.95 });
+  // the wall behind, the frame at each division line, the build between, the face
+  rect(x - 0.05, y0 + D, x + W + 0.05, y0 + D + wall);
+  hatch(lines, 'masonry', x - 0.05, y0 + D, x + W + 0.05, y0 + D + wall);
+  for (const fx of [x, x + W - frame]) {
+    rect(fx, y0, fx + frame, y0 + D);
+    hatch(lines, 'stud', fx, y0, fx + frame, y0 + D);
+  }
+  if (d.build.infill === 'wells') {
+    const n = Math.max(2, Math.round((W - 2 * frame) / 0.05));
+    const step = (W - 2 * frame) / n;
+    for (let k = 0; k <= n; k++) lines.push([r3(x + frame + k * step), r3(y0), r3(x + frame + k * step), r3(y0 + D)]);
+    for (let k = 0; k < n; k++) {
+      const depth = D * (0.25 + 0.75 * (((k * k) % 7) / 6));
+      lines.push([r3(x + frame + k * step), r3(y0 + D - depth), r3(x + frame + (k + 1) * step), r3(y0 + D - depth)]);
+    }
+  } else hatch(lines, d.build.infill, x + frame, y0, x + W - frame, y0 + D);
+  lines.push([r3(x), r3(y0), r3(x + W), r3(y0)]);
+  // what each layer is, beside it
+  const lx = x + W + 0.12;
+  const label = (text, ly) => {
+    lines.push([r3(x + W + 0.02), r3(ly), r3(lx - 0.02), r3(ly)]);
+    texts.push({ text, x: r3(lx), y: r3(ly - size * 0.3), height: size * 0.7 });
+  };
+  label('wall behind', y0 + D + wall / 2);
+  label(`${d.name} · ${mm(D)} deep`, y0 + D / 2);
+  label(d.build.face, y0);
+  texts.push({ text: `frame ${mm(frame)} × ${mm(D)} at the division lines`, x: r3(x), y: r3(y0 + D + wall + size * 0.3), height: size * 0.6 });
+  // the width under it, ticked at the division lines, each edge from the centre line
+  const dy = y0 - size * 1.4;
+  lines.push([r3(x), r3(dy), r3(x + W), r3(dy)]);
+  for (const ex of [x, x + W]) lines.push([r3(ex), r3(dy - size * 0.4), r3(ex), r3(y0)]);
+  texts.push({ text: `${mm(W)}`, x: r3(x + W / 2 - size), y: r3(dy + size * 0.2), height: size * 0.7 });
+  texts.push({ text: signed(r.x0 - mid), x: r3(x - size * 0.5), y: r3(dy - size * 1.3), height: size * 0.65 });
+  texts.push({ text: signed(r.x1 - mid), x: r3(x + W - size * 0.5), y: r3(dy - size * 1.3), height: size * 0.65 });
+  return dy - size * 3;
 }
 
 // ------------------------------------------------------------------ windows
