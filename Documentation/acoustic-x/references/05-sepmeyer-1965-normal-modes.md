@@ -50,7 +50,10 @@ spread.
 **Challenge.** For a $6 \times 4.2 \times 2.8$ m room, find the angle of mode 110 from the
 length axis in plan, $\arctan\big((1/4.2)/(1/6)\big)$: about 55.0°. Do the same for mode
 210: about 35.5°. Then find the elevation of mode 111 above the floor plane: about 50.9°.
-The app does not compute or draw mode directions, so this is on paper.
+Check all three in Modal Response's Data View, whose mode table rounds them to whole degrees
+in its Az° and El° columns: 55°, 36° and 51°. Then read the **Criteria** tab's *Mode
+Directions (Sepmeyer)* table, which counts the modes below 200 Hz in each 15° band of
+elevation and of azimuth.
 
 ### 3. The three ratios
 
@@ -105,4 +108,10 @@ simulated sound fields rather than mode angles.
 - [Engine chapter 5, Published ratios](../../acoustics/05-modes.md#54-published-ratios).
 - [Engine chapter 14, The room library](../../acoustics/14-layouts-placement.md#145-the-room-library):
   a Sepmeyer A room, `js/acoustics/roomLibrary.js`.
-- Mode directions (Sepmeyer's angular distribution) are not computed anywhere in the app.
+- Modal Response, Data View: azimuth and elevation of every mode below 200 Hz in the mode
+  table (Az°, El°); `js/acoustx/references.js` `modeAngles`.
+- Modal Response, **Criteria** tab, *Mode Directions (Sepmeyer)*: the angular distribution,
+  modes per 15° of elevation and of azimuth; `references.js` `angularDistribution`. It counts;
+  it does not score a ratio by its spread in angle.
+- 📖 in the app: the groups *Favourable Room Ratios* and *Mode Directions (Sepmeyer)* open
+  this report from their pop-up.

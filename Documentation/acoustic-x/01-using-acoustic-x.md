@@ -52,8 +52,20 @@ Dragging on a user view also turns it, by 0.5° per pixel of yaw and 0.4° of pi
 ## Start screen, Fast Guide, reports
 
 - The **Start Screen** has the module buttons (with the original's two blank "future use" buttons) and the **project lines**: description, client, location. They appear at the top of every Data View report and every printed or saved one.
-- The **Fast Guide** gives five steps for whichever module window is in front, and changes when another comes to the front.
+- The **Fast Guide** gives five steps (seven for the Calculator, whose last two cover the tabs from Wall on) for whichever module window is in front, and changes when another comes to the front.
 - The **Report Print Manager** selects the modules to report on (or all of them). **Preview** opens them in a window, and **Print** prints that window. **Export** saves them as HTML, CSV, tab-separated values or plain text. Every module builds one report object (`win.report()`) as sections of a heading, a paragraph and a table. The Data View shows that object, and each export format writes the same object.
+
+## Topic pop-ups and Help
+
+**📖 on a group.** Many of the windows' groups have a 📖 button at the end of their legend. It opens a small pop-up with:
+- a short history of the idea: who worked it out, when, and what has changed since;
+- **Read:** links to the matching book reports in [references/](references/README.md), the manual's 26 suggested references read one report each.
+
+A link opens that report in Help. Escape, ×, or a click elsewhere closes the pop-up, and the same 📖 toggles it.
+
+`js/acoustx/topics.js`. `TOPICS` is keyed by the group's legend text: a group grows a 📖 when its legend is a key there. Each entry holds the `history` and its `refs`, which are report numbers. `REPORTS` maps each number to the report's file and a short citation. There are 39 topics across Modal Response, SBIR, Ray Tracing, Reverb Time, the Calculator and General Parameters, and every one of the 26 reports is linked from at least one.
+
+**Help** (F1, or a window's **?** button) shows these chapters with a contents list beside them. Its entry **8 · The suggested references, read** opens [references/README.md](references/README.md), the index of the 26 reports.
 
 ## What is not carried over
 

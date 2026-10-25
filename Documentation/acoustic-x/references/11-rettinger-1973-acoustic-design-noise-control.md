@@ -34,7 +34,9 @@ Real walls fall below this near their coincidence frequency, where the wall's be
 match the sound in the air, and above it they rise again.
 
 **Challenge.** Find the mass-law TL of a 10 kg/m² wall (about one layer of 12.5 mm gypsum
-board) at 500 Hz: 27 dB. Double the frequency or the mass and find 33 dB. Then read
+board) at 500 Hz: 27 dB. Double the frequency or the mass and find 33 dB. Check both in the
+Calculator's **Wall** tab, *Mass Law & Rw*: with Leaf 2 at 0 it reads 27.0 dB at 500 Hz, and
+with two 10 kg/m² leaves 33.0 dB. Then read
 [engine chapter 12 §12.4](../../acoustics/12-isolation.md#124-below-125-hz-the-octaves-a-sub-lives-in):
 the app carries each wall's 125 Hz TL down to 63 and 31 Hz at 6 dB per octave, the mass law's
 slope. Say why the chapter calls that a best case.
@@ -55,7 +57,8 @@ resonance. Separate studs, so the leaves share no rigid path, matter as much as 
 find how $f_0$ moves (by $\sqrt 2$, to about 120 Hz). Then in the main app compare the
 single-stud and double-stud wall builds per band
 ([chapter 12 §12.2](../../acoustics/12-isolation.md#122-walls-transmission-loss-per-band)).
-The app uses tabulated figures for each build; it does not compute $f_0$.
+The builds carry tabulated figures, not a computed $f_0$. The Calculator's **Wall** tab
+computes it: two 10 kg/m² leaves on a 100 mm cavity read 85 Hz, and on 50 mm 120 Hz.
 
 ### 3. Panel absorbers take out the bass
 
@@ -73,7 +76,8 @@ cavity depth that brings the same panel to 60 Hz (about 200 mm). Then in Reverb 
 Absorber Edit Manager find the Diaphragmatic entries (DIAP-…) from the 1997 database, and in
 the main app the `membrane-trap` material
 ([chapter 3 §3.1](../../acoustics/03-materials-patches.md#31-what-a-material-is)). Neither is
-designed from $m$ and $d$; both are tables of α.
+designed from $m$ and $d$; both are tables of α. The Calculator's **Res** tab designs one:
+5 kg/m² over 100 mm reads 84.9 Hz, over 200 mm 60.0 Hz.
 
 ### 4. Floating floors and vibration isolation
 
@@ -112,8 +116,9 @@ noisy duct is a noisy room.
 
 **Challenge.** Outside a studio wall the traffic is 75 dB in the 125 Hz band, and the room
 should be below 30 dB there. Find the TL needed, 45 dB, and compare it with the 125 Hz figure
-of each wall build in the main app's isolation settings. The app has no NC curves and does
-not model ventilation noise; it estimates only the leak the other way, from the room into the
+of each wall build in the main app's isolation settings. The Calculator's **NC** tab rates an
+octave-band spectrum against the NC curves and lists the targets by room. The app does not
+model ventilation noise; it estimates only the leak the other way, from the room into the
 house ([chapter 12 §12.3](../../acoustics/12-isolation.md#123-level-in-the-house)).
 
 ## Since then
@@ -134,5 +139,16 @@ of designing isolation down from a noise target is unchanged.
 - [Reverb Time, surfaces and materials](../06-reverb-time.md#surfaces-and-materials): the
   Diaphragmatic absorbers of the 1997 database, `js/acoustx/database.js`
   `ACOUSTX_ABSORBERS`.
-- Mass-law and mass–air–mass calculations, panel-absorber design, NC criteria and HVAC noise
-  have no counterpart in the app.
+- Calculator, **Wall** tab, *Mass Law & Rw*: the field-incidence mass law, the coincidence
+  frequency of a board, the mass–air–mass resonance, and Rw of the mass-law curve;
+  `js/acoustx/references.js` `massLaw`, `coincidence`, `massAirMass`, `ratingRw`. It is for
+  comparing; the room's walls still use the tabulated builds.
+- Calculator, **Res** tab, *Resonators*: Helmholtz, perforated or slotted, and membrane
+  absorbers; `references.js` `helmholtz`, `perforated`, `membrane`. It gives the resonance,
+  not an α curve.
+- Calculator, **NC** tab, *Background Noise (NC)*: the NC rating of an octave spectrum, the
+  band that sets it, and targets by room; `references.js` `ncRating`, `NC_CURVES`,
+  `NC_TARGETS`.
+- HVAC noise and duct design have no counterpart in the app.
+- 📖 in the app: the groups *Absorption*, *Mass Law & Rw*, *Resonators* and *Background Noise
+  (NC)* open this report from their pop-up.

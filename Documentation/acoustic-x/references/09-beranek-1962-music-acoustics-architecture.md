@@ -31,10 +31,10 @@ became something a designer could aim at. This order of work, judgement first an
 second, is the book's method and its lasting example.
 
 **Challenge.** Pick three attributes the book names: liveness, warmth and intimacy. For each,
-write down which number in this app comes closest: the mid-band RT in the Reverb Time window,
-the ratio of its bass to mid RT, and the first reflection's delay in the Ray Tracing window's
-Energy / Time chart. Then name one attribute (blend, for example) for which the app gives no
-number at all.
+write down which number in this app comes closest: the mid-band RT and the bass ratio in the
+Reverb Time window's *Hall Checks (Beranek)* (Type tab), and the initial-time-delay gap in
+Ray Tracing's **Time** tab, *Precedence & Echo (Haas)*. Then name one attribute (blend, for
+example) for which the app gives no number at all.
 
 ### 2. Intimacy and the initial-time-delay gap
 
@@ -48,9 +48,9 @@ reflectors.
 listener 20 m in front of it on the same line. In a hall 24 m wide, the side-wall image is
 24 m to the side of the source: find the reflected path, 31.2 m, and the ITDG, 11.2 m or
 32.8 ms at 343 m/s. Narrow the hall to 18 m and find 6.9 m, 20.1 ms. Then open Ray Tracing on
-the $6 \times 4.2 \times 2.8$ m room and read the first reflection in the Energy / Time chart:
-a few milliseconds. In a small room the question is not whether the first reflection is early
-enough, but whether it is quiet enough (the 10 dB window,
+the $6 \times 4.2 \times 2.8$ m room and read the initial-time-delay gap in the **Time** tab's
+*Precedence & Echo (Haas)*: a few milliseconds. In a small room the question is not whether
+the first reflection is early enough, but whether it is quiet enough (the 10 dB window,
 [chapter 5](../05-ray-tracing.md#the-charts)).
 
 ### 3. Liveness: reverberation time chosen by use
@@ -65,8 +65,9 @@ RT exists for each use.
 2.0 s: 1610 m². Then build the hall in the Reverb Time window as a $40 \times 25 \times 20$ m
 box with plaster walls and ceiling and the occupied `audience` material on the floor. With
 Sabine selected, find that it rings about 3.4 s at 500 Hz and 3.0 s at 1 kHz: 1000 m² of audience is not enough on
-its own. Set **Edit user defined RT60 criteria** to 2.0 s and use the area optimiser to find
-how much more absorption the walls need.
+its own. *Hall Checks (Beranek)* on the Type tab gives the mid-band RT as 3.20 s. Choose the
+**Concert hall (symphonic)** criteria, 2.0 s at mid band and rising toward the bass, and use
+the area optimiser to find how much more absorption the walls need.
 
 ### 4. Warmth: the bass ratio
 
@@ -79,9 +80,9 @@ A hall whose bass dies faster than its mids sounds thin. The halls he rated warm
 somewhat above 1.
 
 **Challenge.** A hall measures 2.2, 2.0, 1.9 and 1.8 s at 125, 250, 500 and 1000 Hz. Find
-$\text{BR} = 4.2 / 3.7 = 1.14$. Then read the four RTs of the plaster-and-audience hall of
-idea 3 off the Reverb Time window's Data View and find its bass ratio, about 1.41. Say which
-material makes it high: the audience absorbs much less at 125 Hz than at 1 kHz.
+$\text{BR} = 4.2 / 3.7 = 1.14$. Then read the bass ratio of the plaster-and-audience hall of
+idea 3 in the Reverb Time window's *Hall Checks (Beranek)*, with Sabine selected: about 1.41.
+Say which material makes it high: the audience absorbs much less at 125 Hz than at 1 kHz.
 
 ### 5. Audience and loudness
 
@@ -126,16 +127,24 @@ use, and the bass ratio, survive as he stated them.
 
 ## In this app
 
-- [Reverb Time, criteria](../06-reverb-time.md#criteria): the window's presets are for small
-  rooms (control room, studio, booth, cinema). There is no concert-hall or opera preset; use
-  **User** for that. `js/acoustics/reverbTargets.js` `RT_TARGETS`, `rtTarget`.
+- [Reverb Time, criteria](../06-reverb-time.md#criteria): besides the small rooms (control
+  room, studio, booth, cinema) the presets now include **Concert hall (symphonic)**, **Opera
+  house** and **Chamber music**: 2.0, 1.5 and 1.6 s at mid band, rising toward the bass,
+  ±10 %. They are his preferred ranges read as one curve each, approximate.
+  `js/acoustics/reverbTargets.js` `RT_TARGETS`, `rtTarget`.
 - [Reverb Time, the area optimiser](../06-reverb-time.md#the-area-optimiser):
   `js/acoustx/classic.js` `optimiseAreas`.
-- The app does not compute a bass ratio. The per-band RTs it needs are in the Reverb Time Data
-  View and in [engine chapter 4](../../acoustics/04-reverberation.md).
+- Reverb Time, **Type** tab, *Hall Checks (Beranek)*: the mid-band RT and the bass ratio of
+  the chosen formula against his ranges, and in the report a pointer to the ITDG;
+  `js/acoustx/references.js` `bassRatio`.
+- Ray Tracing, **Time** tab, *Precedence & Echo (Haas)*: the initial-time-delay gap of the
+  traced arrivals; `references.js` `haasCheck`.
 - The ITDG is in each microphone's report, `js/acoustics/analysis.js` `micReport`
   (`itdgMs`, [chapter 9 §9.3](../../acoustics/09-echogram-iso3382.md#93-mic-report)).
   Lateral energy, which later replaced much of the ITDG's role, is
   [§9.6](../../acoustics/09-echogram-iso3382.md#96-lateral-energy-fraction-apparent-source-width),
   `lateralFraction`.
-- The rating scheme of idea 6 is not implemented.
+- The rating scheme of idea 6 is not implemented: the app gives his measurable parts (ITDG,
+  mid RT, bass ratio), not the weighted score.
+- 📖 in the app: the groups *Criteria Type* and *Hall Checks (Beranek)* open this report from
+  their pop-up.

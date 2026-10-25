@@ -3,7 +3,7 @@
 How long does the room take to decay by 60 dB, band by band, and how does that compare with what a room of its kind should have? Reverb Time sizes the treatment that gets it there.
 
 **Tabs:**
-- **Type:** the criteria, or your own per band.
+- **Type:** the criteria, or your own per band; the hall checks (Beranek).
 - **RT60:** the formula, or a measured empty room.
 - **Surface:** pick a surface, set its base material, lay further materials on it by area.
 - **Optimize:** the absorber overview and the area optimiser.
@@ -65,7 +65,34 @@ The measurement already contains the air, so none is added. **No Measured RT60**
 | Studio | 0.4–0.6 s, flat or rising slightly in the bass (a rule of thumb) |
 | Isolation booth | 0.2–0.3 s (a rule of thumb) |
 | Dolby surround cinema | the volume-dependent 500 Hz value of Dolby's cinema guidance, ×1.4 at 125 Hz, ±20 % (design intent) |
+| Concert hall (symphonic) | mid-band 2.0 s, rising toward the bass and falling in the treble, ±10 % (approximately after Beranek 1962) |
+| Opera house | mid-band 1.5 s, rising toward the bass and falling in the treble, ±10 % (approximately after Beranek 1962) |
+| Chamber music | mid-band 1.6 s, ±10 % (approximately after Beranek 1962) |
 | User | your own six values, ±10 % (**Edit user defined RT60 criteria**) |
+
+The three rooms for music read [Beranek 1962](references/09-beranek-1962-music-acoustics-architecture.md)'s preferred ranges as one curve each. They do not depend on the volume. Each is the mid-band (500 Hz–1 kHz) time $T_\text{mid}$ times a shape per band:
+
+| Criteria | $T_\text{mid}$ | 125 | 250 | 500 | 1k | 2k | 4k |
+|---|---|---|---|---|---|---|---|
+| Concert hall (symphonic) | 2.0 s | ×1.25 | ×1.12 | ×1 | ×1 | ×0.92 | ×0.8 |
+| Opera house | 1.5 s | ×1.2 | ×1.1 | ×1 | ×1 | ×0.92 | ×0.8 |
+| Chamber music | 1.6 s | ×1.2 | ×1.1 | ×1 | ×1 | ×0.92 | ×0.8 |
+
+*Example:* the concert hall's target is 2.50 / 2.24 / 2.00 / 2.00 / 1.84 / 1.60 s, with limits from 2.25 / 2.02 / 1.80 / 1.80 / 1.66 / 1.44 s to 2.75 / 2.46 / 2.20 / 2.20 / 2.02 / 1.76 s. The opera house's is 1.80 / 1.65 / 1.50 / 1.50 / 1.38 / 1.20 s, and chamber music's 1.92 / 1.76 / 1.60 / 1.60 / 1.47 / 1.28 s.
+
+## Hall checks (Beranek)
+
+**Type → Hall Checks (Beranek)**. [Beranek 1962](references/09-beranek-1962-music-acoustics-architecture.md) rated 54 halls from interviews with conductors and critics, and tied the ratings to things that can be measured. Two of them are computed here from the reverb times of the chosen method (or the measured basis), $T_{125} \dots T_{4000}$:
+
+$$T_\text{mid} = \frac{T_{500} + T_{1000}}{2}, \qquad \text{BR} = \frac{T_{125} + T_{250}}{T_{500} + T_{1000}}$$
+
+`references.js` `bassRatio`. The group prints each beside his ranges:
+- **Mid-band RT:** symphonic halls about 1.8–2.2 s, opera 1.3–1.6 s.
+- **Bass ratio:** about 1.1–1.45 for warmth when $T_\text{mid}$ is under 1.8 s, and 1.1–1.25 when it is over 2.2 s. Above 1 the bass rings longer than the middle.
+
+The report adds a third, the **initial-time-delay gap**: the first reflection's lag behind the direct sound, which Beranek preferred at about 20 ms or less. It comes from a trace, so it is on the Ray Tracing window's Time tab ([chapter 5](05-ray-tracing.md#precedence-and-echo-haas)).
+
+*Example:* the measured room above, 0.55 / 0.42 / 0.40 / 0.40 / 0.40 / 0.41 s, has $T_\text{mid}$ = 0.40 s and BR = 1.21. The three music targets have bass ratios of 1.19 (concert hall), 1.15 (opera) and 1.15 (chamber).
 
 ## The area optimiser
 

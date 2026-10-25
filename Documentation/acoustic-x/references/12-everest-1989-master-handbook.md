@@ -47,7 +47,9 @@ axial modes as audible.
 $c = 343$ m/s (from 28.6 Hz, $L_1$, to 183.8 Hz, $H_3$). Find the coincidence: $H_2$ and $W_3$
 both at 122.5 Hz, because $4.2 = 1.5 \times 2.8$. Find the four gaps over 20 Hz. Then open
 Modal Response on the same room and check your list against its mode table
-([chapter 3](../03-modal-response.md#room-modes)).
+([chapter 3](../03-modal-response.md#room-modes)), and against the **Criteria** tab's *Axial
+Spacing (Everest)*. That check runs to 300 Hz, so at 343 m/s it finds six gaps over 20 Hz
+and three coincident pairs (122.5, 245 and 285.8 Hz).
 
 ### 3. Proportions are a first pass
 
@@ -58,7 +60,9 @@ point, to be checked by listing the modes for the actual size of the room.
 
 **Challenge.** In Modal Response, apply Louden's 1 : 1.4 : 1.9 with $H = 2.8$ m, and then
 Sepmeyer B, 1 : 1.28 : 1.54 ([chapter 3](../03-modal-response.md#favourable-ratios)). For each,
-find whether Bonello's criterion passes, and list the axial gaps over 20 Hz as in idea 2.
+find whether Bonello's criterion passes, and read the axial gaps over 20 Hz in the
+**Criteria** tab's *Axial Spacing (Everest)*. At 343 m/s both pass Bonello, and each has three
+gaps over 20 Hz below 200 Hz (five below 300 Hz, where the group stops).
 
 ### 4. Reverberation is weak in a small room, but still useful
 
@@ -138,6 +142,16 @@ early reflections controlled) is still how small rooms are taught.
 - [Ray Tracing](../05-ray-tracing.md): `classic.js` `traceRays`, `polarEnergy`.
 - [Engine chapter 15 §15.5, Treatment](../../acoustics/15-advisor.md#155-treatment): the
   advisor's absorber-depth, bass-trap and diffusion checks.
-- The app does not flag axial-mode gaps over 20 Hz. It judges spacing by Bonello's criterion
-  and its own spread score ([engine chapter 5 §5.2](../../acoustics/05-modes.md#52-third-octave-counts-and-bonellos-criterion)).
-  It has no Helmholtz-resonator design and no LEDE layout as such.
+- Modal Response, **Criteria** tab, *Axial Spacing (Everest)*: the axial modes below
+  300 Hz, every gap over 20 Hz and every pair within 0.5 %; `js/acoustx/references.js`
+  `axialCheck`. The same tab draws the *Bolt Area* the book reprints (`boltMap`). Bonello and
+  the app's spread score ([engine chapter 5 §5.2](../../acoustics/05-modes.md#52-third-octave-counts-and-bonellos-criterion))
+  still decide the optimiser.
+- Calculator, **Res** tab, *Resonators*: Helmholtz, perforated and membrane absorbers;
+  `references.js` `helmholtz`, `perforated`, `membrane`.
+- The room library has a *LEDE control room* shape (`roomLibrary.js`), a splayed plan with no
+  treatment laid; there is no LEDE layout with its absorption and diffusion.
+- 📖 in the app: the groups *Favourable Room Ratios*, *Bolt Area*, *Axial Spacing (Everest)*,
+  *Display Parameter*, *Speaker Critical Frequency*, *Specular Absorbers*, *Trace*, *Criteria
+  Type*, *RT60 Of Empty Room (s)*, *Absorption*, *Comb-Filter* and *Resonators* open this
+  report from their pop-up.

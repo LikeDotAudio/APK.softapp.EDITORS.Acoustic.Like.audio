@@ -59,7 +59,9 @@ garage that is twice as long as it is high is a poor start, and a stud wall in t
 can fix it.
 
 **Challenge.** A garage is $6 \times 3 \times 2.4$ m. Open Modal Response and read Bonello's
-verdict ([chapter 3](../03-modal-response.md#bonellos-criterion)). Then let the optimiser move
+verdict ([chapter 3](../03-modal-response.md#bonellos-criterion)), and the **Criteria** tab's
+*Axial Spacing (Everest)*: at 343 m/s it finds seven gaps of 28.6 Hz and seven coincident
+pairs below 300 Hz. Then let the optimiser move
 only the length, as an inner wall would, within 4.5 to 6 m, and find the best length it offers
 ([chapter 3, the room-size optimiser](../03-modal-response.md#the-room-size-optimiser)).
 
@@ -125,5 +127,14 @@ current small-studio guides still teach.
   `optimiseAreas`.
 - [Engine chapter 11, First reflections](../../acoustics/11-first-reflections.md) and
   [chapter 9 §9.7, The reflection-free zone](../../acoustics/09-echogram-iso3382.md#97-the-reflection-free-zone).
+- Modal Response, **Criteria** tab, *Axial Spacing (Everest)*: the axial list and its gaps
+  over 20 Hz; `js/acoustx/references.js` `axialCheck`.
+- Calculator, **Res** tab, *Resonators*: the panel and Helmholtz absorbers the book builds;
+  `references.js` `helmholtz`, `perforated`, `membrane`.
+- Calculator, **NC** tab, *Background Noise (NC)*: the NC rating of an octave spectrum you
+  type, and targets by room (recording studio NC 15–20); `references.js` `ncRating`,
+  `NC_TARGETS`.
 - Site noise surveys, ventilation noise, door seals and construction detailing have no
-  counterpart in the app. The app has no noise-criterion target for the room's inside.
+  counterpart in the app.
+- 📖 in the app: the groups *Axial Spacing (Everest)*, *Resonators* and *Background Noise
+  (NC)* open this report from their pop-up.

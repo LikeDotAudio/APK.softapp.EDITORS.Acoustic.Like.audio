@@ -106,3 +106,4 @@ that the decay will be longer than the mean suggests.
   `analysis.js` `flutterRisk`, the same hard-pair problem seen as an echo.
 - The app's Fitzroy takes no scattering, as the original did not. The engine's own RT
   (`room.js` `buildRoom`) uses Sabine and Eyring with air, not Fitzroy.
+- 📖 in the app: the group *Calculation Method* opens this report from its pop-up.

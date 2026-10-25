@@ -35,7 +35,9 @@ the panel absorbs most.
 
 **Challenge.** A perforated panel with open area $P = 0.02$, holes of 6 mm in a 6 mm board
 ($L' \approx 6 + 0.8\times6 = 10.8$ mm) over a 100 mm cavity: compute
-$f_0 = \frac{c}{2\pi}\sqrt{P/(L' d)}$ at 20 °C and find about 235 Hz. Find the
+$f_0 = \frac{c}{2\pi}\sqrt{P/(L' d)}$ at 20 °C and find about 235 Hz. Check it in the
+Calculator's **Res** tab, *Resonators* (open area 2 %, gap 100 mm, panel 6 mm, holes 6 mm):
+235.1 Hz. Find the
 `perforated-wood` material in the app's palette (Resonator category) and say in which octave
 band its α peaks.
 
@@ -73,9 +75,12 @@ consonance. In equal temperament the coincidences are near, not exact, and slow 
 remain.
 
 **Challenge.** In equal temperament A3 is 220 Hz and E4 is 329.63 Hz. Find the beat rate
-between A3's 3rd partial and E4's 2nd (about 0.74 Hz). The app has no window for this.
-The nearest thing is the Calculator's **Add** tab: two equal tones add to +6 dB when in
-phase and cancel when out of phase, which is the swing a beat goes through.
+between A3's 3rd partial and E4's 2nd (about 0.74 Hz). In the Calculator's **Tone** tab,
+*Two Tones*, enter the two partials, 660 and 659.26 Hz: Beats reads 0.7 Hz. Enter the
+fundamentals, 220 and 329.63 Hz, and the Interval line reads 700.0 cents, a fifth 3:2 less
+1.9 cents. Its Beats line then reads 109.6 Hz, too far apart to beat: the beat you hear
+lives between the partials, not the fundamentals. The **Add** tab shows the swing a beat goes
+through: two equal tones add to +6 dB in phase and cancel out of phase.
 
 ### 5. Combination tones
 
@@ -84,8 +89,10 @@ audibly the difference tone $f_2 - f_1$. Helmholtz traced them to nonlinearity i
 mechanism, and also found weaker summation tones at $f_1 + f_2$.
 
 **Challenge.** By hand: two tones at 800 and 1000 Hz. Find the difference tone and the
-cubic difference tone $2f_1 - f_2$, and say which is lower. The app is linear throughout, so
-it has nothing for this.
+cubic difference tone $2f_1 - f_2$, and say which is lower. Check them in the Calculator's
+**Tone** tab, *Two Tones*: Combination tones reads 200.0, 600.0 and, for the sum, 1800.0 Hz.
+The tab computes where the tones fall; the app's sound models are linear and never make
+them.
 
 ## Since then
 
@@ -101,10 +108,16 @@ to be the more audible of the combination tones.
 
 - Idea 1: [engine chapter 3, materials](../../acoustics/03-materials-patches.md#31-what-a-material-is):
   `perforated-wood`, `slat-resonator` and `membrane-trap` in `js/acoustics/materials.js`.
-  They carry tabulated α. Nothing computes a resonance from the panel's geometry.
+  They carry tabulated α. The Calculator's **Res** tab, *Resonators*, computes the resonance
+  from the geometry (`js/acoustx/references.js` `helmholtz`, `perforated`, `membrane`), but
+  not an α curve, and the materials do not follow it.
 - Idea 2: [Modal Response, room modes](../03-modal-response.md#room-modes).
 - Idea 3: [Modal Response, Bonello's criterion](../03-modal-response.md#bonellos-criterion);
   `js/acoustics/modalDistribution.js` `thirdOctaveBands`, `thirdOctaveCounts`.
-- Idea 4: [Calculator, Add](../07-calculator.md#add--level-addition) shows the coherent sum;
-  there is nothing on consonance.
-- Idea 5: nothing.
+- Idea 4: [Calculator, Add](../07-calculator.md#add--level-addition) shows the coherent sum.
+  Calculator, **Tone** tab, *Two Tones*: the beat rate, the interval in cents with the nearest
+  just interval, and the roughness after Plomp and Levelt, 0 to 1; `references.js`
+  `twoTones`, `noteOf`, `JUST`.
+- Idea 5: the same *Two Tones* group gives the difference, cubic difference and sum tones
+  (`twoTones`), as frequencies only.
+- 📖 in the app: the groups *Resonators* and *Two Tones* open this report from their pop-up.

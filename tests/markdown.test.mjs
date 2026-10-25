@@ -32,3 +32,9 @@ test('every documentation chapter renders, with its math kept whole', () => {
       assert.doesNotMatch(html.replace(/data-tex="[^"]*"/g, ''), /\$\$/, `${f}: unclosed $$`);
     }
 });
+
+test('a block quote over several lines is one quote, its > marks gone', () => {
+  const html = renderMarkdown('> Bolt, R. H., "Note",\n> *J. Acoust. Soc. Am.*, 1946.\n\nAfter.');
+  assert.equal(html.split('\n')[0], '<blockquote><p>Bolt, R. H., &quot;Note&quot;, <i>J. Acoust. Soc. Am.</i>, 1946.</p></blockquote>');
+  assert.ok(!html.includes('&gt;'));
+});

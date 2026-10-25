@@ -33,7 +33,9 @@ trace of the sound wave in air, the wall lets sound through more easily, and $R$
 For thin, stiff boards such as gypsum it lies in the upper midrange.
 
 **Challenge.** Two layers of 12.5 mm gypsum board, about 20 kg/m² in all, at 500 Hz: find
-$R \approx 33$ dB by hand. In the app's isolation settings, read the single-stud wall's
+$R \approx 33$ dB by hand. The Calculator's **Wall** tab, *Mass Law & Rw*, opens on this
+case: two 10 kg/m² leaves read 33.0 dB at 500 Hz, and one 12.5 mm gypsum board has its
+coincidence at 2804 Hz. In the app's isolation settings, read the single-stud wall's
 octave TL (17, 31, 40, 46, 39, 43 dB from 125 Hz to 4 kHz). Find where it falls from one
 octave to the next, and say whether that fits a coincidence dip in the boards.
 
@@ -47,7 +49,8 @@ with $m'$ in kg/m² and $d$ in m. Below $f_0$ the pair acts as one mass. Near it
 is worse than the mass law. Above it, insulation rises much faster than for a single wall,
 provided the leaves are not tied together and the cavity is damped with mineral wool.
 
-**Challenge.** Two 10 kg/m² boards on a 100 mm cavity: find $f_0 \approx 85$ Hz. Then
+**Challenge.** Two 10 kg/m² boards on a 100 mm cavity: find $f_0 \approx 85$ Hz, and check it
+in the Calculator's **Wall** tab (85 Hz). Then
 compare the app's single-stud and double-stud wall builds at 125 Hz and 1 kHz, and find how
 much the decoupled build gains in each band.
 
@@ -79,7 +82,8 @@ with $m'$ in kg/m² and $d$ in cm. Perforated and slotted panels work as Helmhol
 resonators ([report 23](23-helmholtz-1954-sensations-of-tone.md)). Mineral wool in the
 cavity broadens the band and lowers the peak.
 
-**Challenge.** A 6 kg/m² panel on a 50 mm cavity: find $f_0 \approx 110$ Hz. In Reverb
+**Challenge.** A 6 kg/m² panel on a 50 mm cavity: find $f_0 \approx 110$ Hz, and check it in
+the Calculator's **Res** tab, *Resonators* (109.5 Hz). In Reverb
 Time, attach the `membrane-trap` material to a wall and read its α chart. Find in which
 octave band it peaks.
 
@@ -108,14 +112,20 @@ rooms. ISO 3382-1 (2009) standardised $D_{50}$, $C_{80}$ and the other energy me
 
 - Ideas 1 and 2: [engine chapter 12.2, walls](../../acoustics/12-isolation.md#122-walls-transmission-loss-per-band);
   `js/acoustics/isolation.js` `wallTl`, `js/acoustics/wallPlan.js` `stcRating`. The wall
-  builds carry tabulated TL; the app does not compute TL from mass, and rates by STC, not
-  $R'_w$.
+  builds carry tabulated TL and are rated by STC.
+- Ideas 1 and 2: Calculator, **Wall** tab, *Mass Law & Rw*: the mass law, the coincidence
+  frequency, the mass–air–mass resonance, and the ISO 717-1 Rw of the mass-law curve;
+  `js/acoustx/references.js` `massLaw`, `PLATES`, `coincidence`, `massAirMass`, `ratingRw`.
+  Rw is the laboratory figure; the field $R'_w$ with flanking is not computed.
 - Idea 3: [engine chapter 12.1, the floor](../../acoustics/12-isolation.md#121-the-floor-a-mass-on-a-damped-spring);
   `isolation.js` `transmissibility`, `floorF0`.
 - Idea 4: `membrane-trap`, `perforated-wood`, `slat-resonator` in
   `js/acoustics/materials.js`, and [chapter 3.4](../../acoustics/03-materials-patches.md#34-construction-adds-a-little-bass-absorption)
-  for the bass absorption a light build adds. No resonance is computed from $m'$ and $d$.
+  for the bass absorption a light build adds. The Calculator's **Res** tab computes the
+  resonance from $m'$ and $d$ (`references.js` `membrane`, `perforated`, `helmholtz`); the
+  materials keep their tabulated α.
 - Idea 5: [Reverb Time, formulas and criteria](../06-reverb-time.md#criteria)
   (`js/acoustics/reverbTargets.js` `rtFormulas`, `rtTarget`);
   [engine chapter 9.2, ISO 3382-1 parameters](../../acoustics/09-echogram-iso3382.md#92-iso-3382-1-parameters)
   (`js/acoustics/analysis.js` `iso3382`).
+- 📖 in the app: the group *Mass Law & Rw* opens this report from its pop-up.

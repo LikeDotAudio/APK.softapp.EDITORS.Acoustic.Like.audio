@@ -47,7 +47,8 @@ each acts as its own short tube.
 
 **Challenge.** Take $N = 7$ and $f_0 = 500$ Hz ($\lambda_0 = 0.686$ m). Work out the
 sequence (0, 1, 4, 2, 2, 4, 1) and the depths in mm. You should find 0, 49, 196, 98, 98,
-196, 49 mm. The deepest well sets the panel's depth, about 200 mm before the back plate.
+196, 49 mm. The deepest well sets the panel's depth, about 200 mm before the back plate. Check
+the depths in the Calculator's **QRD** tab with 7 wells at 500 Hz.
 
 ### 3. A diffuser works in a band
 
@@ -58,7 +59,8 @@ $f_\max \approx c/2w$ for well width $w$. And a periodic row only scatters into 
 $\sin\theta_m = m\lambda/(Nw)$, so a period shorter than one wavelength sends sound back
 only in the specular direction.
 
-**Challenge.** For 50 mm wells, find $f_\max$ (3430 Hz). For a 7-well period of 50 mm
+**Challenge.** For 50 mm wells, find $f_\max$ (3430 Hz; the **QRD** tab reads 3432 Hz at
+20 °C). For a 7-well period of 50 mm
 wells, $Nw = 0.35$ m, find the lowest frequency with a first diffraction lobe, where
 $\lambda = Nw$ (980 Hz). So a single 7-well period of this design scatters little at its
 own 500 Hz design frequency. Say what that implies for building a wall of several periods
@@ -111,5 +113,8 @@ diffuser most rooms reach for.
   `analysis.js` `flutterRisk` counts scattering as well as absorption.
 - [Reverb Time, Surfaces and materials](../06-reverb-time.md#surfaces-and-materials): the
   RPG rows in `js/acoustx/database.js` `ACOUSTX_ABSORBERS`.
-- The app does not design a diffuser. There is no QRD depth calculator and no model of
-  diffraction lobes: a diffuser is a material with $\alpha$ and $s$ per band.
+- Calculator, **QRD** tab, *QRD Diffuser*: the residues, the well depths, the band from the
+  design frequency up to $c/2w$, and the period; `js/acoustx/references.js` `qrd`, `isPrime`.
+- There is no model of diffraction lobes. In the rooms a diffuser is still a material with
+  $\alpha$ and $s$ per band.
+- 📖 in the app: the group *QRD Diffuser* opens this report from its pop-up.

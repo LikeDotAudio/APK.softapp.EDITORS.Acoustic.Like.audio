@@ -84,3 +84,7 @@ worst rooms.
 - [Engine chapter 5, Room modes and their distribution](../../acoustics/05-modes.md).
 - The favourable-ratio list and the optimiser in the Modal Response window both report
   pass or fail against it.
+- Modal Response, **Criteria** tab, *Bolt Area*: every ratio on the map is coloured green or
+  red by whether it passes at the room's height; `js/acoustx/references.js` `boltMap`.
+- 📖 in the app: the groups *Bonello Criterion* and *Modes per 1/3 Octave — actual against
+  ideal* open this report from their pop-up.

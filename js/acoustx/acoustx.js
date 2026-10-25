@@ -46,6 +46,45 @@ import {
 } from './classic.js';
 import { DEFAULT_USER, VIEWS, boxPath, drawBox, fit, nudgeUser, project } from './roomView.js';
 import { renderMarkdown } from './markdown.js';
+import {
+  MEDIA,
+  NC_BANDS,
+  NC_TARGETS,
+  PLATES,
+  R_BANDS,
+  acousticGain,
+  alcons,
+  angularDistribution,
+  axialCheck,
+  bandDecay,
+  bassRatio,
+  boltMap,
+  ceilingSpacing,
+  closedBox,
+  coincidence,
+  electrical,
+  haasCheck,
+  helmholtz,
+  impedanceStep,
+  isPrime,
+  massAirMass,
+  massLaw,
+  membrane,
+  modeAngles,
+  modeDecay,
+  ncRating,
+  noteOf,
+  perforated,
+  piston,
+  qrd,
+  ratingRw,
+  schroederDecay,
+  sones,
+  spacingIndex,
+  splFromPower,
+  twoTones,
+} from './references.js';
+import { REPORTS, topicFor } from './topics.js';
 
 /**
  * ACOUSTIC X (CLASSIC)
@@ -61,7 +100,10 @@ import { renderMarkdown } from './markdown.js';
  *   MODAL RESPONSE   how the box's modes spread against the count a room of
  *                    that volume should have (Bolt), the Bonello check, the
  *                    dimension optimiser, and the pressure of one mode or a
- *                    band of them, on a plane or through the room.
+ *                    band of them, on a plane or through the room; the
+ *                    Criteria tab (Bolt's map, Louden's index, Everest's
+ *                    axial check, Sepmeyer's directions) and each mode's
+ *                    own decay (Knudsen).
  *   SBIR             a speaker's boundary interference at the listener above
  *                    its LF cut-off, the crossover check, an absolute or
  *                    negative-only placement search, the modes the position
@@ -70,13 +112,20 @@ import { renderMarkdown } from './markdown.js';
  *   RAY TRACING      equal-area rays from each speaker, followed for up to
  *                    fourteen bounces and caught at the listener: energy by
  *                    surface and by time, the 10 dB window, the polar energy,
- *                    the room's figures and the comb nulls by surface.
+ *                    the room's figures and the comb nulls by surface; the
+ *                    Time tab: precedence and echo (Haas), the decay and
+ *                    EDT / T20 / T30 (Schroeder).
  *   REVERB TIME      materials laid on each surface by area, four formulas
  *                    or a measured empty room, criteria by room type or your
  *                    own, and the optimiser that tries every combination of
- *                    up to five material areas.
+ *                    up to five material areas; Beranek's hall checks.
  *   CALCULATOR       units, spreading, level addition, frequency /
- *                    wavelength / period, comb filters.
+ *                    wavelength / period, comb filters; and from the
+ *                    suggested references: walls (mass law, Rw),
+ *                    resonators, QRD diffusers, NC, speech and gain,
+ *                    pistons and boxes, impedance, two tones, loudness.
+ *   TOPICS           a 📖 on a group's legend: where the idea came from
+ *                    and which reference to read (topics.js).
  *   GENERAL          temperature (the speed of sound) and humidity (the air's
  *   PARAMETERS       absorption), the Display Axis, the modal weights, the
  *                    SBIR search limits and surround options.
@@ -127,7 +176,17 @@ function h(tag, attrs = {}, ...kids) {
   for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid instanceof Node ? kid : String(kid));
   return el;
 }
-const group = (legend, ...kids) => h('fieldset', {}, h('legend', {}, legend), ...kids);
+/** Opens the topic pop-up for a legend; set by createAcousticX. */
+let openTopic = null;
+/**
+ * A fieldset. When topics.js has a topic for its legend, the legend grows a
+ * 📖 button that opens its history and sources.
+ */
+const group = (legend, ...kids) => {
+  const topic = topicFor(legend);
+  const book = topic ? h('button', { class: 'acx-topic', title: 'History and sources', onclick: (e) => (e.stopPropagation(), openTopic?.(legend, e.currentTarget)) }, '📖') : null;
+  return h('fieldset', {}, h('legend', {}, legend, book), ...kids);
+};
 /** A sunken read-only value. Its own class: the app's .readout is absolutely placed, and must never reach in here. */
 const readout = (title) => h('span', { class: 'acx-ro', title });
 const fmt = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : '—');
@@ -595,6 +654,8 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         tabEls[k].classList.toggle('on', k === n);
         pages[k].hidden = k !== n;
       }
+      // a page's charts can only be drawn once it shows
+      requestAnimationFrame(() => !win.el.hidden && win.render());
     };
     for (const n of names) {
       tabEls[n] = h('div', { class: 'acx-tab', onclick: () => show(n) }, n);
@@ -934,7 +995,30 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     const holdC = h('input', { type: 'checkbox', onchange: () => (S.hold = holdC.checked) });
     win.syncers.push(() => (holdC.checked = S.hold));
 
-    const T = tabs(win, ['Room', 'Optimize', 'Mode 1', 'Mode 2']);
+    // ── Criteria tab, and the decay on Mode 1: what the other references ask of the modes
+    const decayC = chartBox('flex:none;height:120px');
+    const decayNote = h('div');
+    const boltC = chartBox('flex:none;height:210px');
+    const boltNote = h('div');
+    const spacingRo = readout('Spread of the gaps between the lowest 30 modes (coefficient of variation): 0 is perfectly even');
+    const ratioRank = h('div');
+    const axialBox = h('div', { class: 'small' });
+    const angleTable = h('tbody');
+    let boltKey = '';
+    let boltRes = null;
+    boltC.cv.addEventListener('click', (e) => {
+      if (!boltC.map) return;
+      const r = boltC.cv.getBoundingClientRect();
+      const wr = boltC.map.Xinv(e.clientX - r.left);
+      const lr = boltC.map.Yinv(e.clientY - r.top);
+      if (!(wr >= 1 && lr >= wr)) return;
+      M.W = M.H * wr;
+      M.L = M.H * lr;
+      dimsChanged();
+      edited();
+    });
+
+    const T = tabs(win, ['Room', 'Optimize', 'Mode 1', 'Mode 2', 'Criteria']);
     const ratioList = h('select', { class: 'list', size: 7 }, FAVOURABLE_RATIOS.filter((r) => r.ratio).map((r) => h('option', { value: r.id }, `${r.name}   ${r.ratio.map((x) => x.toFixed(2)).join(' : ')}`)));
     T.pages.Room.append(
       group('Enter Input Data', dimRow('Room Length', 'L', 'Front wall to back wall'), dimRow('Room Width', 'W', 'Left wall to right wall'), dimRow('Room Height', 'H', 'Floor to ceiling'), unitsRow(win)),
@@ -970,6 +1054,13 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         h('div', { class: 'btns' }, h('button', { onclick: getFreq, title: 'Take the mode picked on the chart' }, 'Get freq.')),
       ),
       group('Display Resolution', lenField(win, 'Display res.', () => S.dres, (v) => (S.dres = clamp(v, 0.05, 2)), { local: true, title: 'Grid spacing of the pressure display — smaller is finer and slower' })),
+      group('Mode Decay (Knudsen)', decayC.box, h('div', { class: 'small' }, decayNote)),
+    );
+    T.pages.Criteria.append(
+      group('Bolt Area', boltC.box, h('div', { class: 'small muted' }, boltNote)),
+      group('Spacing Index (Louden)', h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'This room'), spacingRo), h('div', { class: 'scroll small', style: 'max-height:84px' }, ratioRank)),
+      group('Axial Spacing (Everest)', axialBox),
+      group('Mode Directions (Sepmeyer)', h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['Angle', 'Elevation', 'Azimuth'].map((t) => h('th', {}, t)))), angleTable)),
     );
     T.pages['Mode 2'].append(
       group('Display Type', ...radios('acx-md-disp', 'disp', [['3d', '3-Dimensional'], ['horizontal', 'Horizontal Plane'], ['length', 'Vertical Plane (Length)'], ['width', 'Vertical Plane (Width)']], () => (S.disp !== '3d' && S.RV.view === '3d' ? 0 : 0, win.refresh())), atRow),
@@ -1029,7 +1120,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       'div',
       { class: 'acx-pane' },
       group('Data View Manager', h('div', { class: 'manager' }, ...sortR), h('div', { class: 'manager' }, ...ordR, h('button', { onclick: () => ((S.listed = S.sort), win.render()), title: 'Show only these modes on the Chart View, and in the report' }, 'List data'))),
-      h('div', { class: 'scroll', style: 'flex:1;min-height:0' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['#', 'Hz', 'Nx', 'Ny', 'Nz', 'Type'].map((t) => h('th', {}, t)))), modeTable)),
+      h('div', { class: 'scroll', style: 'flex:1;min-height:0' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['#', 'Hz', 'Nx', 'Ny', 'Nz', 'Type', 'T60 s', 'Az°', 'El°'].map((t) => h('th', {}, t)))), modeTable)),
       group('Modes per 1/3 Octave — actual against ideal', h('div', { class: 'scroll', style: 'max-height:150px' }, h('table', { class: 'grid' }, h('thead', {}, h('tr', {}, ['Band', 'Edges Hz', 'Actual', 'Ideal', 'Deviation', ''].map((t) => h('th', {}, t)))), bandTable))),
     );
     const strip = viewStrip(win, { room: roomPane, chart: chartPane, data: dataPane });
@@ -1051,7 +1142,18 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       const b = bonello(scaled, 200);
       const counts = b.counts;
       const ideal = idealCounts(dims(), counts, cNow());
-      S.res = { modes, bonello: b, counts, ideal, k };
+      // each mode's own decay, from the walls it presses on (α at 125 Hz, the lowest band), and its direction
+      const a125 = alpha125();
+      for (const m of modes) {
+        Object.assign(m, modeDecay(dims(), m, a125, cNow()));
+        m.ang = modeAngles(dims(), m);
+      }
+      S.res = { modes, bonello: b, counts, ideal, k, axial: axialCheck(scaled), spacing: spacingIndex(dims()), angles: angularDistribution(dims(), modes) };
+      const bk = `${scaled.H.toFixed(3)}`;
+      if (bk !== boltKey) {
+        boltKey = bk;
+        boltRes = boltMap(scaled.H, { n: 40 });
+      }
       if (S.sel) S.sel = modes.find((m) => m.nx === S.sel.nx && m.ny === S.sel.ny && m.nz === S.sel.nz) ?? null;
       const fm = fieldModes();
       const at = planeAt();
@@ -1071,6 +1173,8 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
           { heading: 'Bonello criterion', text: res.bonello.ok ? 'Passes: the count per third-octave never falls, and no two modes coincide in a band of fewer than five.' : res.bonello.warnings.join('; ') },
           { heading: `Modes below 200 Hz — ${S.listed}`, head: ['#', 'Hz', 'Nx', 'Ny', 'Nz', 'Type'], rows: shown.map((m, i) => [i + 1, fmt(m.f, 1), m.nx, m.ny, m.nz, m.type]) },
           { heading: 'Modes per 1/3 octave', head: ['Band Hz', 'Low', 'High', 'Actual', 'Ideal', 'Deviation'], rows: res.counts.map((b, i) => [b.fc, fmt(b.lo, 1), fmt(b.hi, 1), b.count, fmt(res.ideal[i], 1), fmt(b.count - res.ideal[i], 1)]) },
+          { heading: 'Other criteria', rows: [['Spacing index (Louden, lowest 30 modes)', fmt(res.spacing, 3)], ['Axial modes below 300 Hz (Everest)', axialText(res.axial)]] },
+          { heading: 'Mode decay and direction', text: 'Each mode’s T60 from the walls it presses on, α at 125 Hz (Morse & Bolt). Azimuth in plan from the length axis; elevation above the floor (Sepmeyer).', head: ['Hz', 'Nx Ny Nz', 'T60 s', 'Bandwidth Hz', 'Azimuth°', 'Elevation°'], rows: shown.map((m) => [fmt(m.f, 1), `${m.nx} ${m.ny} ${m.nz}`, fmt(m.t60, 2), fmt(m.bw, 2), fmt(m.ang.azimuth, 0), fmt(m.ang.elevation, 0)]) },
         ],
       };
     };
@@ -1093,7 +1197,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       // data view
       const sorted = res.modes.filter((m) => S.sort === 'all' || m.type === S.sort);
       if (S.order === 'desc') sorted.reverse();
-      modeTable.replaceChildren(...sorted.map((m, i) => h('tr', { class: m === S.sel ? 'sel' : '', onclick: () => ((S.sel = m), Object.assign(S.idx, { nx: m.nx, ny: m.ny, nz: m.nz }), (S.multi = false), win.refresh()) }, h('td', {}, i + 1), h('td', {}, fmt(m.f, 1)), h('td', {}, m.nx), h('td', {}, m.ny), h('td', {}, m.nz), h('td', {}, m.type))));
+      modeTable.replaceChildren(...sorted.map((m, i) => h('tr', { class: m === S.sel ? 'sel' : '', onclick: () => ((S.sel = m), Object.assign(S.idx, { nx: m.nx, ny: m.ny, nz: m.nz }), (S.multi = false), win.refresh()) }, h('td', {}, i + 1), h('td', {}, fmt(m.f, 1)), h('td', {}, m.nx), h('td', {}, m.ny), h('td', {}, m.nz), h('td', {}, m.type), h('td', {}, fmt(m.t60, 2)), h('td', {}, fmt(m.ang.azimuth, 0)), h('td', {}, fmt(m.ang.elevation, 0)))));
       bandTable.replaceChildren(
         ...res.counts.map((b, i) => {
           const drop = i > 0 && res.counts.slice(0, i).some((x) => x.count > 0) && b.count < res.counts[i - 1].count;
@@ -1113,7 +1217,89 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         drawThirds(res.counts, res.ideal);
       }
       if (win.pane === 'room') drawField();
+      // Criteria tab
+      spacingRo.textContent = fmt(res.spacing, 3);
+      const ranked = FAVOURABLE_RATIOS.filter((r) => r.ratio).map((r) => ({ r, v: spacingIndex({ H: 1, W: r.ratio[1], L: r.ratio[2] }) })).sort((a, b) => a.v - b.v);
+      ratioRank.replaceChildren(...ranked.map(({ r, v }) => h('div', {}, `${fmt(v, 3)}  ${r.name}  1 : ${fmt(r.ratio[1])} : ${fmt(r.ratio[2])}`)));
+      axialBox.replaceChildren(h('div', { class: res.axial.ok ? '' : 'warn' }, axialText(res.axial)), ...res.axial.gaps.map((g) => h('div', { class: 'warn' }, `• gap ${fmt(g.gap, 1)} Hz between ${fmt(g.lo, 1)} and ${fmt(g.hi, 1)} Hz`)), ...res.axial.close.map((c) => h('div', { class: 'warn' }, `• ${c.a.nx}${c.a.ny}${c.a.nz} and ${c.b.nx}${c.b.ny}${c.b.nz} coincide at ${fmt(c.b.f, 1)} Hz`)));
+      const ad = res.angles;
+      angleTable.replaceChildren(...ad.elevation.map((n, i) => h('tr', {}, h('td', {}, `${i * ad.binDeg}–${(i + 1) * ad.binDeg}°`), h('td', {}, n), h('td', {}, ad.azimuth[i]))));
+      drawBolt();
+      drawDecay(fm);
     };
+    const axialText = (ax) => (ax.ok ? `✓ ${ax.modes.length} axial modes below 300 Hz: no gap over 20 Hz, none coincide.` : `⚠ ${ax.modes.length} axial modes below 300 Hz: ${ax.gaps.length} gap${ax.gaps.length === 1 ? '' : 's'} over 20 Hz, ${ax.close.length} coincident pair${ax.close.length === 1 ? '' : 's'}.`);
+
+    /** Bolt's chart, computed: the mode score over W/H × L/H at this height, the BS.1116 bounds, this room. Click to take a ratio. */
+    function drawBolt() {
+      const p = prep(boltC.cv);
+      if (!p || !boltRes) return;
+      const { ctx, w, h: hh } = p;
+      const a = axes(ctx, w, hh, { title: 'L/H against W/H — brighter scores better', x0: 1, x1: 2, y0: 1, y1: 3, xticks: [1, 1.25, 1.5, 1.75, 2].map((v) => ({ v, label: String(v) })), yticks: [1, 1.5, 2, 2.5, 3], fmtY: (v) => v.toFixed(1), xLabel: 'W/H' });
+      boltC.map = { ...a, Yinv: (py) => 1 + (1 - (py - a.pad.t) / a.ih) * 2 };
+      const { wr, lr, score, ok } = boltRes;
+      const fin = score.flat().filter(Number.isFinite);
+      const lo = Math.min(...fin);
+      const hi = Math.max(...fin);
+      const cw = a.iw / wr.length;
+      const ch = a.ih / lr.length;
+      lr.forEach((l, j) =>
+        wr.forEach((wv, i) => {
+          const v = score[j][i];
+          if (!Number.isFinite(v)) return;
+          const g = Math.round(200 - 170 * Math.sqrt((v - lo) / Math.max(hi - lo, 1e-9)));
+          ctx.fillStyle = ok[j][i] ? `rgb(${Math.round(g * 0.3)},${g},${Math.round(g * 0.3)})` : `rgb(${g},${Math.round(g * 0.4)},${Math.round(g * 0.3)})`;
+          ctx.fillRect(a.X(wv) - cw / 2, a.Y(l) - ch / 2, cw + 0.5, ch + 0.5);
+        }),
+      );
+      // ITU-R BS.1116: 1.1·W/H ≤ L/H ≤ 4.5·W/H − 4, both ratios under 3
+      ctx.strokeStyle = COL.cyan;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(a.X(1), a.Y(1.1));
+      ctx.lineTo(a.X(2), a.Y(2.2));
+      ctx.moveTo(a.X(1.111), a.Y(1));
+      ctx.lineTo(a.X(1.556), a.Y(3));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = COL.yellow;
+      for (const r of FAVOURABLE_RATIOS.filter((x) => x.ratio)) ctx.fillRect(a.X(r.ratio[1]) - 1.5, a.Y(r.ratio[2]) - 1.5, 3, 3);
+      const rw = M.W / M.H;
+      const rl = M.L / M.H;
+      ctx.strokeStyle = COL.white;
+      ctx.beginPath();
+      ctx.arc(a.X(clamp(rw, 1, 2)), a.Y(rl), 4, 0, 2 * Math.PI);
+      ctx.stroke();
+      boltNote.textContent = `This room 1 : ${fmt(rw)} : ${fmt(rl)} (white ring). Green passes Bonello, red fails; yellow dots are the favourable ratios; cyan dashes the ITU-R BS.1116 bounds. Computed at H = ${fmt(toU(M.H))} ${M.units} — click to take a ratio.`;
+    }
+
+    /** The modes of Mode 1 struck together and left to ring: each with its own decay, beating where they are close. */
+    function drawDecay(fm) {
+      const p = prep(decayC.cv);
+      if (!p) return;
+      const { ctx, w, h: hh } = p;
+      const a125 = alpha125();
+      const withD = fm.map((m) => ({ ...m, ...modeDecay(dims(), m, a125, cNow()) }));
+      const t60 = Math.max(0.2, ...withD.map((m) => (Number.isFinite(m.t60) ? m.t60 : 0)));
+      const tMax = Math.min(4, Math.ceil(t60 * 10) / 10);
+      const a = axes(ctx, w, hh, { title: 'Decay (dB) / Time (s)', x0: 0, x1: tMax, y0: -60, y1: 0, xticks: [0, 0.25, 0.5, 0.75, 1].map((k) => ({ v: k * tMax, label: fmt(k * tMax, 2) })), yticks: [-60, -40, -20, 0] });
+      const curve = bandDecay(withD, { tMax, n: Math.round(a.iw) });
+      ctx.strokeStyle = COL.lime;
+      ctx.beginPath();
+      curve.forEach((q, i) => (i ? ctx.lineTo(a.X(q.t), a.Y(q.db)) : ctx.moveTo(a.X(q.t), a.Y(q.db))));
+      ctx.stroke();
+      decayNote.textContent = withD.length ? `${withD.length} mode${withD.length === 1 ? '' : 's'}; T60 ${withD.map((m) => fmt(m.t60, 2)).slice(0, 6).join(', ')}${withD.length > 6 ? '…' : ''} s. Close modes beat; axial ones ring longest.` : 'Enter a mode or a band above.';
+    }
+    /** α per face at 125 Hz, the lowest band: what the laid materials and the base give, area-weighted. */
+    function alpha125() {
+      const room = classicRoom();
+      return Object.fromEntries(
+        FACES6.map((f) => {
+          const ss = room.surfaces.filter((x) => x.face === f);
+          const A = ss.reduce((t, x) => t + x.area, 0);
+          return [f, A ? ss.reduce((t, x) => t + x.area * x.material.alpha[0], 0) / A : 0];
+        }),
+      );
+    }
 
     function drawModes(vis) {
       const p = prep(top.cv);
@@ -1637,8 +1823,9 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       res: null,
       RV: newRV('plan'),
       mouseEdit: false,
+      use: 'speech',
     };
-    const T = tabs(win, ['Room', 'SPK', 'LS', 'Acoustic', 'Sim.']);
+    const T = tabs(win, ['Room', 'SPK', 'LS', 'Acoustic', 'Sim.', 'Time']);
     T.pages.Room.append(dimsGroup(win));
     const check = (obj, key, label, title, after = () => win.refresh()) => {
       const c = h('input', { type: 'checkbox', onchange: () => ((obj[key] = c.checked), after()) });
@@ -1680,6 +1867,19 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       group('Suppression', ...['Direct energy', 'First reflection', 'Second reflection', 'Third reflection'].map((l, i) => check(S.suppress, i, l))),
       group('SPK Source', check(S.sources, 's1', 'Speaker 1'), check(S.sources, 's2', 'Speaker 2'), check(S.sources, 'c', 'Centre (General Parameters)'), check(S.sources, 'rl', 'Rear left'), check(S.sources, 'rr', 'Rear right')),
       numField(win, 'Follow time', '%', () => S.follow * 100, (v) => (S.follow = clamp(v, 5, 100) / 100), { step: 5, title: 'The share of the reverb time the time display tracks' }),
+    );
+    // ── Time: what the arrivals mean to a listener (Haas) and how they decay (Schroeder)
+    const useR = [['speech', 'Speech (echo after 50 ms)'], ['music', 'Music (echo after 80 ms)']].map(([v, l]) => {
+      const r = h('input', { type: 'radio', name: 'acx-ray-use', onchange: () => ((S.use = v), win.refresh()) });
+      win.syncers.push(() => (r.checked = S.use === v));
+      return h('div', {}, h('label', { class: 'opt' }, r, l));
+    });
+    const haasBox = h('div', { class: 'small' });
+    const decayRo = { edt: readout('Early decay time: 0 to −10 dB, ×6'), t20: readout('−5 to −25 dB, ×3'), t30: readout('−5 to −35 dB, ×2') };
+    const decayC = chartBox('flex:none;height:130px');
+    T.pages.Time.append(
+      group('Precedence & Echo (Haas)', ...useR, haasBox),
+      group('Decay (Schroeder)', decayC.box, h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'EDT'), decayRo.edt, 's'), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'T20'), decayRo.t20, 's'), h('div', { class: 'row' }, h('span', { class: 'lbl' }, 'T30'), decayRo.t30, 's'), h('div', { class: 'small muted' }, 'Backward-integrated from the traced arrivals: the tail stops where the trace stops, so raise Number of ref. for T30.')),
     );
 
     // ── right side
@@ -1768,7 +1968,10 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       const Sarea = room.surfaces.reduce((s, x) => s + x.area, 0);
       const abar = room.surfaces.reduce((s, x) => s + x.area * x.material.alpha[S.band], 0) / Sarea;
       const fig = roomFigures({ V: room.V, S: Sarea, abar, follow: S.follow, c });
-      S.res = { arrivals: kept, totals, traces, fig, rays: local.length * srcs.length, srcs, polar: polarEnergy(kept, 36) };
+      // what a listener hears does not depend on what the charts suppress: Haas and Schroeder take every arrival traced
+      const all = [...arrivals].sort((a, b) => a.t - b.t);
+      const haas = haasCheck(all, { echoMs: S.use === 'music' ? 80 : 50 });
+      S.res = { arrivals: kept, totals, traces, fig, rays: local.length * srcs.length, srcs, polar: polarEnergy(kept, 36), haas, decay: schroederDecay(all) };
       if (S.idx >= kept.length) S.idx = 0;
     };
 
@@ -1793,10 +1996,18 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         sections: [
           { heading: `Acoustic parameters, ${BAND_LABELS[S.band]}`, rows: paramRows(f, r) },
           { heading: 'Arrivals (within 60 dB)', head: ['ms', 'dB', 'Order', 'Speaker', 'Surfaces'], rows: r.arrivals.slice(0, 120).map((a) => [fmt(a.t, 2), fmt(a.level, 1), a.order, a.name, a.order ? a.faces.join(' → ') : 'direct']) },
+          { heading: 'Precedence and echo (Haas)', rows: haasRows(r.haas) },
+          { heading: 'Decay (Schroeder backward integration)', rows: [['EDT', `${fmt(r.decay.edt, 2)} s`], ['T20', `${fmt(r.decay.t20, 2)} s`], ['T30', `${fmt(r.decay.t30, 2)} s`]] },
           { heading: 'First-order reflections and their nulls', text: 'Calculated for cross-checking against a measurement: they are where nulls would be, not proof that they are there.', head: ['Speaker', 'Surface', 'Δt ms', `Δpath ${M.units}`, 'First null Hz', 'Spacing Hz'], rows },
         ],
       };
     };
+    const haasRows = (hc) => [
+      ['Image pulled (within 1 ms, within 3 dB)', hc.pulls.length ? hc.pulls.map((a) => `${fmt(a.dt, 2)} ms ${fmt(a.rel, 1)} dB ${a.faces.join(' → ')}`).join('; ') : 'none — the first arrival sets the direction'],
+      ['Fused with the direct (1–30 ms)', String(hc.fused.length)],
+      ['Initial-time-delay gap (first reflection)', `${fmt(hc.itdg, 1)} ms`],
+      [`Likely echoes (after ${S.use === 'music' ? 80 : 50} ms, within 10 dB)`, hc.echoes.length ? hc.echoes.slice(0, 6).map((a) => `${fmt(a.dt, 1)} ms ${fmt(a.rel, 1)} dB ${a.faces.join(' → ')}`).join('; ') : 'none'],
+    ];
     const paramRows = (f, r) => [
       ['Room volume', M.units === 'ft' ? `${fmt(f.V * FT ** 3, 0)} ft³` : `${fmt(f.V, 1)} m³`],
       ['Room surface area', `${fmt(areaU(f.S), 1)} ${aUnit()}`],
@@ -1819,6 +2030,18 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       ro.l.textContent = cur ? fmt(cur.level, 1) : '';
       ro.s.textContent = cur ? (cur.order ? cur.faces.join(' → ') : 'direct') : '';
       ro.flag.textContent = String(arrivals.filter((a) => a.order > 0 && a.level > -10).length);
+      const hc = S.res.haas;
+      haasBox.replaceChildren(
+        h('div', { class: hc.pulls.length ? 'warn' : '' }, hc.pulls.length ? `⚠ ${hc.pulls.length} reflection${hc.pulls.length === 1 ? '' : 's'} within 1 ms and 3 dB: the image moves toward ${hc.pulls.length === 1 ? 'it' : 'them'}.` : '✓ The first arrival sets the direction.'),
+        h('div', {}, `${hc.fused.length} reflection${hc.fused.length === 1 ? '' : 's'} fuse with the direct sound (1–30 ms). Initial-time-delay gap ${fmt(hc.itdg, 1)} ms.`),
+        h('div', { class: hc.echoes.length ? 'warn' : '' }, hc.echoes.length ? `⚠ ${hc.echoes.length} likely echo${hc.echoes.length === 1 ? '' : 'es'}: later than ${S.use === 'music' ? 80 : 50} ms and within 10 dB of the direct.` : `✓ No reflection later than ${S.use === 'music' ? 80 : 50} ms comes within 10 dB of the direct.`),
+        ...hc.echoes.slice(0, 4).map((a) => h('div', { class: 'warn' }, `• ${fmt(a.dt, 1)} ms, ${fmt(a.rel, 1)} dB, ${a.faces.join(' → ')}`)),
+      );
+      const dc = S.res.decay;
+      decayRo.edt.textContent = fmt(dc.edt, 2);
+      decayRo.t20.textContent = fmt(dc.t20, 2);
+      decayRo.t30.textContent = fmt(dc.t30, 2);
+      drawDecay(dc);
       if (win.pane === 'chart') {
         drawSurfaces(S.mode === 'single' && cur ? Object.fromEntries(BUCKETS.map((b) => [b, (b === 'direct' ? cur.order === 0 : cur.faces.includes(b)) ? cur.level : -Infinity])) : totals);
         drawTime(arrivals, cur);
@@ -1877,7 +2100,33 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       ctx.fillStyle = '#4080ff';
       ctx.textAlign = 'right';
       ctx.fillText('10 dB window', w - a.pad.r - 4, a.Y(top0 - 10) - 4);
+      // Haas: past this a reflection within 10 dB is heard as an echo
+      const tEcho = S.res.haas.t0 + (S.use === 'music' ? 80 : 50);
+      if (tEcho < tEnd) {
+        ctx.strokeStyle = COL.orange;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(Math.round(a.X(tEcho)) + 0.5, a.pad.t);
+        ctx.lineTo(Math.round(a.X(tEcho)) + 0.5, a.Y(-50));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = COL.orange;
+        ctx.fillText('echo limit', a.X(tEcho) - 4, a.pad.t + 10);
+      }
       ctx.textAlign = 'left';
+    }
+
+    function drawDecay(dc) {
+      const p = prep(decayC.cv);
+      if (!p || !dc.curve.length) return;
+      const { ctx, w, h: hh } = p;
+      const tEnd = Math.max(20, Math.ceil(dc.curve[dc.curve.length - 1].t / 10) * 10);
+      const step = tEnd > 400 ? 100 : tEnd > 200 ? 50 : tEnd > 100 ? 20 : 10;
+      const a = axes(ctx, w, hh, { title: 'Energy still to come (dB) / ms', x0: 0, x1: tEnd, y0: -40, y1: 0, xticks: Array.from({ length: Math.floor(tEnd / step) + 1 }, (_, i) => ({ v: i * step, label: String(i * step) })).filter((t, i) => i % 2 === 0), yticks: [-40, -30, -20, -10, 0] });
+      ctx.strokeStyle = COL.cyan;
+      ctx.beginPath();
+      dc.curve.forEach((q, i) => (i ? ctx.lineTo(a.X(q.t), a.Y(q.db)) : ctx.moveTo(a.X(q.t), a.Y(q.db))));
+      ctx.stroke();
     }
 
     function drawRays() {
@@ -2041,7 +2290,8 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     }
 
     const T = tabs(win, ['Type', 'RT60', 'Surface', 'Optimize', 'Show Item']);
-    T.pages.Type.append(group('Criteria Type', ...typeRadios), h('div', { class: 'btns' }, h('button', { onclick: () => (userPanel.hidden = !userPanel.hidden) }, 'Edit user defined RT60 criteria')), userPanel);
+    const hallBox = h('div', { class: 'small' });
+    T.pages.Type.append(group('Criteria Type', ...typeRadios), h('div', { class: 'btns' }, h('button', { onclick: () => (userPanel.hidden = !userPanel.hidden) }, 'Edit user defined RT60 criteria')), userPanel, group('Hall Checks (Beranek)', hallBox));
     T.pages.RT60.append(group('Calculation Method', ...formulaRadios), h('div', { class: 'btns' }, h('button', { onclick: () => ((M.measured ??= [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]), (measPanel.hidden = !measPanel.hidden), win.sync()) }, 'Edit Measured RT60 (Empty)'), h('button', { onclick: () => ((M.measured = null), S.formula === 'measured' && (S.formula = 'sabine'), win.refresh()) }, 'No Measured RT60')), measPanel, h('div', { class: 'small muted' }, 'A measured empty room already includes the air, so none is added. Fitzroy suits a room whose absorption is uneven — a hard floor and ceiling under absorbent walls.'));
     T.pages.Surface.append(
       dimsGroup(win),
@@ -2108,6 +2358,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         sections: [
           { heading: 'Room', rows: [['Volume', M.units === 'ft' ? `${fmt(r.room.V * FT ** 3, 0)} ft³` : `${fmt(r.room.V, 1)} m³`], ['Criteria', S.target === 'user' ? 'user defined' : RT_TARGETS.find((t) => t.id === S.target).label], ['Method', formulaList.find((f) => f.id === S.formula).label]] },
           { heading: 'Materials by surface', head: ['Surface', 'Material', 'Area'], rows },
+          { heading: 'Hall checks (Beranek)', rows: hallRows(r.rt) },
           { heading: 'Reverb time (s)', head: ['', ...BAND_LABELS], rows: [...FORMULAS.map((f, i) => [f.label, ...r.all.map((x) => fmt(x[f.id], 2))]), ...(r.measured ? [['Measured basis', ...r.measured.map((t) => fmt(t, 2))]] : []), ['Criteria', ...r.target.rt.map((t) => fmt(t, 2))], ['Mean α', ...r.abar.map((a) => fmt(a, 3))]] },
         ],
       };
@@ -2163,11 +2414,23 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         );
         repBox.replaceChildren(reportNode(win.report()));
       }
+      hallBox.replaceChildren(...hallRows(r.rt).slice(0, 2).map(([k, v]) => h('div', {}, h('b', {}, `${k}: `), v)));
       if (win.pane === 'chart') {
         drawAlpha();
         drawRt(r.rt, r.target);
       }
       if (win.pane === 'room') drawSurfacesRoom();
+    };
+
+    /** Beranek's numbers from the RT of the chosen method: the mid-band RT and the bass ratio, against his ranges for music. */
+    const hallRows = (rt) => {
+      const mid = (rt[2] + rt[3]) / 2;
+      const br = bassRatio(rt);
+      return [
+        ['Mid-band RT (500 Hz–1 kHz)', `${fmt(mid, 2)} s — symphonic halls about 1.8–2.2 s, opera 1.3–1.6 s`],
+        ['Bass ratio (T125 + T250) / (T500 + T1000)', `${fmt(br, 2)} — about 1.1–1.45 for warmth when the mid RT is under 1.8 s, 1.1–1.25 when it is over 2.2 s`],
+        ['Initial-time-delay gap', 'see Ray Tracing, Time tab: the first reflection’s lag behind the direct sound; Beranek preferred about 20 ms or less'],
+      ];
     };
 
     const faceAlpha = (f, b) => {
@@ -2259,7 +2522,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
   // ═════════════════════════════════════════════════════════════════════════
   // 5. CALCULATOR
   // ═════════════════════════════════════════════════════════════════════════
-  makeWindow('calc', 'Acoustic X — Calculator', { w: 420, h: 470, foot: false }, (win) => {
+  makeWindow('calc', 'Acoustic X — Calculator', { w: 470, h: 540, foot: false }, (win) => {
     const S = { dir: 'toMetric', unit: 'length', wave: 'spherical', kind: 'energy', metric: true };
     const inp = (v, title) => h('input', { type: 'text', value: v, title, oninput: () => calc() });
     const out = () => readout();
@@ -2274,12 +2537,91 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     unitSel.addEventListener('change', () => ((S.unit = unitSel.value), calc()));
     const lenU = () => (S.metric ? 'm' : 'ft');
     const lenK = () => (S.metric ? 1 : FT);
-    const T = tabs(win, ['U', 'ISL', 'Add', 'Wave', 'Comb']);
+    const T = tabs(win, ['U', 'ISL', 'Add', 'Wave', 'Comb', 'Wall', 'Res', 'QRD', 'NC', 'PA', 'Spk', 'Z', 'Tone']);
     T.pages.U.append(group('Units Conversion', h('div', {}, radio('acx-c-dir', 'dir', 'toMetric', 'IMP to MKS'), radio('acx-c-dir', 'dir', 'toImperial', 'MKS to IMP')), row('Unit', unitSel), row('Value', I.uv), row('Converted', O.uv)));
     T.pages.ISL.append(group('Inverse Square Law', h('div', {}, radio('acx-c-wave', 'wave', 'spherical', 'Spherical (point source)'), radio('acx-c-wave', 'wave', 'cylindrical', 'Cylindrical (line source)')), row('Reference dist.', I.d1), row('Level @ ref. dist.', I.l1, 'dB'), row('Distance', I.d2), row('Level @ distance', O.l2, 'dB')));
     T.pages.Add.append(group('Level Addition', h('div', {}, radio('acx-c-kind', 'kind', 'energy', 'Energy (uncorrelated)'), radio('acx-c-kind', 'kind', 'pressure', 'Pressure (in phase)')), row('Levels (dB)', I.levels), row('Quantity of level', O.n), row('Total level', O.sum, 'dB')));
     T.pages.Wave.append(group('Frequency / Wavelength / Period', h('div', {}, radio('acx-c-m', 'metric', true, 'Metric'), radio('acx-c-m', 'metric', false, 'Imperial')), row('Temperature °C', I.t), row('Speed of sound', O.c), row('Frequency (Hz)', I.f), row('Wavelength', I.lam), row('Period (ms)', I.per), h('div', { class: 'small muted' }, 'Type into any one of the three: the other two follow.')));
     T.pages.Comb.append(group('Comb-Filter', row('Arrival time diff. (ms)', I.delay), row('Path length diff.', I.path), row('First null (Hz)', O.n1), row('Second null (Hz)', O.n2), row('Third null (Hz)', O.n3), row('Null spacing (Hz)', O.sp), h('div', { class: 'small muted' }, 'Enter either difference. Useful for the reflection off a console top.')));
+    // ── the tabs from the suggested references (references.js): every input metric
+    const sel = (list, title) => {
+      const s = h('select', { title, onchange: () => calc() }, list.map(([v, l]) => h('option', { value: v }, l)));
+      return s;
+    };
+    const X = {
+      plate: sel(PLATES.map((p) => [p.id, p.name])),
+      thick: inp('12.5', 'Leaf thickness, mm'),
+      m1: out(),
+      m2: inp('10', 'Second leaf, kg/m² (0: a single leaf)'),
+      gap: inp('100', 'Cavity between the leaves, mm'),
+      hA: inp('25', 'Neck radius, mm'),
+      hL: inp('50', 'Neck length, mm'),
+      hV: inp('10', 'Cavity volume, litres'),
+      pP: inp('10', 'Open area, %'),
+      pD: inp('100', 'Air gap behind the panel, mm'),
+      pT: inp('6', 'Panel thickness, mm'),
+      pd: inp('6', 'Hole diameter or slot width, mm'),
+      mm: inp('5', 'Membrane surface mass, kg/m²'),
+      md: inp('100', 'Air gap behind the membrane, mm'),
+      qN: inp('7', 'Number of wells: a prime'),
+      qF: inp('500', 'Design frequency, Hz'),
+      qW: inp('50', 'Well width, mm'),
+      nc: NC_BANDS.map((b, i) => inp(String([50, 45, 40, 35, 30, 28, 26, 25][i]), `${b} Hz octave band, dB SPL`)),
+      aR: inp('10', 'Listener to the nearest loudspeaker, m'),
+      aT: inp('1.5', 'RT60 at 2 kHz, s'),
+      aV: inp('2000', 'Room volume, m³'),
+      aQ: inp('10', 'Loudspeaker directivity factor Q'),
+      aN: inp('0', 'Other loudspeakers like it (n)'),
+      gD0: inp('20', 'Talker to the farthest listener, m'),
+      gDs: inp('0.5', 'Talker to the microphone, m'),
+      gD1: inp('6', 'Microphone to the nearest loudspeaker, m'),
+      gD2: inp('15', 'Loudspeaker to the farthest listener, m'),
+      gEAD: inp('3', 'Equivalent acoustic distance: how close the farthest listener should seem, m'),
+      gNOM: inp('1', 'Number of open microphones'),
+      cH: inp('3', 'Ceiling height, m'),
+      cE: inp('1.2', 'Ear height, m (1.2 seated, 1.7 standing)'),
+      cA: inp('90', 'Coverage angle, degrees'),
+      sA: inp('100', 'Piston (cone) radius, mm'),
+      sF: inp('2000', 'Frequency, Hz'),
+      bFs: inp('40', 'Driver free-air resonance fs, Hz'),
+      bQ: inp('0.4', 'Driver total Q, Qts'),
+      bVas: inp('50', 'Driver compliance volume Vas, litres'),
+      bVb: inp('25', 'Box volume, litres'),
+      eV: inp('1.228', 'RMS volts'),
+      eS: inp('88', 'Sensitivity, dB SPL at 1 W, 1 m'),
+      eW: inp('100', 'Amplifier power, W'),
+      eD: inp('4', 'Distance, m'),
+      z1: sel(MEDIA.map(([n, z]) => [String(z), n])),
+      z2: sel(MEDIA.map(([n, z]) => [String(z), n])),
+      t1: inp('440', 'First tone, Hz'),
+      t2: inp('660', 'Second tone, Hz'),
+      ph: inp('60', 'Loudness level, phon'),
+    };
+    X.z2.value = String(MEDIA[4][1]);
+    const Q = Object.fromEntries(['tl', 'fc', 'f0', 'rw', 'hF', 'pF', 'mF', 'qD', 'qR', 'nc', 'al', 'pag', 'nag', 'cR', 'cS', 'ka', 'beam', 'di', 'off', 'bFc', 'bQtc', 'eU', 'eSpl', 'zR', 'zRef', 'zT', 'tB', 'tC', 'tI', 'tR', 'tN', 'so'].map((k) => [k, out()]));
+    for (const k of ['ncT', 'alNote', 'gOk']) Q[k] = h('div');
+    const wide = (el) => h('div', { class: 'small', style: 'white-space:normal' }, el);
+    T.pages.Wall.append(
+      group('Mass Law & Rw', row('Leaf', X.plate), row('Thickness (mm)', X.thick), row('Leaf 1 (kg/m²)', X.m1, 'ρ·t'), row('Leaf 2 (kg/m²)', X.m2), row('Cavity (mm)', X.gap), row('TL at 500 Hz', Q.tl, 'dB'), row('Coincidence fc', Q.fc, 'Hz'), row('Mass–air–mass f0', Q.f0, 'Hz'), row('Rw (mass law)', Q.rw, 'dB'), wide('Field-incidence mass law over the total mass, 100–3150 Hz, rated by ISO 717-1. Real walls fall short near f0 and fc and do better above f0 when the cavity is filled — use it to compare, not to certify.')),
+    );
+    T.pages.Res.append(
+      group('Resonators', h('div', { class: 'small' }, 'Helmholtz'), row('Neck radius (mm)', X.hA), row('Neck length (mm)', X.hL), row('Cavity (litres)', X.hV), row('Resonance', Q.hF, 'Hz'), h('div', { class: 'small' }, 'Perforated or slotted panel'), row('Open area (%)', X.pP), row('Air gap (mm)', X.pD), row('Panel (mm)', X.pT), row('Hole / slot (mm)', X.pd), row('Resonance', Q.pF, 'Hz'), h('div', { class: 'small' }, 'Membrane (panel) absorber'), row('Mass (kg/m²)', X.mm), row('Air gap (mm)', X.md), row('Resonance', Q.mF, 'Hz')),
+    );
+    T.pages.QRD.append(group('QRD Diffuser', row('Wells N (prime)', X.qN), row('Design f0 (Hz)', X.qF), row('Well width (mm)', X.qW), row('Works from–to', Q.qR, 'Hz'), row('Depths (mm)', Q.qD), wide('Well n is n² mod N deep, in units of λ0 / 2N; dividers between the wells are left out of the width. One period repeats every N wells.')));
+    T.pages.NC.append(group('Background Noise (NC)', ...NC_BANDS.map((b, i) => row(`${b >= 1000 ? `${b / 1000}k` : b} Hz (dB)`, X.nc[i])), row('NC rating', Q.nc), wide(Q.ncT)));
+    T.pages.PA.append(
+      group('Speech & Gain', row('Distance r (m)', X.aR), row('RT60 (s)', X.aT), row('Volume (m³)', X.aV), row('Q', X.aQ), row('Others n', X.aN), row('%ALcons', Q.al, '%'), wide(Q.alNote), row('Talker → listener D0', X.gD0), row('Talker → mic Ds', X.gDs), row('Mic → speaker D1', X.gD1), row('Speaker → listener D2', X.gD2), row('EAD (m)', X.gEAD), row('Open mics', X.gNOM), row('PAG', Q.pag, 'dB'), row('NAG', Q.nag, 'dB'), wide(Q.gOk)),
+      group('Ceiling Speakers', row('Ceiling (m)', X.cH), row('Ear height (m)', X.cE), row('Coverage (°)', X.cA), row('Circle radius', Q.cR, 'm'), row('Spacing', Q.cS)),
+    );
+    T.pages.Spk.append(
+      group('Piston & Box', row('Radius (mm)', X.sA), row('Frequency (Hz)', X.sF), row('ka', Q.ka), row('−6 dB half-angle', Q.beam), row('DI', Q.di, 'dB'), row('At 30° / 60°', Q.off, 'dB'), row('fs (Hz)', X.bFs), row('Qts', X.bQ), row('Vas (litres)', X.bVas), row('Box (litres)', X.bVb), row('Closed box fc', Q.bFc, 'Hz'), row('Qtc', Q.bQtc)),
+      group('Electrical Levels', row('Volts RMS', X.eV), row('dBu / dBV', Q.eU), row('Sensitivity (dB)', X.eS), row('Power (W)', X.eW), row('Distance (m)', X.eD), row('SPL', Q.eSpl, 'dB')),
+    );
+    T.pages.Z.append(group('Impedance Step', row('From', X.z1), row('Into', X.z2), row('Pressure reflection R', Q.zR), row('Energy reflected', Q.zRef, '%'), row('Energy through', Q.zT, '%'), wide('Normal incidence, plane wave.')));
+    T.pages.Tone.append(
+      group('Two Tones', row('f1 (Hz)', X.t1), row('f2 (Hz)', X.t2), row('Beats', Q.tB, 'Hz'), row('Combination tones', Q.tC), row('Interval', Q.tI), row('Roughness', Q.tR), row('Notes', Q.tN)),
+      group('Loudness', row('Level (phon)', X.ph), row('Loudness', Q.so, 'sone')),
+    );
     win.el.append(h('div', { class: 'acx-calc' }, T.nodes));
     const num = (el) => parseFloat(String(el.value).replace(',', '.'));
     let last = { wave: 'f', comb: 'delay' };
@@ -2316,6 +2658,82 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
       }
       [O.n1, O.n2, O.n3].forEach((o, i) => (o.textContent = fmt(n.nulls[i], 1)));
       O.sp.textContent = fmt(n.spacing, 1);
+      calcRefs(c);
+    }
+    function calcRefs(c) {
+      const v = (k) => num(X[k]);
+      const put = (k, val, d = 1) => (Q[k].textContent = typeof val === 'string' ? val : fmt(val, d));
+      // walls
+      const plate = PLATES.find((p) => p.id === X.plate.value);
+      const m1 = plate.rho * (v('thick') / 1000);
+      X.m1.textContent = fmt(m1, 1);
+      const m2 = v('m2') || 0;
+      const mt = m1 + m2;
+      put('tl', massLaw(mt, 500));
+      put('fc', coincidence(plate, v('thick') / 1000, c), 0);
+      put('f0', m2 > 0 ? massAirMass(m1, m2, v('gap') / 1000) : '—', 0);
+      put('rw', mt > 0 ? String(ratingRw(R_BANDS.map((f) => massLaw(mt, f))).rw) : '—');
+      // resonators
+      put('hF', helmholtz({ a: v('hA') / 1000, l: v('hL') / 1000, V: v('hV') / 1000 }, c));
+      put('pF', perforated({ P: v('pP') / 100, D: v('pD') / 1000, t: v('pT') / 1000, d: v('pd') / 1000 }, c));
+      put('mF', membrane(v('mm'), v('md') / 1000));
+      // diffuser
+      const N = Math.round(v('qN'));
+      if (isPrime(N) && N <= 97) {
+        const q = qrd({ N, f0: v('qF'), w: v('qW') / 1000 }, c);
+        put('qR', `${fmt(q.fLow, 0)} – ${fmt(q.fHigh, 0)}`);
+        put('qD', q.depths.map((d) => fmt(d * 1000, 0)).join(' '));
+      } else {
+        put('qR', '—');
+        put('qD', 'N must be a prime up to 97');
+      }
+      // noise
+      const lv = X.nc.map((el) => num(el));
+      if (lv.every(Number.isFinite)) {
+        const r = ncRating(lv);
+        put('nc', r.nc < 15 ? 'below NC-15' : `NC-${Math.ceil(r.nc - 1e-9)} (set by ${r.band} Hz)`);
+        Q.ncT.textContent = NC_TARGETS.map(([n, lo, hi]) => `${n} NC-${lo}–${hi}${r.nc <= hi + 1e-9 ? ' ✓' : ''}`).join(' · ');
+      }
+      // speech and gain
+      const T60 = v('aT');
+      const room = roomFigures({ V: v('aV'), S: 6 * v('aV') ** (2 / 3), abar: Math.min(0.95, (0.161 * v('aV')) / (T60 * 6 * v('aV') ** (2 / 3))), Q: v('aQ'), c });
+      const al = alcons({ r: v('aR'), T: T60, V: v('aV'), Q: v('aQ'), n: v('aN'), dc: room.dc });
+      put('al', al);
+      Q.alNote.textContent = `${al <= 5 ? 'Good' : al <= 10 ? 'Acceptable' : al <= 15 ? 'Poor' : 'Unusable'} (≤ 5 % good, ≤ 10 % acceptable, past 15 % unusable). Critical distance about ${fmt(room.dc, 1)} m in a cube of this volume.`;
+      const g = acousticGain({ D0: v('gD0'), Ds: v('gDs'), D1: v('gD1'), D2: v('gD2'), EAD: v('gEAD'), NOM: v('gNOM') });
+      put('pag', g.pag);
+      put('nag', g.nag);
+      Q.gOk.textContent = g.ok ? '✓ PAG ≥ NAG: the system can reach the level without feedback.' : '⚠ PAG < NAG: move the mic closer to the talker, the speakers away from the mic, or open fewer mics.';
+      const cs = ceilingSpacing({ ceiling: v('cH'), ear: v('cE'), angle: v('cA') });
+      put('cR', cs.r, 2);
+      put('cS', `edge ${fmt(cs.edge, 2)} · overlap ${fmt(cs.overlap, 2)} · centre ${fmt(cs.centre, 2)} m`);
+      // loudspeaker
+      const pz = piston(v('sA') / 1000, v('sF'), c);
+      put('ka', pz.ka, 2);
+      put('beam', pz.half6 == null ? 'wider than ±90°' : `±${fmt(pz.half6, 0)}°`);
+      put('di', pz.di);
+      put('off', `${fmt(20 * Math.log10(Math.abs(pz.at(30)) || 1e-6), 1)} / ${fmt(20 * Math.log10(Math.abs(pz.at(60)) || 1e-6), 1)}`);
+      const cb = closedBox({ fs: v('bFs'), qts: v('bQ'), vas: v('bVas'), vb: v('bVb') });
+      put('bFc', cb.fc);
+      put('bQtc', cb.qtc, 2);
+      const el = electrical(v('eV'));
+      put('eU', `${fmt(el.dBu, 1)} dBu / ${fmt(el.dBV, 1)} dBV`);
+      put('eSpl', splFromPower(v('eS'), v('eW'), v('eD')));
+      // impedance
+      const z = impedanceStep(+X.z1.value, +X.z2.value);
+      put('zR', z.R, 4);
+      put('zRef', z.reflected * 100, 3);
+      put('zT', z.transmitted * 100, 4);
+      // hearing
+      const tt = twoTones(v('t1'), v('t2'));
+      Q.tB.textContent = tt.beat <= 20 ? fmt(tt.beat, 2) : `${fmt(tt.beat, 1)} — too far apart to beat`;
+      put('tC', `f2−f1 ${fmt(tt.difference, 1)} · 2f1−f2 ${fmt(tt.cubic, 1)} · f1+f2 ${fmt(tt.sum, 1)} Hz`);
+      put('tI', `${fmt(tt.cents, 1)} cents ≈ ${tt.just.name} ${tt.just.ratio} (${tt.just.off >= 0 ? '+' : ''}${fmt(tt.just.off, 1)}¢; equal temperament ${tt.just.etOff >= 0 ? '+' : ''}${fmt(tt.just.etOff, 1)}¢)`);
+      put('tR', `${fmt(tt.roughness, 2)} (0 smooth … 1 roughest)`);
+      const n1 = noteOf(v('t1'));
+      const n2 = noteOf(v('t2'));
+      put('tN', `${n1.name} ${n1.cents >= 0 ? '+' : ''}${fmt(n1.cents, 0)}¢ · ${n2.name} ${n2.cents >= 0 ? '+' : ''}${fmt(n2.cents, 0)}¢`);
+      put('so', sones(v('ph')), 2);
     }
     win.refresh = calc;
     calc();
@@ -2392,7 +2810,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     sbir: ['Pick the speaker from the database (SPK · Size) or enter its size and woofer height.', 'Set the LF cut-off and crossover on the Listener tab, and the listener’s position.', 'Search tab: choose Min. Absolute or Min. Negative deviation and the step, then Search.', 'Chart View: green above the red LF cut-off counts; a dip at the yellow crossover is flagged; magenta marks a mode the position excites.', 'Room View: the listening window, the specular absorbers that keep it clean, the corner absorbers. Apply moves the design’s speakers.'],
     rays: ['Check the speaker and listening positions (SPK, LS) — Mouse Edit moves the listener on the Plan View.', 'Acoustic tab: the octave band and each surface’s material; the specular absorbers’ α.', 'Sim. tab: the number of reflections (14), the vertical step, and what to show or suppress.', 'Press Start. Chart View: energy by surface above, by time below with the 10 dB window — Next steps through each arrival.', 'Room View in plan: the polar energy shows where reflections within 10 dB come from. The Data View lists the room figures and each surface’s nulls.'],
     reverb: ['Type tab: pick the criteria for the room’s use, or enter your own.', 'RT60 tab: pick the formula — or enter a measured empty-room RT60 as the basis.', 'Surface tab: pick a surface, set its base material, then double-click materials to lay them on it and give each an area.', 'Watch the chart: green bars are inside the criteria, orange are not. Next Surface moves on.', 'Optimize tab: tick up to five materials, give each a Begin, End and Step, and Go Optimize; Apply takes the best.'],
-    calc: ['U: convert between metric and imperial.', 'ISL: the level at a distance from one measured at another — spherical or cylindrical.', 'Add: levels added as energy or in-phase pressure.', 'Wave: frequency, wavelength and period, corrected for temperature.', 'Comb: the nulls of a reflection from its delay or its extra path.'],
+    calc: ['U: convert between metric and imperial.', 'ISL: the level at a distance from one measured at another — spherical or cylindrical.', 'Add: levels added as energy or in-phase pressure.', 'Wave: frequency, wavelength and period, corrected for temperature.', 'Comb: the nulls of a reflection from its delay or its extra path.', 'Wall, Res, QRD, NC: a wall’s loss and Rw, a resonant absorber, a diffuser’s wells, a room’s background noise.', 'PA, Spk, Z, Tone: speech and feedback, pistons and boxes, an impedance step, two tones and loudness.'],
   };
   let guideFor = 'start';
   makeWindow('guide', 'Fast Guide', { w: 330, h: 300, foot: false }, (win) => {
@@ -2523,6 +2941,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     ['acoustic-x/05-ray-tracing.md', '5 · Ray Tracing'],
     ['acoustic-x/06-reverb-time.md', '6 · Reverb Time'],
     ['acoustic-x/07-calculator.md', '7 · Calculator'],
+    ['acoustic-x/references/README.md', '8 · The suggested references, read'],
     ['acoustics/README.md', 'The acoustics engine — all of its math'],
   ];
   /** KaTeX, fetched the first time Help shows math; null if it cannot be had (the math then reads as TeX). */
@@ -2598,6 +3017,29 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     open('help');
     wins.help.showHelp(path ?? helpAt, Boolean(path));
   }
+
+  // ── the topic pop-up: a group's history and its sources (topics.js) ──
+  const topicPop = h('div', { class: 'acx acx-topic-pop', hidden: true });
+  document.body.append(topicPop);
+  openTopic = (legend, anchor) => {
+    const t = topicFor(legend);
+    if (!t) return;
+    if (!topicPop.hidden && topicPop.dataset.legend === legend) return (topicPop.hidden = true);
+    topicPop.dataset.legend = legend;
+    const read = (n) => openHelp(`acoustic-x/references/${REPORTS[n][0]}`);
+    topicPop.replaceChildren(
+      h('div', { class: 'acx-title' }, h('span', { class: 'txt' }, legend), h('button', { class: 'x', title: 'Close', onclick: () => (topicPop.hidden = true) }, '×')),
+      h('div', { class: 'body' }, h('p', {}, t.history), h('div', { class: 'small' }, 'Read:'), h('ul', {}, t.refs.map((n) => h('li', {}, h('a', { href: '#', onclick: (e) => (e.preventDefault(), (topicPop.hidden = true), read(n)) }, REPORTS[n][1]))))),
+    );
+    topicPop.hidden = false;
+    const r = anchor.getBoundingClientRect();
+    const w = topicPop.offsetWidth;
+    const hh = topicPop.offsetHeight;
+    topicPop.style.left = `${clamp(r.left, 4, window.innerWidth - w - 4)}px`;
+    topicPop.style.top = `${r.bottom + 4 + hh > window.innerHeight ? Math.max(4, r.top - hh - 4) : r.bottom + 4}px`;
+  };
+  document.addEventListener('pointerdown', (e) => !topicPop.hidden && !topicPop.contains(e.target) && !e.target.closest?.('.acx-topic') && (topicPop.hidden = true));
+  document.addEventListener('keydown', (e) => e.key === 'Escape' && (topicPop.hidden = true));
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'F1') return;
     const anyOpen = Object.values(wins).some((w) => !w.el.hidden) || !frame.hidden;

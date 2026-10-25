@@ -86,8 +86,10 @@ impedance is tiny next to a solid's, so a bare wall reflects nearly everything.
 
 **Challenge.** With $Z_\text{air} = 413$ rayl and concrete at $\rho = 2300$ kg/m³,
 $c = 3700$ m/s, find $R$ (about 0.9999) and the energy that enters the concrete (about
-0.02 %). Compare with the α of a concrete material in Reverb Time's Absorber Edit Manager,
-and say why measured values are larger than this.
+0.02 %). In the Calculator's **Z** tab, *Impedance Step*, from air into concrete (taken
+there as 8.0 × 10⁶ rayl) reads $R$ = 0.9999 and 0.0206 % through. Compare with the α of a
+concrete material in Reverb Time's Absorber Edit Manager, and say why measured values are
+larger than this.
 
 ## Since then
 
@@ -111,5 +113,10 @@ frequency.
 - [Modal Response, pressure display](../03-modal-response.md#pressure-display) and
   [SBIR, mode excited by position](../04-sbir.md#mode-excited-by-position): where a source
   couples to a mode.
-- Idea 5: the app takes α from tables and measurements. Nothing computes reflection from
-  impedance.
+- Modal Response, Data View: each mode's own T60 from the walls it presses on, the decay that
+  sets its bandwidth in idea 4; `js/acoustx/references.js` `modeDecay`.
+- Idea 5: Calculator, **Z** tab, *Impedance Step*: $R$, the energy reflected and the energy
+  through, between media of the `MEDIA` table; `references.js` `impedanceStep`. The rooms
+  still take α from tables and measurements.
+- 📖 in the app: the groups *Enter Input Data*, *Enter Mode Index*, *Environment*, *Frequency /
+  Wavelength / Period* and *Impedance Step* open this report from their pop-up.

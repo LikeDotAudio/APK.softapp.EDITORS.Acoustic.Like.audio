@@ -105,3 +105,5 @@ coupling idea to place several subwoofers so that they cancel chosen modes at th
   checks the seat against axial nulls.
 - [Engine chapter 13, Sub placement](../../acoustics/13-subs-width.md) scores sub
   positions over the seats.
+- 📖 in the app: the groups *Enter Mode Index*, *Display Parameter* and *Mode Excited By
+  Position* open this report from their pop-up.

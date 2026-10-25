@@ -8,6 +8,7 @@ Rays leave each speaker in every direction and are followed round the box, bounc
 - **LS:** the listening position, **Mouse Edit**, reset, sphere radius.
 - **Acoustic:** the octave band, each surface's material and α, the specular absorbers' α.
 - **Sim.:** number of reflections, the vertical and horizontal angles, display items, suppression, the SPK sources, follow time.
+- **Time:** speech or music; the precedence and echo check (Haas); the backward-integrated decay with EDT, T20 and T30 (Schroeder).
 
 ## Equal-area rays
 
@@ -55,6 +56,56 @@ With several speakers, each speaker's levels are referred to its own direct soun
 - **Energy / Time** (bottom): each arrival as a bar, coloured by order (red direct, blue first, light blue second, green later). Two blue lines mark the **10 dB window**: the strongest arrival, and 10 dB under it.
 
   A reflection inside that window is strong enough to colour the sound by comb filtering. The usual aim is that every reflection in the first 15–20 ms sits at least 10 dB under the direct sound. **Next / Prev** steps through the arrivals, and a click picks the nearest.
+
+  An orange dashed line marks the **echo limit**, 50 ms (speech) or 80 ms (music) after the direct sound, as chosen on the Time tab. A reflection past it and within 10 dB of the direct sound is a likely echo (next section). The line is drawn only when it falls inside the time axis.
+
+## Precedence and echo (Haas)
+
+**Time → Precedence & Echo (Haas)**, `references.js` `haasCheck`. [Haas 1951/1972](references/07-haas-1972-single-echo.md) played speech from two loudspeakers, one delayed, and asked when listeners heard one source, where, and when they heard an echo. This group reads the traced arrivals against his findings. Its thresholds are design readings of his curves, not his data.
+
+It reads every traced arrival, before **Suppression** and before the charts' −60 dB cut, so hiding an order on the charts does not change it. The **direct** sound is the first arrival of order 0. Every reflection $i$ (order ≥ 1) is measured against it:
+
+$$\Delta t_i = t_i - t_0 \ \text{(ms)}, \qquad \Delta L_i = L_i - L_0 \ \text{(dB)}$$
+
+| Class | Condition | What the listener hears |
+|---|---|---|
+| pulls the image | $\Delta t \le 1$ ms and $\Delta L \ge -3$ dB | summing localisation: the image moves toward the reflection |
+| fused | $1 < \Delta t \le 30$ ms | one sound, from the direction of the first arrival |
+| likely echo | $\Delta t > T_e$ and $\Delta L \ge -10$ dB | a separate repeat |
+
+$T_e$ is 50 ms for **speech** and 80 ms for **music**: music hides a late reflection better. The group also gives the **initial-time-delay gap**, the lag of the first reflection, $\text{ITDG} = \min_i \Delta t_i$. Beranek used it to rate halls ([chapter 6](06-reverb-time.md#hall-checks-beranek)). A second speaker's own direct sound is not a reflection, so it is never counted: two speakers make a phantom image, not an echo.
+
+*Example, a made-up list:* the direct sound at 5 ms and 0 dB, then reflections at 5.6 ms −2 dB, 9 ms −4 dB, 30 ms −8 dB, 70 ms −6 dB and 90 ms −14 dB. The ITDG is 0.6 ms, and the 5.6 ms reflection pulls the image. The 9 ms and 30 ms ones fuse. For speech, the 70 ms one is a likely echo; the 90 ms one is too quiet. For music, nothing is past 80 ms and within 10 dB, so there is no echo.
+
+*Example, traced:* the running room, $6 \times 4.2 \times 2.8$ m with $\alpha$ = 0.25 on every face, Speaker 1 alone at $(0.9, 0.8, 1.2)$, the listener at $(2.1, 2.28, 1.2)$, 2° rays, 14 reflections, a 0.3 m sphere. The direct sound arrives at 5.49 ms. The first reflections are the floor at 8.89 ms (−5.3 dB), the front wall at 9.60 ms (−6.0 dB), the left wall at 9.71 ms (−6.1 dB) and the ceiling at 10.83 ms (−7.0 dB). So the ITDG is 3.40 ms. Nothing pulls the image, 113 reflections fuse, and there are no likely echoes for speech or music: in a room this small, everything past 50 ms is more than 10 dB down.
+
+## Decay (Schroeder)
+
+**Time → Decay (Schroeder)**, `references.js` `schroederDecay`. [Schroeder 1965](references/08-schroeder-1965-reverberation-time.md) showed that integrating the squared impulse response backwards gives, in one pass, the average of many interrupted-noise decays. Here the impulse response is every traced arrival (again before Suppression and the −60 dB cut), each with energy $e_i = 10^{L_i/10}$:
+
+$$E(t) = \sum_{t_i \ge t} e_i, \qquad D(t) = 10\log_{10}\frac{E(t)}{E(t_0)}\ \text{dB}$$
+
+$D$ starts at 0 dB at the first arrival $t_0$ and falls as the energy still to come runs out. It is sampled every 1 ms. Three reverberation times are fitted to it, each a least-squares line over the samples between two levels, with slope $m$ in dB/ms:
+
+$$T = -\frac{60}{m}\cdot\frac{1}{1000}\ \text{s}$$
+
+| Figure | Fitted between |
+|---|---|
+| EDT (early decay time) | 0 and −10 dB |
+| T20 | −5 and −25 dB |
+| T30 | −5 and −35 dB |
+
+Each is extrapolated to 60 dB. A figure shows — when the curve never reaches its lower level. The chart draws $D(t)$.
+
+*Example, a check:* arrivals every 1 ms for 600 ms, falling 60 dB per 500 ms, give EDT = T20 = T30 = 0.50 s.
+
+*Example, traced:* the same trace as above. With 14 reflections the curve ends at −56.3 dB after 235 ms, and EDT = 0.28 s, T20 = 0.22 s, T30 = 0.22 s. With 40 reflections it reaches −97.4 dB at 635 ms, and EDT = 0.28 s, T20 = 0.25 s, T30 = 0.30 s. Sabine gives 0.42 s for this room (Room figures, below) and Eyring 0.37 s.
+
+The traced decay is shorter than both, for two reasons:
+- the trace stops after the set number of reflections, so the tail is cut off;
+- each surface sequence is kept once, and late sequences are missed when the rays have spread too thin to hit the sphere.
+
+The Time tab says so: raise **Number of ref.** for T30. EDT, which uses only the first 10 dB, is the most reliable of the three here.
 
 ## Polar energy
 

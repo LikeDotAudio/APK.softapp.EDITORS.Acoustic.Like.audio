@@ -98,6 +98,12 @@ export const FORMULAS = [
  *   CINEMA        (≈ 0.35 s at 500 m³, ≈ 0.55 s at 5000 m³), allowed to rise
  *                 toward the bass (×1.4 at 125 Hz) and fall slightly at
  *                 4 kHz, ±20 %. Design intent, not a certification figure.
+ *   CONCERT HALL  rooms for music, after Beranek's 1962 survey of halls:
+ *   OPERA HOUSE   a mid-band (500 Hz–1 kHz) occupied RT of about 2.0 s for
+ *   CHAMBER       symphonic music, 1.5 s for opera, 1.6 s for chamber music,
+ *   MUSIC         rising toward the bass for a bass ratio of 1.15–1.2 and
+ *                 falling slightly in the treble, ±10 %. Approximate: his
+ *                 preferred ranges, read as one curve each.
  *   USER          a flat value of your own.
  */
 export const RT_TARGETS = [
@@ -137,6 +143,19 @@ export const RT_TARGETS = [
       return { rt, lo: rt.map((t) => t * 0.8), hi: rt.map((t) => t * 1.2) };
     },
   },
+  ...[
+    ['hall', 'Concert hall (symphonic)', 2.0, [1.25, 1.12, 1, 1, 0.92, 0.8]],
+    ['opera', 'Opera house', 1.5, [1.2, 1.1, 1, 1, 0.92, 0.8]],
+    ['chamber', 'Chamber music', 1.6, [1.2, 1.1, 1, 1, 0.92, 0.8]],
+  ].map(([id, label, mid, shape]) => ({
+    id,
+    label,
+    source: 'approx. after Beranek 1962',
+    curve() {
+      const rt = shape.map((k) => mid * k);
+      return { rt, lo: rt.map((t) => t * 0.9), hi: rt.map((t) => t * 1.1) };
+    },
+  })),
   {
     id: 'user',
     label: 'User',

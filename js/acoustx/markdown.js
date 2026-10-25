@@ -5,8 +5,9 @@
  * THE HELP FILE'S MARKDOWN
  *
  * Just enough Markdown for Documentation/ — the kind those chapters use:
- * headings, paragraphs, bullet and numbered lists, pipe tables, `code`,
- * **bold**, *italic*, [links](…), and TeX math, $inline$ and $$display$$.
+ * headings, paragraphs, block quotes, bullet and numbered lists, pipe
+ * tables, `code`, **bold**, *italic*, [links](…), and TeX math, $inline$
+ * and $$display$$.
  * Math is left as <span class="math" data-tex> / <div class="math display">
  * holding the TeX source, for KaTeX to typeset when it is to hand and to
  * read as TeX when it is not. Everything else is escaped, so a chapter can
@@ -96,6 +97,12 @@ export function renderMarkdown(md) {
       out.push(`<table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
       continue;
     }
+    if (/^\s*>/.test(line)) {
+      const q = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, '').trim());
+      out.push(`<blockquote><p>${inline(q.join(' '))}</p></blockquote>`);
+      continue;
+    }
     const li = /^(\s*)([-*]|\d+\.)\s+(.*)$/;
     if (li.test(line)) {
       const ordered = /\d+\./.test(li.exec(line)[2]);
@@ -112,7 +119,7 @@ export function renderMarkdown(md) {
     }
     const para = [line.trim()];
     i++;
-    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*([-*]|\d+\.)\s|\s*\||\s*\$\$|```)/.test(lines[i])) para.push(lines[i++].trim());
+    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*([-*]|\d+\.)\s|\s*\||\s*\$\$|```|\s*>)/.test(lines[i])) para.push(lines[i++].trim());
     out.push(`<p>${inline(para.join(' '))}</p>`);
   }
   return out.join('\n');

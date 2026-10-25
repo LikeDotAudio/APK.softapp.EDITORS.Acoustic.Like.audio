@@ -71,8 +71,10 @@ directional loudspeaker helps in proportion.
 
 **Challenge.** In a 2000 m³ hall with $T$ = 1.5 s and a $Q$ = 10 cluster, find
 %AL$_\text{cons}$ at 10 m (2.25 %) and at 20 m (9.0 %). Then halve $Q$ and find it at
-10 m again. The app does not compute AL$_\text{cons}$. It computes the STI instead, from
-the echogram (engine chapter 6.7). Compare a talker pair's STI at two distances there.
+10 m again. Check all three in the Calculator's **PA** tab, *Speech & Gain*: it reads
+2.3 %, 9.0 % and, with $Q$ = 5, 4.5 %, to one decimal. The main app computes the STI
+instead, from the echogram (engine chapter 6.7). Compare a talker pair's STI at two distances
+there.
 
 ### 5. Potential acoustic gain
 
@@ -87,8 +89,9 @@ $$\text{PAG} = 20\log D_0 - 20\log D_s + 20\log D_1 - 20\log D_2 - 10\log\text{N
 The single most useful move is to bring the microphone closer to the talker.
 
 **Challenge.** Take $D_0$ = 20 m, $D_s$ = 0.6 m, $D_1$ = 6 m, $D_2$ = 10 m and one
-microphone. Find PAG (20.0 dB). Halve $D_s$ and find the new figure. The app has no
-feedback or gain-before-feedback model.
+microphone. Find PAG (20.0 dB). Halve $D_s$ and find the new figure. Check both in the
+Calculator's **PA** tab, *Speech & Gain*: 20.0 and 26.0 dB. With an EAD of 3 m the needed
+gain is 16.5 dB, so both settings work. The app has no feedback model beyond this equation.
 
 ### 6. Coverage: the −6 dB edge
 
@@ -99,7 +102,9 @@ the loudspeaker above the ears: edge to edge, $s = 2h\tan(\theta/2)$; for smooth
 coverage, closer.
 
 **Challenge.** A 3.0 m ceiling, ears at 1.2 m, a 90° loudspeaker: find the edge-to-edge
-spacing (3.6 m). Then for a 60° loudspeaker (2.1 m). In the main app, set a speaker's
+spacing (3.6 m). Then for a 60° loudspeaker (2.1 m). The Calculator's **PA** tab, *Ceiling
+Speakers*, reads 3.60 m and 2.08 m edge to edge, with the overlap and centre-to-centre
+spacings beside them. In the main app, set a speaker's
 pattern to horn with 90° coverage and check at 22.5°, 45° and 67.5° off axis that the
 pattern reads −0.4, −6 and −30 dB.
 
@@ -135,5 +140,13 @@ Engineering for Sound Reinforcement* (2002) carried the book's material forward.
   `classic.js` `roomFigures`.
 - [Engine chapter 6.7, Talkers](../../acoustics/06-sources-receivers.md#67-talkers--every-person-speaks-every-person-hears):
   `intelligibility.js` `mtfOfEnergy`, `stiFromMtf` (STI, not AL$_\text{cons}$).
-- Not in the app: AL$_\text{cons}$, potential acoustic gain and feedback, and a
-  distributed-system spacing tool.
+- Calculator, **PA** tab, *Speech & Gain*: %AL$_\text{cons}$ with its 9 $T$ limit past
+  $3.16\,D_c$, and PAG against NAG; *Ceiling Speakers*: edge-to-edge, overlap and
+  centre-to-centre spacing. `js/acoustx/references.js` `alcons`, `acousticGain`,
+  `ceilingSpacing`.
+- Calculator, **Spk** tab, *Electrical Levels*: dBu and dBV of a voltage, and the SPL from
+  sensitivity, power and distance; `references.js` `electrical`, `splFromPower`.
+- Not in the app: feedback itself (only the PAG equation), and an electrical chain beyond those
+  levels.
+- 📖 in the app: the groups *Inverse Square Law*, *Speech & Gain*, *Ceiling Speakers* and
+  *Electrical Levels* open this report from their pop-up.

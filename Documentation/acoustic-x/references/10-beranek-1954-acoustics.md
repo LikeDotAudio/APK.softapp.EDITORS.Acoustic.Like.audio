@@ -36,8 +36,10 @@ $$f_0 = \frac{c}{2\pi}\sqrt{\frac{S}{V\,l'}}$$
 
 with $S$ the neck area, $V$ the cavity volume and $l'$ the neck length plus end corrections.
 Take a 50 mm diameter neck 100 mm long on a 10 litre cavity, with $l' = l + 1.7a$. Find
-$f_0 \approx 64$ Hz. The app has no resonator calculator; its `membrane-trap` material is a
-fixed estimate, not a design you can tune.
+$f_0 \approx 64$ Hz. Check it in the Calculator's **Res** tab, *Resonators*: a 25 mm neck
+radius, 100 mm neck and 10 litre cavity give 64.1 Hz at 20 °C. The tab gives the frequency,
+not an absorption curve; the `membrane-trap` material is still a fixed estimate, not a design
+you can tune.
 
 ### 2. A piston radiates evenly only while it is small
 
@@ -48,7 +50,8 @@ sphere, and the directivity index is $\text{DI} = 10\log_{10} Q$. A source on a 
 radiates into half the space and has $Q = 2$.
 
 **Challenge.** Find the frequency where $ka = 1$ for a 200 mm woofer ($a = 0.1$ m): about
-546 Hz. Then read
+546 Hz. In the Calculator's **Spk** tab, *Piston & Box*, a 100 mm radius at 546 Hz reads
+$ka$ = 1.00 and a DI of 3.7 dB. Then read
 [engine chapter 6, Directivity factor](../../acoustics/06-sources-receivers.md#directivity-factor):
 the app's cardioid monitor with `omniBelow` = 300 Hz has $Q$ = 1 at 150 Hz and 3.00 at 1 kHz.
 Say which of the two (the pistonic $ka$ or the box's `omniBelow`) the app actually uses.
@@ -151,5 +154,11 @@ and Lee (1988) proposed a revised theory in which the reverberant level falls wi
 - [Engine chapter 6, Directivity](../../acoustics/06-sources-receivers.md#65-directivity):
   `js/acoustics/patterns.js` `directivityQ`.
 - [Calculator](../07-calculator.md): `classic.js` `addLevels`, `inverseSquare`.
-- The circuit analogies, horns, enclosures and transducer design of ideas 1 and 2 have no
-  counterpart in the app.
+- Calculator, **Spk** tab, *Piston & Box*: the piston in a baffle ($ka$, the −6 dB
+  half-angle, DI, the level at 30° and 60°) and the closed box ($f_c$, $Q_{tc}$);
+  `js/acoustx/references.js` `piston`, `besselJ1`, `closedBox`. **Res** tab, *Resonators*:
+  `helmholtz`.
+- The circuit analogies themselves, horns and vented boxes have no counterpart in the app.
+  The speakers in the room keep their stated patterns (`patterns.js`), not the piston's.
+- 📖 in the app: the groups *Trace*, *Calculation Method* and *Piston & Box* open this report
+  from their pop-up.

@@ -40,7 +40,8 @@ of electrical input. Doubling the power adds 3 dB; doubling the distance in free
 power into sound. Getting 10 dB more takes ten times the power.
 
 **Challenge.** A box of 87 dB at 1 W/1 m driven with 5 W: find the free-field level at
-2.5 m by hand (about 86.0 dB). Then use the app's `wattsFor` arithmetic,
+2.5 m by hand (about 86.0 dB), and check it in the Calculator's **Spk** tab, *Electrical
+Levels*: 87 dB, 5 W, 2.5 m reads 86.0 dB. Then use the app's `wattsFor` arithmetic,
 $W = 10^{(\text{SPL} - \text{sens})/10}$, to find the power for 100 dB at 1 m (about
 20 W).
 
@@ -91,7 +92,9 @@ there for your speaker position.
 clipping point.
 
 **Challenge.** By hand, find the voltage at +4 dBu and at −10 dBV and the difference in dB.
-The app has no electrical side: it starts at the speaker's acoustic output.
+Check them in the Calculator's **Spk** tab, *Electrical Levels*: 1.228 V reads 4.0 dBu and
+1.8 dBV, 0.316 V reads −7.8 dBu and −10.0 dBV. That is all of the electrical side the app
+has: the rooms start at the speaker's acoustic output.
 
 ## Since then
 
@@ -114,4 +117,12 @@ standard by 1990, remain how drivers and boxes are specified.
 - [SBIR](../04-sbir.md): [deviation](../04-sbir.md#deviation) (`js/acoustics/sbir.js`
   `sbirDeviation`) and [the speaker's critical frequencies](../04-sbir.md#the-speakers-critical-frequencies)
   (`classic.js` `crossoverCheck`).
-- Idea 6: nothing. The app has no electrical signal chain.
+- Calculator, **Spk** tab, *Piston & Box*: the closed-box alignment from the Thiele–Small
+  parameters ($f_c$, $Q_{tc}$) and the piston's beaming; `js/acoustx/references.js`
+  `closedBox`, `piston`.
+- Idea 6: Calculator, **Spk** tab, *Electrical Levels*: dBu and dBV of a voltage, and SPL
+  from sensitivity, power and distance; `references.js` `electrical`, `splFromPower`. There is
+  no signal chain beyond that: no gain staging, noise or clipping.
+- Calculator, **Tone** tab, *Loudness*: phons to sones; `references.js` `sones`.
+- 📖 in the app: the groups *Level Addition*, *Piston & Box*, *Electrical Levels* and
+  *Loudness* open this report from their pop-up.

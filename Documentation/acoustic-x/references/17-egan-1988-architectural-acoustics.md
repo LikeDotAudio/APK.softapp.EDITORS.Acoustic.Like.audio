@@ -66,7 +66,9 @@ wall with an air gap and absorbent fill does better than its mass alone. The boo
 walls by the single-number STC.
 
 **Challenge.** Work out the mass-law TL of a 10 kg/m² panel at 500 Hz (27 dB), at 1 kHz,
-and of a 20 kg/m² panel at 500 Hz. Both doublings should give 33 dB. Then compare with the
+and of a 20 kg/m² panel at 500 Hz. Both doublings should give 33 dB. The Calculator's
+**Wall** tab gives the same (27.0 dB with Leaf 2 at 0, 33.0 dB with two 10 kg/m² leaves),
+and rates each curve by Rw, not STC: 31 and 37 dB. Then compare with the
 single-stud wall's TL in the app's wall builds (engine chapter 12.2), and say why a real
 stud wall does not follow the mass law in every band.
 
@@ -89,9 +91,11 @@ from ventilation and plant with noise criterion (NC) curves, octave-band limits 
 looser at low frequencies, and gives target NC values by room type. Noise control starts
 with layout: keep plant away from quiet rooms, and slow the air in ducts.
 
-**Challenge.** The app has no noise criterion check and no model of mechanical noise. Use
-the Calculator's level addition instead: two fans at 45 dB and one at 50 dB, as energy,
-make how much? Find it (52.1 dB), and say which fan you would silence first.
+**Challenge.** The Calculator's **NC** tab rates an octave-band spectrum against the NC
+curves: its starting spectrum (50, 45, 40, 35, 30, 28, 26, 25 dB from 63 Hz to 8 kHz) rates
+NC-30, set by the 500 Hz band. The app has no model of mechanical noise, so the spectrum is
+yours to find. Use the Calculator's level addition: two fans at 45 dB and one at 50 dB, as
+energy, make how much? Find it (52.1 dB), and say which fan you would silence first.
 
 ## Since then
 
@@ -116,5 +120,13 @@ by Sabine, isolation by mass and sealing, is unchanged.
   `wallTransmission`, `stcRating`.
 - [Engine chapter 12.4, Below 125 Hz](../../acoustics/12-isolation.md#124-below-125-hz-the-octaves-a-sub-lives-in):
   `isolation.js` `lowWallTl` carries the 125 Hz TL down the mass law's 6 dB per octave.
-  That slope is the only use of the mass law; wall TL above it comes from tabulated builds.
-- Not in the app: noise criterion curves and mechanical noise.
+  In the rooms that slope is the only use of the mass law; wall TL above it comes from
+  tabulated builds.
+- Calculator, **Wall** tab, *Mass Law & Rw*: the mass law, coincidence, mass–air–mass and the
+  ISO 717-1 Rw of the mass-law curve; `js/acoustx/references.js` `massLaw`, `coincidence`,
+  `massAirMass`, `ratingRw`. Rw only; the STC there is the main app's, for the wall builds.
+- Calculator, **NC** tab, *Background Noise (NC)*: `references.js` `ncRating`, `NC_CURVES`,
+  `NC_TARGETS`.
+- Not in the app: mechanical noise. The NC tab rates a spectrum you type.
+- 📖 in the app: the groups *Calculation Method*, *Criteria Type*, *Absorption*, *Mass Law &
+  Rw* and *Background Noise (NC)* open this report from their pop-up.

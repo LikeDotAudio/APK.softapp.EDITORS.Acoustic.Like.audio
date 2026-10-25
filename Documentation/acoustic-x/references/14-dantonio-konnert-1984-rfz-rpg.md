@@ -113,5 +113,12 @@ plans.
   `js/acoustics/reflectionPanels.js` `firstReflections`, `reflectionPanels`.
 - [Engine chapter 14.5, The room library](../../acoustics/14-layouts-placement.md#145-the-room-library):
   `roomLibrary.js` carries an RFZ trapezoid and a LEDE control room.
+- Ray Tracing, **Time** tab, *Precedence & Echo (Haas)*: the initial-time-delay gap and the
+  reflections that fuse with the direct sound at the seat; `js/acoustx/references.js`
+  `haasCheck`.
+- Calculator, **QRD** tab, *QRD Diffuser*: the well depths and working band of the rear-wall
+  diffuser; `references.js` `qrd`.
 - The app has no direct model of the rear-wall diffuse return as a designed field. The
   echogram's diffuse rain (engine chapter 9.1) is the nearest thing.
+- 📖 in the app: the groups *Valid Listening Window*, *Specular Absorbers*, *Precedence & Echo
+  (Haas)* and *QRD Diffuser* open this report from their pop-up.

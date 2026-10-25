@@ -120,7 +120,13 @@ clean an $h(t)$ goes into it.
 - [Reverb Time, a measured empty room](../06-reverb-time.md#a-measured-empty-room):
   `js/acoustx/classic.js` `rtFromMeasured` takes a measured $T_0$ per band as the basis, but
   you type the numbers; the window does not read an impulse response.
-- The model's late tail decays at one Eyring rate per band
-  ([chapter 9 §9.1](../../acoustics/09-echogram-iso3382.md#91-the-echogram)), so a modelled
-  Schroeder curve does not bend the way idea 4 describes. Only a measurement shows that. The
-  Ray Tracing window does not integrate its arrivals into a decay curve.
+- The main app's late tail decays at one Eyring rate per band
+  ([chapter 9 §9.1](../../acoustics/09-echogram-iso3382.md#91-the-echogram)), so its
+  Schroeder curve does not bend the way idea 4 describes.
+- Ray Tracing, **Time** tab, *Decay (Schroeder)*: the traced arrivals integrated backwards,
+  drawn, with EDT, T20 and T30 fitted from the curve; `js/acoustx/references.js`
+  `schroederDecay`. Each traced path keeps its own losses, so this curve is not tied to one
+  Eyring rate. It ends where the trace stops: T30 reads only when the curve reaches −35 dB,
+  so raise *Number of ref.* for it.
+- 📖 in the app: the groups *Decay (Schroeder)* and *RT60 Of Empty Room (s)* open this report
+  from their pop-up.

@@ -69,8 +69,11 @@ echo in speech.
 behind the listener. Compute the extra path of the back-wall reflection: 40 m, so it
 arrives about 117 ms after the direct sound. Name two treatments: absorb the back wall, or
 tilt it to send the reflection into the audience near the wall, where the extra path is
-short. The app has no echo-disturbance check of this kind. The nearest measures are $C_{50}$
-and $D_{50}$ in the echogram, which count energy before and after 50 ms.
+short. Then open Ray Tracing's **Time** tab. *Precedence & Echo (Haas)* lists as a likely
+echo any reflection later than 50 ms (speech) or 80 ms (music) that comes within 10 dB of the
+direct sound, and the Energy / Time chart draws that limit as an orange line. The 117 ms
+reflection is past both limits; whether it is flagged depends on how much the wall and the
+path take off. $C_{50}$ and $D_{50}$ in the echogram count the energy before and after 50 ms.
 
 ### 4. In a small room the problem is colour, not echo
 
@@ -113,5 +116,12 @@ Thiele's *Deutlichkeit* $D_{50}$ and in $C_{50}$, both now in ISO 3382-1.
 - A speaker's `delayMs` ([engine chapter 6](../../acoustics/06-sources-receivers.md#62-frequency-response))
   shifts its arrivals in the wave sum and the echogram ($\tau_s$), so idea 2's delayed
   loudspeaker can be set by hand.
-- The app has no model of the precedence effect itself and no echo-disturbance criterion.
-  Nothing tells you where a sound will be localised.
+- Ray Tracing, **Time** tab, *Precedence & Echo (Haas)*: from the traced arrivals, the
+  reflections within 1 ms and 3 dB that pull the image, the ones that fuse (1–30 ms), the
+  initial-time-delay gap, and the likely echoes past the speech or music limit; the orange
+  *echo limit* line on the Energy / Time chart. `js/acoustx/references.js` `haasCheck`.
+- That check is a design reading of Haas's curves, not a hearing model. It ignores the
+  signal, the masking by reverberation and the share of listeners disturbed, and it says only
+  whether the first arrival keeps the direction, not where the image lands.
+- 📖 in the app: the groups *Valid Listening Window* and *Precedence & Echo (Haas)* open this
+  report from their pop-up.

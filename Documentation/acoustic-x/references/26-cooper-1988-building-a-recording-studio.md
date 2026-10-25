@@ -89,7 +89,9 @@ with the background noise held to a low noise-criterion (NC) curve.
 
 **Challenge.** By hand: for a fixed airflow, halving the duct velocity doubles the duct
 area. Find what diameter a round duct needs to carry 0.1 m³/s at 2.5 m/s (about 0.23 m).
-The app does not model ventilation or background noise.
+The app does not model ventilation. Once the duct's noise is known per octave, the
+Calculator's **NC** tab rates it against the NC curves; its target for a recording studio is
+NC 15–20.
 
 ## Since then
 
@@ -116,4 +118,8 @@ Noise criteria moved toward NCB and RC curves for ventilation noise.
   `advise`, `analysis.js` `reflectionFreeZone`); [SBIR, the listener and the angles](../04-sbir.md#the-listener-and-the-angles).
 - Idea 5: [Reverb Time](../06-reverb-time.md) (`classic.js` `optimiseAreas`); the advisor's
   thin-absorber warning.
-- Idea 6: nothing. The app has no ventilation or background-noise model.
+- Idea 6: Calculator, **NC** tab, *Background Noise (NC)*: the NC rating of an octave
+  spectrum you type, the band that sets it, and targets by room; `js/acoustx/references.js`
+  `ncRating`, `NC_CURVES`, `NC_TARGETS`. The app has no ventilation or duct model to
+  produce that spectrum.
+- 📖 in the app: the group *Background Noise (NC)* opens this report from its pop-up.

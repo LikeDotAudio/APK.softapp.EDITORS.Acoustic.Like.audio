@@ -86,7 +86,8 @@ beats at the difference frequency, and their average is the intensity sum.
 
 **Challenge.** In the Calculator's **Add** tab, add 90 and 90 dB as energy and as pressure.
 Find 93.01 dB and 96.02 dB. Then say what level two 90 dB tones at 100 Hz and 101 Hz swing
-between, and how often per second.
+between, and how often per second. The Calculator's **Tone** tab, *Two Tones*, gives the rate:
+1.0 Hz.
 
 ## Since then
 
@@ -107,3 +108,8 @@ supplies it.
   `classic.js` `modeShape`, `pressureField`.
 - [Engine chapter 1, level arithmetic](../../acoustics/01-conventions.md#15-level-arithmetic);
   `js/acoustics/bands.js` `dbSum`. The main app uses a fixed $c = 343$ m/s.
+- Calculator, **Z** tab, *Impedance Step*: reflection and transmission at normal incidence
+  between two media; `js/acoustx/references.js` `impedanceStep`, `MEDIA`. **Tone** tab, *Two
+  Tones*: the beat rate; `twoTones`.
+- 📖 in the app: the groups *Environment*, *Inverse Square Law*, *Level Addition*, *Frequency /
+  Wavelength / Period* and *Impedance Step* open this report from their pop-up.

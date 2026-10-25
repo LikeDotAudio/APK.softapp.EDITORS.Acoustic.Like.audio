@@ -95,5 +95,12 @@ room by its modes and its seat, and damp the modes with low-frequency absorbers.
   `prepareModal`, `modalDb`.
 - [Schroeder frequency](../../acoustics/04-reverberation.md#43-schroeder-frequency);
   `room.js` `schroeder`.
-- The app does not model per-mode decay rates or beating decay curves. Every mode in the
-  modal method shares the one damping of its band.
+- Modal Response, Data View: the mode table's T60 column gives each mode its own decay, from
+  the walls it presses on (α at 125 Hz, after Morse and Bolt); `js/acoustx/references.js`
+  `modeDecay`. With even absorption, an axial mode rings longest.
+- Modal Response, **Mode 1** tab, *Mode Decay (Knudsen)*: the chosen mode, or the band of
+  modes, struck together and left to ring, beating where modes are close; `references.js`
+  `bandDecay`.
+- The engine's modal method still damps every mode of a band alike, with the one Eyring time.
+- 📖 in the app: the groups *Enter Input Data* and *Mode Decay (Knudsen)* open this report
+  from their pop-up.

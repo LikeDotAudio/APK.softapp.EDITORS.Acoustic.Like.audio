@@ -68,7 +68,10 @@ get $1 : 1.50 : 2.14$. Then do the same for the Louden ratio room in the room li
 (height 2.7 m), whose note says it sits inside Bolt's area. Compare both with a printed
 copy of the chart in a handbook (Everest's *Master Handbook*, [report
 12](12-everest-1989-master-handbook.md), reproduces it) and find whether the 6 m room is
-inside. The app does not draw the Bolt area, so this step is on paper.
+inside. Then open Modal Response's **Criteria** tab: *Bolt Area* draws a chart of the same
+kind at the room's height, scored by this app rather than by Bolt, with the white ring on the
+room. Find that the ring sits inside the dashed ITU-R BS.1116 bounds but on a red cell: the
+room fails Bonello ([report 6](06-bonello-1979-room-mode-criterion.md)).
 
 ### 4. Shape matters less as frequency and size grow
 
@@ -105,4 +108,13 @@ that Bolt's idea 4 describes.
   `modalDistribution.js` `FAVOURABLE_RATIOS`).
 - [Schroeder frequency](../../acoustics/04-reverberation.md#43-schroeder-frequency);
   `js/acoustics/room.js` `schroeder`.
-- The Bolt area chart itself is not drawn anywhere in the app.
+- Modal Response, **Criteria** tab, *Bolt Area*: a computed map of W/H × L/H at the room's
+  height, green where Bonello passes and red where it fails, shaded by the app's score, with
+  the ITU-R BS.1116 bounds dashed and the favourable ratios dotted. Click it to take a
+  ratio. `js/acoustx/references.js` `boltMap`. It is Bolt's method with this app's score
+  (`modalDistribution.js` `scoreDimensions`), not a copy of his chart.
+- Modal Response, **Mode 1** tab, *Mode Decay (Knudsen)*: the chosen mode or band struck and
+  left to ring; `references.js` `modeDecay`, `bandDecay`.
+- 📖 in the app: the groups *Enter Input Data*, *Favourable Room Ratios*, *Bonello Criterion*,
+  *Modes per 1/3 Octave — actual against ideal*, *Bolt Area* and *Mode Decay (Knudsen)* open
+  this report from their pop-up.

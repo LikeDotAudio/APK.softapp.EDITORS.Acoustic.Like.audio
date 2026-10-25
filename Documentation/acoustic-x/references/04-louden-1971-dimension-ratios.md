@@ -77,8 +77,10 @@ fixed frequency limit, so it changes with size too.
 
 **Challenge.** Compute the app's score for the Louden ratio at $H = 2.7$ m: about 3.64,
 because the Bonello failure costs 2 on its own. Compare the Bolt (∛2) ratio at the same
-height, $4.29 \times 3.40 \times 2.7$ m: it passes, with a score of about 1.40. Then explain
-in one sentence why Louden's own index could rank these two the other way.
+height, $4.29 \times 3.40 \times 2.7$ m: it passes, with a score of about 1.40. Then open
+the **Criteria** tab's *Spacing Index (Louden)* list, which scores the gaps between the lowest
+30 modes, lower being more even. Find Louden at 0.807 and Bolt at 0.833: an index of
+Louden's kind ranks these two the other way. Explain in one sentence why.
 
 ## Since then
 
@@ -99,5 +101,13 @@ The brute-force search Louden used is now routine.
   `modalDistribution.js` `spacingSpread`.
 - [Engine chapter 14, The room library](../../acoustics/14-layouts-placement.md#145-the-room-library):
   the Louden-ratio room, `js/acoustics/roomLibrary.js`.
-- The app does not reproduce Louden's own figure of merit or his ranked table. Its score
-  mixes Bonello failures with spacing spread over every mode below 200 Hz.
+- Modal Response, **Criteria** tab, *Spacing Index (Louden)*: the spread of the gaps between
+  the lowest 30 modes, scale-free, for this room, and the favourable ratios ranked by it;
+  `js/acoustx/references.js` `spacingIndex`, `gapCv`. It is a figure of merit of Louden's
+  kind, not his own, and it ranks the app's seven ratios, not his table: Sepmeyer A comes
+  first there, Louden fourth.
+- Modal Response, **Criteria** tab, *Bolt Area*: the app's score mapped over the ratios at the
+  room's height; `references.js` `boltMap`. The score itself still mixes Bonello failures with
+  spacing spread over every mode below 200 Hz.
+- 📖 in the app: the groups *Favourable Room Ratios*, *Bolt Area* and *Spacing Index
+  (Louden)* open this report from their pop-up.

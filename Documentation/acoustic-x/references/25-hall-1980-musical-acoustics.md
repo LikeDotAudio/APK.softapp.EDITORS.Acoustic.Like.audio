@@ -25,8 +25,9 @@ of a semitone: the interval from $f_1$ to $f_2$ is $1200\log_2(f_2/f_1)$ cents. 
 acoustic charts use a logarithmic frequency axis and fractional-octave bands.
 
 **Challenge.** Find the size of a ⅓-octave band in cents (400). Then take two room modes at
-50 and 53 Hz and find the interval between them (about 101 cents, a semitone). In Modal
-Response's chart, find a pair of neighbouring modes below 80 Hz in a
+50 and 53 Hz and find the interval between them (about 101 cents, a semitone). The
+Calculator's **Tone** tab, *Two Tones*, reads 100.9 cents, nearest the minor second 16:15.
+In Modal Response's chart, find a pair of neighbouring modes below 80 Hz in a
 $6 \times 4.2 \times 2.8$ m room that are more than a whole tone (200 cents) apart.
 
 ### 2. Loudness is not level
@@ -38,7 +39,9 @@ with roughly a 10 dB rise needed to sound twice as loud.
 
 **Challenge.** In the Calculator's **Add** tab, find how many uncorrelated sources at
 80 dB it takes to raise the level by 10 dB (ten), and so to sound roughly twice as loud as
-one. Note how much more than a doubling of players that is.
+one. Note how much more than a doubling of players that is. In the **Tone** tab, *Loudness*,
+80 phon reads 16.00 sone and 90 phon 32.00. A phon equals a dB only at 1 kHz; the app has
+no equal-loudness contours to convert a level at another frequency.
 
 ### 3. Strings and air columns have harmonic modes
 
@@ -86,7 +89,10 @@ intonation, meantone and equal temperament distribute that error differently. Eq
 temperament makes every key alike at the cost of slightly impure thirds and fifths.
 
 **Challenge.** By hand, compute $1200\log_2\big((3/2)^{12}/2^7\big)$ and find the comma
-(about 23.46 cents). The app has nothing on tuning.
+(about 23.46 cents). In the Calculator's **Tone** tab, *Two Tones*, enter 440 and 660 Hz:
+the interval reads 702.0 cents, a just fifth 3:2, with equal temperament 2.0 cents flat of it.
+Twelve of those shortfalls make the comma. The app has no tuning systems beyond this
+nearest-just-interval readout.
 
 ## Since then
 
@@ -102,7 +108,9 @@ similar level.
   `js/acoustics/modalDistribution.js` `thirdOctaveBands`.
 - Idea 2: [Calculator, Add](../07-calculator.md#add--level-addition) (`classic.js`
   `addLevels`). The ⅓-octave table `FREQ_3RD` in `js/acoustics/bands.js` carries an
-  A-weighting offset per band, but nothing computes loudness.
+  A-weighting offset per band. Calculator, **Tone** tab, *Loudness*: phons to sones,
+  `js/acoustx/references.js` `sones`, `phons`. Nothing computes loudness from a spectrum:
+  no ISO 226 contours and no Zwicker model.
 - Idea 3: [Modal Response, room modes](../03-modal-response.md#room-modes); `room.js`
   `axialModes`.
 - Idea 4: [Reverb Time](../06-reverb-time.md#the-formulas) (`reverbTargets.js`
@@ -110,4 +118,8 @@ similar level.
   (`classic.js` `roomFigures`).
 - Idea 5: [SBIR, the listener and the angles](../04-sbir.md#the-listener-and-the-angles)
   (`classic.js` `listenerGeometry`).
-- Idea 6: nothing.
+- Ideas 1 and 6: Calculator, **Tone** tab, *Two Tones*: the interval in cents, the
+  nearest just interval and how far equal temperament is from it, the notes and their cents
+  off; `references.js` `twoTones`, `noteOf`, `JUST`. No meantone or other temperaments.
+- 📖 in the app: the groups *Frequency / Wavelength / Period*, *Two Tones* and *Loudness* open
+  this report from their pop-up.

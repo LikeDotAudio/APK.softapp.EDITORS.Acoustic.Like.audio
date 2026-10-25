@@ -113,3 +113,5 @@ explained, but a full prediction adds the room's modes, which the box also drive
   advisor warns when $c/4d$ for the wall behind a box falls between 40 and 300 Hz.
 - [Calculator, Comb](../07-calculator.md#comb--comb-filter-nulls): `classic.js`
   `combNulls` gives the notch series for any delay.
+- 📖 in the app: the groups *Speaker Critical Frequency*, *Mode Excited By Position* and
+  *Comb-Filter* open this report from their pop-up.
