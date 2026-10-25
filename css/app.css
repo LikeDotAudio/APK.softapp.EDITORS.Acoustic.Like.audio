@@ -128,6 +128,9 @@ main { position: relative; display: grid; grid-template-columns: 1fr var(--inspe
 /* the CAD's gear (a library room's console, desks, rack, couch): a ring at its centre, under any speaker or seat standing on it */
 .stage .hit { z-index: 1; }
 .stage .hit[data-kind="gear"] { z-index: 0; border: 1px dashed rgba(251, 191, 36, 0.75); }
+/* the people over the boxes and the furniture, the mix seat over everyone: grabbed first where they overlap */
+.stage .hit[data-kind="mic"] { z-index: 2; }
+.stage .hit.mix { z-index: 3; }
 .stage .capture { position: absolute; inset: 0; display: none; cursor: crosshair; background: rgba(244,144,44,.04); outline: 2px dashed rgba(244,144,44,.5); outline-offset: -3px; }
 .stage .capture.on { display: block; }
 /* a speaker turning after Ctrl-click: this sheet takes the pointer from the CAD's iframe until a click sets it */

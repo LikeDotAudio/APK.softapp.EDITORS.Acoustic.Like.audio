@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
+import { talkers } from '../acoustics/talk.js';
 import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { receiverOrder, sourceGroups } from '../acoustics/groups.js';
@@ -125,7 +126,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
 
   /**
    * The ACOUSTIC GROUPS (acoustics/groups.js) as one tree: Room, Surfaces,
-   * Sources by speaker set, Receivers. A branch folded shut stays shut across
+   * Sources by speaker set and the people who talk, Receivers. A branch folded shut stays shut across
    * redraws; `room: false` leaves the first two out (the transducer picker).
    */
   const shut = new Set();
@@ -146,11 +147,14 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       out.push(branch('surfaces', ['🧱 Surfaces', h('small', {}, ` ᾱ ${fmt(room.perBand[2]?.abar)} at 500 Hz`)], (room.surfaces ?? []).map(surface)));
     }
     const sets = sourceGroups(speakers, settings);
+    // the people talk too (acoustics/talk.js): each one a source to everyone else
+    const people = talkers(mics);
+    const voices = people.length ? [branch('set:people', ['🗣 People — each talks to the others', h('small', {}, ` STI each way · ${people.length}`)], people.map(mic))] : [];
     out.push(
       branch(
         'sources',
-        ['🔊 Sources', h('small', {}, ` ${speakers.length}`)],
-        sets.length ? sets.map((g) => branch(`set:${g.key}`, [g.title, h('small', {}, ` ${g.preset ?? 'by hand'}${g.live ? ' · sounding' : ''} · ${g.items.length}`)], g.items.map(speaker), g.live ? 'live' : '')) : [h('p', { class: 'hint' }, 'None yet — ＋ Speaker.')],
+        ['🔊 Sources', h('small', {}, ` ${speakers.length + people.length}`)],
+        sets.length || people.length ? [...sets.map((g) => branch(`set:${g.key}`, [g.title, h('small', {}, ` ${g.preset ?? 'by hand'}${g.live ? ' · sounding' : ''} · ${g.items.length}`)], g.items.map(speaker), g.live ? 'live' : '')), ...voices] : [h('p', { class: 'hint' }, 'None yet — ＋ Speaker.')],
       ),
     );
     out.push(branch('receivers', ['🎧 Receivers', h('small', {}, ` ${mics.length}`)], mics.length ? receiverOrder(mics).map(mic) : [h('p', { class: 'hint' }, 'None yet — ＋ Mic.')]));

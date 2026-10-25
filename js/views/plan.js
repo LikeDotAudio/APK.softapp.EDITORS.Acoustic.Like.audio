@@ -420,6 +420,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       }
       const locked = store.isLocked(d.id);
       el.classList.toggle('locked', locked);
+      el.classList.toggle('mix', kind === 'mic' && Boolean(d.mix));
       el.title = locked
         ? 'Locked — right-click to unlock'
         : (kind === 'speaker'
@@ -853,31 +854,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       if (show.rays && mix && (picked ? picked === s.id : soloed.has(s))) drawRays(ctx, room, s, mix, toScreen, Boolean(picked));
     }
 
-    if (show.devices) {
-      // under the glyphs: where each one points, out to the wall it faces
-      for (const s of state.speakers) if (s.kind !== 'sub' && soloed.has(s)) drawAimRay(ctx, room, s, s.color, toScreen);
-      for (const m of state.mics) drawAimRay(ctx, room, m, MIC_PRESETS[m.kind].colour, toScreen);
-      // names when the plan is big and uncrowded, tags (L, M3, MIX, E2) when it is not
-      const roomy = pxPerMetre() >= 60 && state.speakers.length + state.mics.length <= 10;
-      // the selected device and the mix seat label first: where labels collide, the first drawn keeps its label
-      const first = (list) => [...list].sort((a, b) => (b.id === state.selected?.id) - (a.id === state.selected?.id) || (b.mix ? 1 : 0) - (a.mix ? 1 : 0));
-      for (const m of first(state.mics)) {
-        const p = toScreen(m.x, m.y);
-        const ang = (-m.aim * Math.PI) / 180;
-        const label = deviceLabel(m, 'mic', state, roomy);
-        if (isListener(m)) drawPerson(ctx, p.x, p.y, ang, { ppm: pxPerMetre(), colour: MIC_PRESETS[m.kind].colour, mix: m.mix, selected: state.selected?.id === m.id, label });
-        else drawMic(ctx, p.x, p.y, ang, { mix: m.mix, selected: state.selected?.id === m.id, label });
-      }
-      for (const s of first(state.speakers)) {
-        const p = toScreen(s.x, s.y);
-        // at true size: the glyph is 2·size across the front, never smaller than it always was
-        ctx.globalAlpha = soloed.has(s) || state.selected?.id === s.id ? 1 : 0.25;
-        drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: Math.max(11, (boxSize(s).w * pxPerMetre()) / 2) });
-        ctx.globalAlpha = 1;
-      }
-    }
-
-    // Placed furniture (desks, consoles, racks, couches)
+    // Placed furniture (desks, consoles, racks, couches) — under the people and the boxes, so they stay in reach
     const placedFurniture = state.furniture ?? [];
     for (const f of placedFurniture) {
       drawFurnitureItem(ctx, f, toScreen, pxPerMetre(), state.selected?.kind === 'furniture' && state.selected.id === f.id);
@@ -901,6 +878,37 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       ctx.stroke();
       ctx.restore();
     }
+    if (show.devices) {
+      // under the glyphs: where each one points, out to the wall it faces
+      for (const s of state.speakers) if (s.kind !== 'sub' && soloed.has(s)) drawAimRay(ctx, room, s, s.color, toScreen);
+      for (const m of state.mics) drawAimRay(ctx, room, m, MIC_PRESETS[m.kind].colour, toScreen);
+      // names when the plan is big and uncrowded, tags (L, M3, MIX, E2) when it is not
+      const roomy = pxPerMetre() >= 60 && state.speakers.length + state.mics.length <= 10;
+      // the selected device and the mix seat label first: where labels collide, the first drawn keeps its label
+      const first = (list) => [...list].sort((a, b) => (b.id === state.selected?.id) - (a.id === state.selected?.id) || (b.mix ? 1 : 0) - (a.mix ? 1 : 0));
+      for (const m of first(state.mics)) {
+        const p = toScreen(m.x, m.y);
+        const ang = (-m.aim * Math.PI) / 180;
+        const label = deviceLabel(m, 'mic', state, roomy);
+        if (isListener(m)) drawPerson(ctx, p.x, p.y, ang, { ppm: pxPerMetre(), colour: MIC_PRESETS[m.kind].colour, mix: m.mix, selected: state.selected?.id === m.id, label });
+        else drawMic(ctx, p.x, p.y, ang, { mix: m.mix, selected: state.selected?.id === m.id, label });
+      }
+      for (const s of first(state.speakers)) {
+        const p = toScreen(s.x, s.y);
+        // at true size: the glyph is 2·size across the front, never smaller than it always was
+        ctx.globalAlpha = soloed.has(s) || state.selected?.id === s.id ? 1 : 0.25;
+        drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: Math.max(11, (boxSize(s).w * pxPerMetre()) / 2) });
+        ctx.globalAlpha = 1;
+      }
+      // the people again over the boxes, the mix seat last of all: what you grab is what you see (their labels are down already)
+      for (const m of [...state.mics].sort((a, b) => (a.mix ? 1 : 0) - (b.mix ? 1 : 0))) {
+        const p = toScreen(m.x, m.y);
+        const ang = (-m.aim * Math.PI) / 180;
+        if (isListener(m)) drawPerson(ctx, p.x, p.y, ang, { ppm: pxPerMetre(), colour: MIC_PRESETS[m.kind].colour, mix: m.mix, selected: state.selected?.id === m.id });
+        else drawMic(ctx, p.x, p.y, ang, { mix: m.mix, selected: state.selected?.id === m.id });
+      }
+    }
+
     if (state.mode === 'place-furniture' && hoverPos) {
       drawFurniturePreview(ctx, state.placeKind?.furniture || 'desk-1800x900', hoverPos, room, toScreen, pxPerMetre());
     }
