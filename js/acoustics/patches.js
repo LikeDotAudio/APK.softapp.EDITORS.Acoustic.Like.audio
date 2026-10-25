@@ -67,7 +67,8 @@ export function layPatches(room, patches = []) {
     if (!patch.poly || patch.poly.length < 3) continue;
     const layer = patch.layer ?? patch.layerId;
     const face = elevationFaceOf(layer);
-    const base = { id: patch.id, paletteId: patch.paletteId, material: mat, layer };
+    // a placed block keeps where it sits and its turn: the views draw its pieces there (pieces.js)
+    const base = { id: patch.id, paletteId: patch.paletteId, material: mat, layer, ...(patch.at ? { at: patch.at, rotation: patch.rotation ?? 0 } : {}) };
     let got;
     if (face) got = wallPieces(room, face, patch.poly).map((p) => ({ ...base, surface: 'wall', wall: p.wall, face, area: p.area, points3d: p.points3d }));
     else {

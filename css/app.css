@@ -111,6 +111,14 @@ main { position: relative; display: grid; grid-template-columns: 1fr var(--inspe
 .tile header { padding: 3px 8px; background: var(--panel); border-bottom: 1px solid var(--line); font-weight: 600; font-size: 12px; cursor: default; user-select: none; }
 .tile header .sub, .sub { color: var(--muted); font-weight: 400; font-size: 11px; }
 .tile > canvas { flex: 1; width: 100%; min-height: 0; display: block; cursor: crosshair; }
+/* the 3-D room's bar: the method always, the shows behind ⋯ — and all of it, roomier, in a window of its own */
+.tile .viewbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-right: 28px; }
+.viewbar button { padding: 1px 8px; font-size: 11px; }
+.viewbar .shows { display: none; }
+.viewbar.open .shows, .popped .viewbar .shows, .tile.max .viewbar .shows { display: flex; }
+.popped .viewbar .viewMore, .tile.max .viewbar .viewMore { display: none; }
+body.popout .viewbar { gap: 14px; padding: 6px 12px; font-size: 14px; }
+body.popout .viewbar button { padding: 4px 14px; font-size: 13px; }
 .readout { position: absolute; right: 8px; top: 6px; font: 11px var(--mono); color: #fde047; pointer-events: none; }
 
 .stage { position: relative; flex: 1; min-height: 0; }

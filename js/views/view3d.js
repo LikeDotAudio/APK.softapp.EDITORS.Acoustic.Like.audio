@@ -6,6 +6,7 @@ import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
 import { boxSize, isListener, MIC_PRESETS } from '../acoustics/devices.js';
 import { arrangedSpeakers, soundingSpeakers } from '../acoustics/layouts.js';
 import { furnitureHeight } from '../acoustics/materials.js';
+import { pieceFootprint, piecesOf } from '../acoustics/pieces.js';
 import { rayPaths } from '../acoustics/rayPaths.js';
 import { talkers, talkPaths } from '../acoustics/talk.js';
 import { firstReflections, heatOf } from '../acoustics/reflectionPanels.js';
@@ -274,23 +275,64 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
           faces.push({ pts, fill: shade(baffle ? extra.front : rgb, n), solid: true, selected: extra.selected, baffle: baffle ? { c: at(0, 1, 0), rt, up, w, h, spk: extra.spk } : null });
         }
     }
-    /** A floor patch stood up to `tall`: its top, and every side that faces you. */
-    function prism(p, tall, selected) {
-      const base = p.points3d;
-      const rgb = rgbOf(p.material?.color);
+    /** An outline on the floor raised between z0 and z1 above it: its sides, its top, its underside when you are below it. `patch` lays its treatment on the top. */
+    function raise(base, z0, z1, rgb, selected, patch = null) {
+      const lo = base.map((q) => ({ ...q, z: q.z + z0 }));
+      const hi = base.map((q) => ({ ...q, z: q.z + z1 }));
       const cx = base.reduce((a, q) => a + q.x, 0) / base.length;
       const cy = base.reduce((a, q) => a + q.y, 0) / base.length;
-      base.forEach((a, i) => {
-        const b = base[(i + 1) % base.length];
+      lo.forEach((a, i) => {
+        const b = lo[(i + 1) % lo.length];
         const l = Math.hypot(b.x - a.x, b.y - a.y);
         if (l < 1e-6) return;
         let n = { x: (b.y - a.y) / l, y: -(b.x - a.x) / l, z: 0 };
         if (n.x * ((a.x + b.x) / 2 - cx) + n.y * ((a.y + b.y) / 2 - cy) < 0) n = { x: -n.x, y: -n.y, z: 0 };
         if (!facing(a, n)) return;
-        faces.push({ pts: [a, b, { ...b, z: b.z + tall }, { ...a, z: a.z + tall }], fill: shade(rgb, n), solid: true, selected });
+        faces.push({ pts: [a, b, hi[(i + 1) % hi.length], hi[i]], fill: shade(rgb, n), solid: true, selected });
       });
-      const top = base.map((q) => ({ ...q, z: q.z + tall }));
-      if (facing(top[0], { x: 0, y: 0, z: 1 })) faces.push({ pts: top, fill: shade(rgb, { x: 0, y: 0, z: 1 }), solid: true, selected, patch: p });
+      if (facing(hi[0], { x: 0, y: 0, z: 1 })) faces.push({ pts: hi, fill: shade(rgb, { x: 0, y: 0, z: 1 }), solid: true, selected, ...(patch ? { patch } : {}) });
+      else if (z0 > 0 && facing(lo[0], { x: 0, y: 0, z: -1 })) faces.push({ pts: lo, fill: shade(rgb, { x: 0, y: 0, z: -1 }), solid: true, selected });
+    }
+    /** A floor patch stood up to `tall`: its top, and every side that faces you. */
+    function prism(p, tall, selected) {
+      raise(p.points3d, 0, tall, rgbOf(p.material?.color), selected, p);
+    }
+    /** A placed product drawn as what it is made of (acoustics/pieces.js), turned and set where its block sits. */
+    function pieces(p, parts, selected) {
+      const th = (p.rotation ?? 0) * DEG;
+      const [c, s] = [Math.cos(th), Math.sin(th)];
+      const floor = p.points3d[0]?.z ?? 0;
+      const W = (x, y, z) => ({ x: p.at.x + x * c - y * s, y: p.at.y + x * s + y * c, z: floor + z });
+      const rt = { x: c, y: s, z: 0 };
+      const f = { x: -s, y: c, z: 0 };
+      const up = { x: 0, y: 0, z: 1 };
+      for (const pc of parts) {
+        const rgb = rgbOf(pc.colour);
+        if (pc.shape === 'box') box(W(pc.x, pc.y, pc.z0 + pc.h / 2), { rt, f, up }, pc.w, pc.d, pc.h, rgb, { selected });
+        else if (pc.shape === 'extrude') extrusion(pc, W, pc.axis === 'x' ? [rt, f] : [f, rt], rgb, selected);
+        else raise(pieceFootprint(pc).map(([x, y]) => W(x, y, 0)), pc.z0, pc.z1, rgb, selected);
+      }
+    }
+    /** A side outline in (u, z) run along its axis from a to b: both ends, and every face along it that turns to you. */
+    function extrusion(pc, W, [along, across], rgb, selected) {
+      const P = (t, u, z) => (pc.axis === 'x' ? W(t, u, z) : W(u, t, z));
+      const cu = pc.pts.reduce((a, [u]) => a + u, 0) / pc.pts.length;
+      const cz = pc.pts.reduce((a, [, z]) => a + z, 0) / pc.pts.length;
+      for (const [t, sgn] of [[pc.a, -1], [pc.b, 1]]) {
+        const n = { x: along.x * sgn, y: along.y * sgn, z: 0 };
+        const pts = pc.pts.map(([u, z]) => P(t, u, z));
+        if (facing(pts[0], n)) faces.push({ pts, fill: shade(rgb, n), solid: true, selected });
+      }
+      pc.pts.forEach(([u0, z0], i) => {
+        const [u1, z1] = pc.pts[(i + 1) % pc.pts.length];
+        const l = Math.hypot(u1 - u0, z1 - z0);
+        if (l < 1e-6) return;
+        let [nu, nz] = [(z1 - z0) / l, -(u1 - u0) / l];
+        if (nu * ((u0 + u1) / 2 - cu) + nz * ((z0 + z1) / 2 - cz) < 0) [nu, nz] = [-nu, -nz];
+        const n = { x: across.x * nu, y: across.y * nu, z: nz };
+        const pts = [P(pc.a, u0, z0), P(pc.a, u1, z1), P(pc.b, u1, z1), P(pc.b, u0, z0)];
+        if (facing(pts[0], n)) faces.push({ pts, fill: shade(rgb, n), solid: true, selected });
+      });
     }
     /** A listener, seated: shins, thighs, torso and head, facing their aim; the ears at the mic. */
     function figure(m, rgb, selected) {
@@ -335,7 +377,9 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1 }) {
       }
       const tall = p.surface === 'floor' ? furnitureHeight(p.paletteId) : 0;
       if (tall) {
-        prism(p, tall, p.id === sel);
+        const parts = p.at ? piecesOf(p.paletteId) : null;
+        if (parts) pieces(p, parts, p.id === sel);
+        else prism(p, tall, p.id === sel);
         continue;
       }
       faces.push({ pts: p.points3d.map((q) => ({ x: q.x + n.x * lift, y: q.y + n.y * lift, z: q.z + n.z * lift })), patch: p, selected: p.id === sel });

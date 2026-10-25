@@ -373,9 +373,14 @@ document.getElementById('viewmode').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-view]');
   if (b) store.setSettings({ view: b.dataset.view });
 });
-document.getElementById('method').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-method]');
-  if (b) store.setSettings({ method: b.dataset.method });
+// the 3-D room's bar: kept by its node, not looked up — it goes to another window with the tile
+const viewbar = document.querySelector('.tile.t3d .viewbar');
+viewbar.addEventListener('click', (e) => {
+  const m = e.target.closest('button[data-method]');
+  if (m) return store.setSettings({ method: m.dataset.method });
+  const sh = e.target.closest('button[data-show]');
+  if (sh) return store.setShow({ [sh.dataset.show]: store.state.settings.show[sh.dataset.show] === false });
+  if (e.target.closest('.viewMore')) viewbar.classList.toggle('open');
 });
 const freq = document.getElementById('freq');
 freq.addEventListener('input', () => store.setSettings({ freq: Math.round(10 ** parseFloat(freq.value)) }));
@@ -479,7 +484,9 @@ function syncToolbar() {
   const { mode, settings, placeKind } = store.state;
   for (const b of document.querySelectorAll('button[data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
   for (const b of document.querySelectorAll('#viewmode button')) b.classList.toggle('on', b.dataset.view === settings.view);
-  for (const b of document.querySelectorAll('#method button')) b.classList.toggle('on', b.dataset.method === settings.method);
+  for (const b of viewbar.querySelectorAll('button[data-method]')) b.classList.toggle('on', b.dataset.method === settings.method);
+  for (const b of viewbar.querySelectorAll('button[data-show]')) b.classList.toggle('on', settings.show[b.dataset.show] !== false);
+  viewbar.querySelector('.viewMore').classList.toggle('on', viewbar.classList.contains('open'));
   for (const b of document.querySelectorAll('#furniture button[data-arm]')) b.classList.toggle('on', mode === 'place-furniture' && b.dataset.arm === placeKind?.furniture);
   views.className = settings.view === '3d' || settings.view === 'rays' ? 'three' : settings.view === 'wall' ? 'wall' : 'six';
   const { sheet } = store.state;
@@ -518,6 +525,8 @@ function syncToolbar() {
 
 for (const header of document.querySelectorAll('.tile header, .tile.face canvas, .tile.t3d canvas')) {
   header.addEventListener('dblclick', (e) => {
+    // a quick second press on a bar's button is that button again, not a wish to fill the screen
+    if (e.target.closest('button')) return;
     const tile = e.currentTarget.closest('.tile');
     const was = tile.classList.contains('max');
     for (const t of document.querySelectorAll('.tile')) t.classList.remove('max');

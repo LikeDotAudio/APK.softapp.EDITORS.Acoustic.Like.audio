@@ -133,6 +133,11 @@ export const MATERIALS = [
   m('rack', 'Equipment rack, steel and gear', 'Furniture', [0.05, 0.05, 0.06, 0.08, 0.1, 0.1], 20, 0.5, 'rough', '#3f4652'),
   m('drum-kit', 'Drum kit: shells, heads and cymbals', 'Instruments', [0.12, 0.15, 0.12, 0.1, 0.08, 0.08], 5, 0.6, 'rough', '#b91c1c'),
   m('guitar-amp', 'Guitar amp: wooden cabinet, grille cloth', 'Instruments', [0.12, 0.1, 0.08, 0.08, 0.1, 0.12], 15, 0.3, 'rough', '#27272a'),
+  // the keyboards: a grand's case and lid are a hard reflector over a soundboard that takes some low end; an
+  // organ is a wooden cabinet; a stage keyboard a hard plastic top on a stand — design estimates, not test reports
+  m('grand-piano', 'Grand piano: lacquered case, lid, soundboard', 'Instruments', [0.15, 0.12, 0.08, 0.06, 0.06, 0.06], 20, 0.3, 'rough', '#18181b'),
+  m('organ-cabinet', 'Organ or rotating-speaker cabinet, wood', 'Instruments', [0.15, 0.12, 0.08, 0.07, 0.07, 0.08], 20, 0.3, 'rough', '#7c4a1e'),
+  m('keyboard', 'Keyboard on a stand: hard top, keys', 'Instruments', [0.04, 0.04, 0.05, 0.05, 0.06, 0.06], 10, 0.3, 'rough', '#27272a'),
   m('door-acoustic', 'Acoustic door, sealed, solid core', 'Wood', [0.12, 0.08, 0.05, 0.05, 0.05, 0.05], 45, 0.05, 'flat', '#5c3b1e'),
   // nothing there
   m('opening', 'Opening / void', 'Opening', [1, 1, 1, 1, 1, 1], 0, 0, 'flat', '#202020'),
@@ -148,6 +153,7 @@ export const PRODUCTS = [
   p('producer-desk-1800x600', 'Producer desk 1800×600', 'desk-top', [1.8, 0.6]),
   p('console-2400x1000', 'Mixing console 2400×1000', 'console-surface', [2.4, 1.0]),
   p('console-3200x1200', 'Large-format console 3200×1200', 'console-surface', [3.2, 1.2]),
+  p('console-broadcast-2000x1100', 'Broadcast console on a leg stand, 20 strips, 2000×1100', 'console-surface', [2.0, 1.1]),
   p('table-heavy-2400x1000', 'Heavy table 2400×1000, hardwood', 'table-heavy', [2.4, 1.0]),
   p('couch-2000x900', 'Couch 2000×900', 'upholstered', [2.0, 0.9]),
   p('couch-2400x1000', 'Client couch 2400×1000', 'upholstered', [2.4, 1.0]),
@@ -156,6 +162,12 @@ export const PRODUCTS = [
   p('drum-kit-1800x1500', 'Drum kit 1800×1500, with its throne', 'drum-kit', [1.8, 1.5]),
   p('guitar-amp-600x280', 'Guitar combo amp 600×280', 'guitar-amp', [0.6, 0.28]),
   p('guitar-stack-760x360', 'Guitar half stack, 4×12 and head, 760×360', 'guitar-amp', [0.76, 0.36]),
+  p('amp-head-700x280', 'Amplifier head 700×280, on its own', 'guitar-amp', [0.7, 0.28]),
+  p('keyboard-88-1350x380', 'Stage piano, 88 keys, on a stand 1350×380', 'keyboard', [1.35, 0.38]),
+  p('keyboard-61-1000x350', 'Synth, 61 keys, on a stand 1000×350', 'keyboard', [1.0, 0.35]),
+  p('hammond-b3-1250x730', 'Hammond B-3 organ with pedals 1250×730', 'organ-cabinet', [1.25, 0.73]),
+  p('leslie-122-840x550', 'Leslie 122 rotating speaker 840×550', 'organ-cabinet', [0.84, 0.55]),
+  p('grand-piano-1480x2110', 'Grand piano 1480×2110 (211 cm)', 'grand-piano', [1.48, 2.11]),
   p('qrd-600', 'QRD 600×600', 'diffuser', [0.6, 0.6]),
   p('qrd-1200x600', 'QRD 1200×600', 'diffuser', [1.2, 0.6]),
   p('skyline-600', 'Skyline diffuser 600×600', 'diffuser', [0.6, 0.6]),
@@ -190,7 +202,7 @@ export function lookup(id) {
   return byId.get(id) ?? byId.get(productById.get(id)?.material) ?? null;
 }
 
-const FURNITURE_HEIGHT = { table: 0.75, desk: 0.75, 'producer-desk': 0.8, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3 };
+const FURNITURE_HEIGHT = { table: 0.75, desk: 0.75, 'producer-desk': 0.8, console: 0.85, couch: 0.8, armchair: 0.8, rack: 1.2, 'drum-kit': 1.1, 'guitar-amp': 0.55, 'guitar-stack': 1.3, 'amp-head': 0.28, keyboard: 0.85, hammond: 1.0, leslie: 1.03, 'grand-piano': 1.0 };
 
 /** How tall a thing laid on the floor stands, metres: 0 for a finish (a rug, a floor build), a height for furniture and instruments. */
 export function furnitureHeight(paletteId) {
@@ -199,8 +211,8 @@ export function furnitureHeight(paletteId) {
   return lookup(id)?.category === 'Furniture' ? 0.8 : 0;
 }
 
-/** Tables and desks stand on legs: a top, open underneath. Everything else on the floor is a solid. */
-const ON_LEGS = /^(table|desk|producer-desk)-/;
+/** Tables, desks and keyboards on their stands stand on legs: a top, open underneath. Everything else on the floor is a solid. */
+const ON_LEGS = /^(table|desk|producer-desk|keyboard)-/;
 
 /**
  * The surface a piece of furniture shows the room beyond the footprint that

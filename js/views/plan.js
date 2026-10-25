@@ -8,6 +8,8 @@ import { fromFrame } from '../acoustics/room.js';
 import { roomGrowth } from '../acoustics/roomFit.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
 import { PRODUCTS, furnitureHeight } from '../acoustics/materials.js';
+import { pieceFootprint, pieceTop, piecesOf } from '../acoustics/pieces.js';
+import { rgba } from './treatments.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { patchesFromCad } from '../compute/engine.js';
 import { elevationFaceOf } from '../acoustics/elevations.js';
@@ -876,6 +878,13 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      const parts = p.at ? piecesOf(p.paletteId) : null;
+      if (parts) {
+        const c = toScreen(p.at.x, p.at.y);
+        ctx.translate(c.x, c.y);
+        ctx.rotate((-(p.rotation ?? 0) * Math.PI) / 180);
+        drawPiecesPlan(ctx, parts, pxPerMetre());
+      }
       ctx.restore();
     }
     if (show.devices) {
@@ -1024,11 +1033,35 @@ export function drawFurnitureItem(ctx, f, toScreen, ppm, selected = false) {
     else ctx.rect(-wPx / 2 + 2, -dPx / 2 + 2, wPx - 4, dPx - 4);
     ctx.stroke();
   }
+  const parts = piecesOf(f.paletteId);
+  if (parts) drawPiecesPlan(ctx, parts, ppm);
 
   ctx.restore();
 
   const label = prod.name.replace(/ \d+×\d+.*$/, '');
   drawLabel(ctx, p.x, p.y, label, selected ? '#fbbf24' : '#e5e7eb', { force: selected });
+}
+
+/**
+ * A product's pieces seen from above (acoustics/pieces.js), in its own frame
+ * already set on the canvas: lowest first, so a cymbal shows over its drum.
+ */
+function drawPiecesPlan(ctx, parts, ppm) {
+  ctx.save();
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 1;
+  for (const pc of [...parts].sort((a, b) => pieceTop(a) - pieceTop(b))) {
+    const pts = pieceFootprint(pc);
+    // the canvas runs y down: the product's +y (away from the player) is up the screen
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * ppm, -y * ppm) : ctx.moveTo(x * ppm, -y * ppm)));
+    ctx.closePath();
+    ctx.fillStyle = rgba(pc.colour, 0.55);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 export function drawFurniturePreview(ctx, paletteId, pos, room, toScreen, ppm) {

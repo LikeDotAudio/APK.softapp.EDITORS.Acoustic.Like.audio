@@ -96,7 +96,7 @@ const RULES = [
 /** The symbol id for a material — { id, name, category, material? } — and, given, the product it is the face of. */
 export function symbolOf(mat, product = null) {
   const text = [product?.id, product?.name, mat?.id, mat?.name, mat?.material, mat?.category].filter(Boolean).join(' ').toLowerCase();
-  if (product && /desk|console|table|couch|chair|rack|drum|amp|piano/.test(text)) return 'furniture';
+  if (product && /desk|console|table|couch|chair|rack|drum|amp|piano|keyboard|organ|hammond|leslie/.test(text)) return 'furniture';
   for (const [re, id] of RULES) if (re.test(text)) return typeof id === 'function' ? id(text) : id;
   if (mat?.category === 'Furniture' || mat?.category === 'Instruments') return 'furniture';
   return mat?.category === 'Masonry' ? 'concrete' : 'gypsum';
