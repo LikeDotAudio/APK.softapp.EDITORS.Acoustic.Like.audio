@@ -16,7 +16,7 @@ import { consoleOf } from '../acoustics/console.js';
 import { boxSize, MIC_PRESETS, isListener } from '../acoustics/devices.js';
 import { mirrorName } from '../acoustics/symmetry.js';
 import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, drawPerson, drawSpeaker, fitCanvas } from './glyphs.js';
-import { goodFractions, nullLines, snapToDivisions } from './guides.js';
+import { nullLines } from './guides.js';
 import { gridCanvas } from './paint.js';
 import { gripAt, gripsOf, othersThan, snapPoint } from './wallGrips.js';
 import { furnitureLayer } from '../cad/marks.js';
@@ -423,10 +423,10 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       el.title = locked
         ? 'Locked — right-click to unlock'
         : (kind === 'speaker'
-          ? 'Drag to move — it settles onto the recommended divisions, crossings first (Alt: free) · Shift-drag to aim · Ctrl-click to turn it (click to set, Esc to cancel) · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)'
+          ? 'Drag to move · Shift-drag to aim · Ctrl-click to turn it (click to set, Esc to cancel) · press and HOLD to swing it round the listener (its partner mirrors, the wheel toes it in)'
           : kind === 'furniture' || kind === 'gear'
           ? `Drag to move · Shift-drag to turn${kind === 'furniture' ? ' · Del / Backspace to remove' : ' — it lives in the CAD drawing'}`
-          : 'Drag to move — it settles onto the recommended divisions (Alt: free) · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)') + ' · right-click to lock or remove';
+          : 'Drag to move · Shift-drag to turn — the nose snaps to the front and square-on to each wall (Alt: free)') + ' · right-click to lock or remove';
       const p = toScreen(d.x, d.y);
       el.style.transform = `translate(${p.x - 12}px, ${p.y - 12}px)`;
       el.style.display = Number.isFinite(p.x) ? '' : 'none';
@@ -438,8 +438,6 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
   let orbit = null;
   /** A listener being turned (Shift-drag): { id, mark } — the room mark its nose is locked to, for the read-out. */
   let turning = null;
-  /** A device being dragged onto the divisions: { along, across } metres in the room's frame, either null. */
-  let snapped = null;
   const HOLD_MS = 380;
   /** A speaker being turned after Ctrl-click: { id, before } — its aim follows the pointer until a click sets it. */
   let spinning = null;
@@ -609,14 +607,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
             store.update(kind, id, { aim: snap.aim }, true);
           } else store.update(kind, id, { aim: Math.round(aim) }, true);
         } else {
-          let target = { x: origin.x + p.x - start.x, y: origin.y + p.y - start.y, z: dev.z ?? 0, kind: dev.kind };
-          // speakers and mics settle onto the recommended divisions, crossings first (Alt: free)
-          snapped = null;
-          if (kind !== 'furniture' && engine.out.room && !ev.altKey) {
-            const s = snapToDivisions(engine.out.room, target, { reach: 18 / pxPerMetre(), lineReach: 8 / pxPerMetre() });
-            target = { ...target, x: s.x, y: s.y };
-            if (s.along !== null || s.across !== null) snapped = { along: s.along, across: s.across };
-          }
+          const target = { x: origin.x + p.x - start.x, y: origin.y + p.y - start.y, z: dev.z ?? 0, kind: dev.kind };
           const clamped = engine.out.room ? clampInside(engine.out.room, target, CLEAR_M) : target;
           if (kind === 'furniture') {
             store.updateFurniture(id, { x: clamped.x, y: clamped.y }, true);
@@ -635,7 +626,6 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
         el.classList.remove('holding');
         orbit = null;
         turning = null;
-        snapped = null;
         store.commit();
         onDrag(false);
       },
@@ -898,7 +888,6 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     }
 
     if (orbit) drawOrbit(ctx, orbit, toScreen, pxPerMetre());
-    if (snapped) drawSnapped(ctx, room, snapped, toScreen);
     if (turning) drawTurning(ctx, turning, state.mics.find((m) => m.id === turning.id), toScreen, pxPerMetre());
     if (spinning) drawTurning(ctx, { mark: null }, state.speakers.find((s) => s.id === spinning.id), toScreen, pxPerMetre());
     ctx.restore();
@@ -1068,13 +1057,6 @@ function drawPlanGuides(ctx, room, show, toScreen) {
     }
   }
   if (show.guides) {
-    // the recommended divisions, clear of every axial null up to n = 3 — where a drag settles
-    for (const f of goodFractions(3)) {
-      const [a, b] = seg(f * room.L, 0, f * room.L, room.W);
-      dashedLine(ctx, a, b, '#4ade80', [1, 5], 1);
-      const [c, d] = seg(0, f * room.W, room.L, f * room.W);
-      dashedLine(ctx, c, d, '#4ade80', [1, 5], 1);
-    }
     const [a, b] = seg(0.38 * room.L, 0, 0.38 * room.L, room.W);
     dashedLine(ctx, a, b, '#22c55e', [10, 4], 2);
     drawLabel(ctx, (a.x + b.x) / 2, (a.y + b.y) / 2 - 12, '38 % — ears here', '#22c55e');
@@ -1196,27 +1178,6 @@ function drawAimRay(ctx, room, d, colour, toScreen) {
   ctx.fill();
   ctx.restore();
   drawLabel(ctx, b.x, b.y - 10, `${Math.round(wrap(d.aim))}°`, colour);
-}
-
-/** The division lines a dragged device has settled onto, across the whole room, and the crossing ringed. */
-function drawSnapped(ctx, room, s, toScreen) {
-  const at = (f, l) => {
-    const p = fromFrame(room, f, l);
-    return toScreen(p.x, p.y);
-  };
-  ctx.save();
-  if (s.along !== null) dashedLine(ctx, at(s.along, 0), at(s.along, room.W), '#4ade80', [6, 3], 1.5);
-  if (s.across !== null) dashedLine(ctx, at(0, s.across), at(room.L, s.across), '#4ade80', [6, 3], 1.5);
-  if (s.along !== null && s.across !== null) {
-    const c = at(s.along, s.across);
-    ctx.strokeStyle = '#4ade80';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, 9, 0, Math.PI * 2);
-    ctx.stroke();
-    drawLabel(ctx, c.x, c.y + 20, `${Math.round((s.along / room.L) * 100)} % × ${Math.round((s.across / room.W) * 100)} %`, '#4ade80', { force: true });
-  }
-  ctx.restore();
 }
 
 /** The hold-to-orbit read-out: the circle the speaker rides, its spoke and its partner's, angle, distance and toe. */
