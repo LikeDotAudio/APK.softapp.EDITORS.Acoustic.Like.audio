@@ -40,7 +40,7 @@ export const SLIDES = [
 const STILL_SECONDS = 4;
 const SWEEP_SECONDS = 32;
 const LAPS = 2;
-const SWEEP = { view: '3d', title: 'Frequency sweep' };
+const SWEEP_TITLE = 'Frequency sweep';
 
 /**
  * Where the tour is at `t` seconds: the slide (an index into SLIDES), and in
@@ -96,7 +96,8 @@ export function createTour({ store, engine, onStart, onStop, sweepTo, caption, n
       tile.innerHTML = '<canvas style="width:100%;height:100%;display:block"></canvas><div class="readout"></div>';
       doc.body.append(tile);
       const canvas = tile.querySelector('canvas');
-      const view = s.view === '3d' ? createView3d({ canvas, store, engine }) : createFaceView({ tile, face: s.view, store, engine });
+      // the room whole from its first frame: its slide is too short for it to build itself up
+      const view = s.view === '3d' ? createView3d({ canvas, store, engine, introSpeed: () => 0 }) : createFaceView({ tile, face: s.view, store, engine });
       return { ...s, canvas, view };
     });
 
@@ -139,7 +140,7 @@ export function createTour({ store, engine, onStart, onStop, sweepTo, caption, n
       }
       if (recorder?.state === 'paused') recorder.resume();
       t += dt;
-      const slide = at.sweeping ? { ...views[at.slide], ...SWEEP } : views[at.slide];
+      const slide = at.sweeping ? { ...views[at.slide], title: SWEEP_TITLE } : views[at.slide];
       slide.view.render();
       ctx.fillStyle = '#0b0d12';
       ctx.fillRect(0, 0, FRAME.w, FRAME.h);
