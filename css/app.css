@@ -320,6 +320,15 @@ table.surfaces td, table.surfaces th { white-space: nowrap; vertical-align: top;
 .poppable { position: relative; }
 .popbtn { position: absolute; top: 2px; right: 2px; z-index: 5; padding: 0 5px; font-size: 11px; line-height: 16px; opacity: .55; }
 .poppable:hover > .popbtn { opacity: 1; }
+/* a meter's – sits left of its ⇱ and tucks it into the tray by Undo, as an icon (ui/meters.js) */
+.meter > .minbtn { position: absolute; top: 2px; right: 26px; z-index: 5; padding: 0 5px; font-size: 11px; line-height: 16px; opacity: .55; }
+.meter:hover > .minbtn { opacity: 1; }
+.meter.min, body.popout .meter > .minbtn, #meterTray > [hidden] { display: none; }
+#meterTray { display: flex; gap: 2px; }
+/* the last meter still open has no sash after it: nothing to trade with */
+.meter:not(:has(~ .meter:not(.min))) > .sash { display: none; }
+#meterTray:not(:has(> :not([hidden]))) { display: none; }
+#meterTray button { padding: 1px 6px; font-size: 11px; }
 /* the plan pops out only while the CAD is in a window of its own (main.js) */
 .tile.plan:not(.cad-out) > .popbtn { display: none; }
 .meter h4 { cursor: zoom-in; }
@@ -348,6 +357,7 @@ td.bad { color: var(--bad); }
 td.ok { color: #4ade80; }
 .stage .hit.holding { outline: 2px solid #22d3ee; outline-offset: 4px; box-shadow: 0 0 14px #22d3ee; }
 .arrayFields { gap: 6px; align-items: center; }
+#spreader[hidden] { display: none; }
 .arrayField { display: flex; align-items: center; gap: 3px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .arrayField input { width: 64px; padding: 2px 4px; }
 .arrayFields input[type="range"] { width: 100%; margin: 0; }

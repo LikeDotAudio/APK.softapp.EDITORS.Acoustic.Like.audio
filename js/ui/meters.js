@@ -29,8 +29,12 @@ const FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace';
 export const FREQ_COLOUR = '#fde047';
 /** The whole room's curve: every seat, power-averaged. */
 const ROOM_COLOUR = '#a3e635';
+/** The meters tucked into the tray, remembered in this browser. */
+const MIN_KEY = 'acoustic.metersMinimised';
+/** Each meter's icon in the tray. */
+const ICONS = { spl: '▮ SPL', rta: '▥ RTA', response: '〰 FR', echogram: '⋮ Echo', iso3382: '▦ ISO', rt60: '⏱ RT60', polar: '◎ Polar' };
 
-export function createMeters({ root, store, engine, onListen }) {
+export function createMeters({ root, tray = null, store, engine, onListen }) {
   root.innerHTML = `
     <div class="meter m-spl" data-kind="spl"><h4>SPL <span class="sub spl-mic"></span></h4><canvas></canvas></div>
     <div class="meter m-rta" data-kind="rta"><h4>Octave RTA <span class="sub">direct + diffuse</span></h4><canvas></canvas></div>
@@ -64,6 +68,17 @@ export function createMeters({ root, store, engine, onListen }) {
     drawResponse(fr, engine.out, store.state.settings);
   });
 
+  // tucked in until opened: nothing remembered means every meter starts in the tray
+  const minimised = new Set(Object.keys(el));
+  try {
+    const kept = localStorage.getItem(MIN_KEY);
+    if (kept !== null) {
+      minimised.clear();
+      for (const k of JSON.parse(kept)) minimised.add(k);
+    }
+  } catch {
+    // nothing remembered: every meter tucked in
+  }
   const titles = { spl: 'SPL', rta: 'Octave RTA', response: 'Frequency response', echogram: 'Echogram', iso3382: 'ISO 3382', rt60: 'RT60', polar: 'Polar' };
   for (const [kind, m] of Object.entries(el)) {
     const pop = makePoppable(m, {
@@ -83,12 +98,38 @@ export function createMeters({ root, store, engine, onListen }) {
         return out;
       },
     });
+    // – tucks it into the tray at the bottom of the screen, an icon there; the icon brings it back
+    const min = Object.assign(document.createElement('button'), { className: 'minbtn', textContent: '–', title: 'Minimise: tuck this meter into the tray at the bottom' });
+    min.onclick = () => minimise(kind, true);
+    m.append(min);
+    const icon = Object.assign(document.createElement('button'), { textContent: ICONS[kind], title: `${titles[kind]}: open it over the views` });
+    icon.dataset.kind = kind;
+    icon.onclick = () => minimise(kind, false);
+    tray?.append(icon);
+    tuck(kind, minimised.has(kind));
     // The title pops it out; so does a double-click anywhere on it (a single click on the response still tunes).
     m.querySelector('h4').addEventListener('click', (e) => {
       if (e.target.closest('button')) return;
       pop.pop();
     });
     m.addEventListener('dblclick', () => pop.pop());
+  }
+
+  function tuck(kind, on) {
+    el[kind].classList.toggle('min', on);
+    tray?.querySelector(`[data-kind="${kind}"]`)?.toggleAttribute('hidden', !on);
+  }
+
+  function minimise(kind, on) {
+    tuck(kind, on);
+    if (on) minimised.add(kind);
+    else minimised.delete(kind);
+    try {
+      localStorage.setItem(MIN_KEY, JSON.stringify([...minimised]));
+    } catch {
+      // folded for this page only
+    }
+    if (!on) requestAnimationFrame(render);
   }
 
   function render() {

@@ -12,9 +12,9 @@
  * come back. A sweep keeps them away until it stops. The meters, which skip
  * their frames while folded, are asked to draw once they are back.
  *
- * And with every meter popped out into a window of its own there is nothing
- * left to show down there: the strip folds down to its Undo / Redo / Save
- * (body.meters-empty) until one comes home.
+ * And with every meter popped out into a window of its own, or tucked into
+ * the tray, there is nothing left to show down there: the strip folds down to
+ * its tray and Undo / Redo / Save (body.meters-empty) until one comes back.
  */
 
 /** How long the frequency must hold, and the engine be idle, before the meters return. */
@@ -22,8 +22,8 @@ const SETTLE_MS = 700;
 
 export function createMeterFold({ store, engine, meters = null, onUnfold = () => {}, body = document.body }) {
   if (meters) {
-    const empty = () => body.classList.toggle('meters-empty', !meters.querySelector(':scope > .meter'));
-    new MutationObserver(empty).observe(meters, { childList: true });
+    const empty = () => body.classList.toggle('meters-empty', !meters.querySelector(':scope > .meter:not(.min)'));
+    new MutationObserver(empty).observe(meters, { childList: true, subtree: true, attributeFilter: ['class'] });
     empty();
   }
   let last = { freq: store.state.settings.freq, band: store.state.settings.band };

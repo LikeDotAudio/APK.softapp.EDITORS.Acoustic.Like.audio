@@ -151,6 +151,7 @@ createMeterFold({ store, engine, meters: document.getElementById('meters'), onUn
 const wallBuilder = createWallBuilder({ root: document.querySelector('.tile.wall'), store, engine, cad, inputs: () => wallInputs(store.state.cad.geometry), jumpTo });
 const meters = createMeters({
   root: document.getElementById('meters'),
+  tray: document.getElementById('meterTray'),
   store,
   engine,
   onListen: () => {
