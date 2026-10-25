@@ -628,7 +628,11 @@ const widthLanes = { key: [], list: [] };
     row.className = 'group speakerSet';
     row.dataset.set = k;
     const letter = Object.assign(document.createElement('button'), { className: 'setLetter', textContent: set.label, title: `${set.title}: make it the set that sounds` });
-    letter.onclick = () => pick(k);
+    // a set picked is a set to listen to: the monitor controller opens beside them
+    letter.onclick = () => {
+      pick(k);
+      monitorFold.open = true;
+    };
     const none = document.createElement('button');
     none.dataset.preset = NO_LAYOUT;
     none.textContent = 'None';
@@ -655,6 +659,9 @@ const widthLanes = { key: [], list: [] };
     row.append(place);
     bar.append(row);
   }
+  // the monitor controller sits at the end of the last set's row, beside the sets it switches
+  const lastRow = bar.lastElementChild;
+  lastRow.append(document.getElementById('monitorBtn'), document.getElementById('monitor'));
 
   // the array's centre off the mix seat, and its radius, in mm — moving either carries the placed speakers with it
   const field = (key, glyph, title) => {
@@ -711,7 +718,7 @@ const widthLanes = { key: [], list: [] };
   arrayBtn.parentNode.after(spreader, grow);
 }
 const monitor = createMonitor({ root: document.getElementById('monitor'), store, engine });
-makeFold(document.getElementById('monitorBtn'), document.getElementById('monitor'), { sticky: true, onOpen: () => monitor.render() });
+const monitorFold = makeFold(document.getElementById('monitorBtn'), document.getElementById('monitor'), { sticky: true, onOpen: () => monitor.render() });
 makeFold(document.getElementById('furnitureBtn'), document.getElementById('furniture'), { closeOn: 'button[data-arm]' });
 makeFold(document.getElementById('moreBtn'), document.getElementById('more'), { closeOn: '#tour' });
 

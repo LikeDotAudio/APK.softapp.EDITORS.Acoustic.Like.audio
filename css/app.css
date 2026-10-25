@@ -570,3 +570,7 @@ body.sashing-v iframe, body.sashing-h iframe { pointer-events: none; }
 .wizGo { display: flex; justify-content: center; padding: 6px 0 2px; }
 .wizGo .go { font-size: 18px; font-weight: 800; padding: 10px 48px; border-radius: 24px; background: var(--accent); color: #111; border-color: var(--accent); }
 @media (max-width: 700px) { #wizard.side { right: 16px; left: 16px; width: auto; } }
+
+/* the monitor controller at the end of the last set's row, set apart from its ⤓ */
+.speakerSet > .fold { margin-left: 10px; }
+.speakerSet > .fold > .foldBtn { border-radius: 4px !important; }
