@@ -14,6 +14,8 @@ These chapters follow the 1997 manual's chapter order, so you can read the two s
 | 6 | [Reverb Time](06-reverb-time.md): Sabine, Eyring, Fitzroy, measured basis, criteria, the area optimiser | 5.0 *Reverb Time* | `js/acoustics/reverbTargets.js`, `classic.js` |
 | 7 | [Calculator](07-calculator.md): units, spreading, level addition, wavelength, comb filters | 5.0 *The Acoustic-X Calculator* | `classic.js` |
 
+The manual's 26 suggested references are read one report each, with a summary and a challenge per big idea, in [references/](references/README.md).
+
 The math behind the main app (the wave field, energy, image sources, the advisor) is in [../acoustics/](../acoustics/README.md).
 
 ## The classic model
