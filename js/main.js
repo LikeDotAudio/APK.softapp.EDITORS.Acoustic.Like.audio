@@ -18,6 +18,8 @@ import { buildMarks, furnitureLayer, hashOf, MARK_KEYS } from './cad/marks.js';
 import { F_MAX, F_MIN } from './compute/compute.js';
 import { createAcousticX } from './acoustx/acoustx.js';
 import { makePoppable } from './ui/popout.js';
+import { installSashes } from './ui/sashes.js';
+import { crossings, DIRECT_MARKS_MS, GAP_MARKS_MS, radiusLanes } from './acoustics/radiusScale.js';
 import { hz } from './ui/meters.js';
 import { createEngine, patchesFromCad } from './compute/engine.js';
 import { createStore } from './model/store.js';
@@ -325,6 +327,7 @@ function syncToolbar() {
   pop.title = popped ? 'Bring the CAD back into this tile (or just close its window)' : 'Give the CAD a window of its own — the plan stays here';
   askToPop();
   syncRoomGrowth();
+  syncWidthScale();
   if (popped) inPlan('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
   for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
   if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
@@ -435,7 +438,7 @@ new ResizeObserver(() => {
     field('rotate', '⟲', 'Array rotation, degrees counter-clockwise — the placed speakers turn round the listener with it'),
   );
   // the array's width as a slider: drag it and the placed speakers spread out or close in round the listener
-  const width = Object.assign(document.createElement('input'), { type: 'range', min: 800, max: 6000, step: 50, title: 'Array width: its radius round the listener — the placed speakers follow' });
+  const width = Object.assign(document.createElement('input'), { type: 'range', min: WIDTH_MM[0], max: WIDTH_MM[1], step: 10, title: 'Array width: its radius round the listener — the placed speakers follow' });
   width.dataset.array = 'radius';
   width.addEventListener('input', () => moveArray('radius', parseFloat(width.value), true));
   width.addEventListener('change', () => moveArray('radius', parseFloat(width.value)));
@@ -446,7 +449,17 @@ new ResizeObserver(() => {
   find.onclick = () => findWidth();
   // the array wider than the room allows: how much bigger the room would have to be (acoustics/roomFit.js)
   const grow = Object.assign(document.createElement('span'), { id: 'roomGrow', className: 'roomGrow', hidden: true });
-  fields.append(width, ticks, find, grow);
+  // under the slider, its scale: metres, the room's footprint, and the arrival and first-reflection times (syncWidthScale)
+  const scale = Object.assign(document.createElement('div'), { className: 'widthScale' });
+  const lanes = Object.assign(document.createElement('div'), { id: 'widthLanes', className: 'lanes' });
+  lanes.addEventListener('pointermove', (e) => {
+    const box = lanes.getBoundingClientRect();
+    const r = (WIDTH_MM[0] + ((e.clientX - box.left - 8) / (box.width - 16)) * (WIDTH_MM[1] - WIDTH_MM[0])) / 1000;
+    const near = widthLanes.list.reduce((b, l) => (!b || Math.abs(l.r - r) < Math.abs(b.r - r) ? l : b), null);
+    lanes.title = near ? laneText(near) : '';
+  });
+  scale.append(width, lanes);
+  fields.append(scale, ticks, find, grow);
   bar.after(fields);
 }
 
@@ -487,6 +500,49 @@ function syncRoomGrowth() {
   el.hidden = !g.any;
   el.textContent = g.any ? `⤢ room ${growthText(g)}` : '';
   el.title = g.any ? `This width puts speakers outside the room. To keep them ${CLEAR_M} m clear of the walls: ${growthDetail(g)} — the dashed outline on the plan.` : '';
+}
+
+/** The Width slider's range, mm. */
+const WIDTH_MM = [800, 6000];
+const widthLanes = { key: [], list: [] };
+const laneText = (l) => `r ${l.r.toFixed(2)} m · direct ${l.direct.toFixed(1)} ms · first reflection +${l.gap.toFixed(1)} ms${l.fits ? '' : ' · outside the room'}`;
+
+/**
+ * The scale under the Width slider (acoustics/radiusScale.js): a metre ruler; the room's footprint as a strip,
+ * green where the carried speakers fit and red where they would go through a wall; ticks where the main speakers'
+ * direct sound reaches the mix seat in a round number of ms (blue), and where the first reflection's lag behind
+ * it falls through 20, 10, 5 ms (amber). Recomputed only when the room, the boxes, the seats or the layout change.
+ */
+function syncWidthScale() {
+  const el = document.getElementById('widthLanes');
+  if (!el) return;
+  const { speakers, mics, settings } = store.state;
+  const key = [engine.out.room, speakers, mics, settings.layout];
+  if (key.every((k, i) => k === widthLanes.key[i])) return;
+  widthLanes.key = key;
+  const list = radiusLanes(engine.out.room, speakers, mics, settings, { from: WIDTH_MM[0] / 1000, to: WIDTH_MM[1] / 1000 });
+  widthLanes.list = list;
+  const span = WIDTH_MM[1] - WIDTH_MM[0];
+  const pos = (r) => `left: calc(8px + (100% - 16px) * ${((r * 1000 - WIDTH_MM[0]) / span).toFixed(4)})`;
+  const parts = [];
+  // the footprint strip: one gradient stop per change of fit
+  if (list.length) {
+    const stops = [];
+    list.forEach((l, i) => {
+      const f = ((l.r * 1000 - WIDTH_MM[0]) / span) * 100;
+      const c = l.fits ? 'var(--ok)' : 'var(--bad)';
+      if (i === 0 || l.fits !== list[i - 1].fits) stops.push(`${c} ${f.toFixed(2)}%`);
+      if (i === list.length - 1 || l.fits !== list[i + 1].fits) stops.push(`${c} ${f.toFixed(2)}%`);
+    });
+    parts.push(`<i class="foot" style="background: linear-gradient(90deg, ${stops.join(', ')})" title="The room's footprint: green, the speakers fit; red, they would go through a wall or the ceiling"></i>`);
+  }
+  for (let r = Math.ceil(WIDTH_MM[0] / 500) * 0.5; r * 1000 <= WIDTH_MM[1]; r += 0.5) {
+    parts.push(`<i class="tick${r % 1 ? '' : ' major'}" style="${pos(r)}"></i>`);
+    if (!(r % 1)) parts.push(`<span class="m" style="${pos(r)}">${r}${r === 1 ? ' m' : ''}</span>`);
+  }
+  for (const c of crossings(list, 'direct', DIRECT_MARKS_MS)) parts.push(`<b class="mark direct" style="${pos(c.r)}" title="The direct sound reaches the mix seat in ${c.ms} ms at r ${c.r.toFixed(2)} m">${c.ms}</b>`);
+  for (const c of crossings(list, 'gap', GAP_MARKS_MS)) parts.push(`<b class="mark gap" style="${pos(c.r)}" title="The first reflection arrives ${c.ms} ms after the direct sound at r ${c.r.toFixed(2)} m — narrower keeps it later">+${c.ms}</b>`);
+  el.innerHTML = parts.join('');
 }
 
 /** The best width as a tick on every Width slider. */
@@ -809,6 +865,14 @@ makePoppable(document.getElementById('inspector'), {
   title: 'Inspector',
   onChange: () => inspector.render(),
   onPopped: (out) => document.querySelector('main').classList.toggle('inspector-out', out),
+});
+installSashes({
+  main: document.querySelector('main'),
+  views,
+  inspector: document.getElementById('inspector'),
+  footer: document.querySelector('footer.foot'),
+  meters: document.getElementById('meters'),
+  onResize: renderAll,
 });
 
 // ------------------------------------------------------------------ Acoustic X, the classic windows

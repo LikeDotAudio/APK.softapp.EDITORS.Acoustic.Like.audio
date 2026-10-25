@@ -35,7 +35,7 @@ import { button, check, download, h, num, row, select, slider, text } from './do
  * palette blocks stand for.
  */
 
-const TABS = ['Room', 'Inspect', 'Acoustics', 'Build', 'Treatments', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
+const TABS = ['Room', 'Inspect', 'Acoustics', 'Build', 'Treatments', 'Symmetry', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
 
 const HOW_TO_TREAT = 'Treatments are placed in the CAD: click a wall’s elevation (or the ceiling) to open its drawing, pick a finish or a product from the Acoustic palette, then drag a region to fill it or click to drop a product. Each lands on that surface and mixes into its α and s.';
 
@@ -83,10 +83,10 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     }
     pending = false;
     const scroll = root.querySelector('.body')?.scrollTop ?? 0;
-    const popBtn = root.querySelector(':scope > .popbtn');
+    // the ⇱ rides at the end of the tab row, in the flow, so no tab ever covers it
+    const popBtn = root.querySelector('.popbtn');
     root.replaceChildren(
-      ...(popBtn ? [popBtn] : []),
-      h('nav', { class: 'tabs' }, TABS.map((t) => h('button', { class: [t === tab ? 'on' : '', t === 'File' ? 'file' : ''].join(' ').trim(), onclick: () => { tab = t; render(); } }, t, t === 'Advisor' ? badge() : t === 'Treatments' ? warnBadge() : ''))),
+      h('nav', { class: 'tabs' }, ...TABS.map((t) => h('button', { class: [t === tab ? 'on' : '', t === 'File' ? 'file' : ''].join(' ').trim(), onclick: () => { tab = t; render(); } }, t, t === 'Advisor' ? badge() : t === 'Treatments' ? warnBadge() : '')), ...(popBtn ? [popBtn] : [])),
       h('div', { class: 'body' }, ...PANES[tab]()),
     );
     root.querySelector('.body').scrollTop = scroll;
@@ -458,7 +458,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
   // --------------------------------------------------------------- Treatments
   function treatmentsPane() {
     const room = engine.out.room;
-    const parts = [h('h3', {}, 'Treatments'), h('p', { class: 'hint' }, HOW_TO_TREAT), ...cadMarksPart(), ...symmetryPart(), ...windowsPart()];
+    const parts = [h('h3', {}, 'Treatments'), h('p', { class: 'hint' }, HOW_TO_TREAT), ...cadMarksPart(), ...windowsPart()];
     if (!room) return parts;
     const warnings = room.patchWarnings ?? [];
     if (warnings.length) parts.push(h('ul', { class: 'advice' }, ...warnings.map((w) => h('li', { class: 'warn' }, h('span', {}, w)))));
@@ -594,7 +594,6 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const out = engine.out;
     const mix = S().mics.find((m) => m.mix);
     const room = out.room;
-    const mirror = S().cad.mirror;
     // the best width found for this arrangement (main.js findWidth), if any
     const fit = S().widthFit?.preset === settings.layout.preset ? S().widthFit : null;
     const best = fit?.running ? null : fit?.best;
@@ -606,21 +605,6 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       .join(', ');
     const boxes = Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub').map(([value, p]) => ({ value, label: p.label }));
     const parts = [
-      h('h3', {}, 'Symmetry — the CAD mirror'),
-      h('p', { class: 'stat' }, mirror ? `Virtual Mirror ${mirror.enabled ? 'ON' : 'off'} at x = ${fmt(mirror.xMetres)} m${mirror.axes?.length > 1 ? ` (${mirror.axes.length} axes)` : ''}` : 'CAD has not reported a mirror yet.'),
-      row('Place in mirrored pairs', check(settings.symmetric, (v) => set({ symmetric: v }))),
-      row('Speakers follow the mixer', check(settings.followListener, (v) => set({ followListener: v }))),
-      row('Console at the mixer’s nose', check(settings.console?.follow !== false, (v) => set({ console: { ...settings.console, follow: v } })), num(settings.console?.people ?? 2, (v) => set({ console: { ...settings.console, people: Math.max(0, v) } }), { step: 0.5, min: 0, unit: 'people clear' })),
-      h(
-        'div',
-        { class: 'actions' },
-        room ? button('Centre CAD mirror on room', () => {
-          const xs = room.poly.map((p) => p.x);
-          const k = METRES_PER_UNIT[S().cad.geometry?.units ?? 'm'] ?? 1;
-          cad.link?.setMirror((Math.min(...xs) + Math.max(...xs)) / 2 / k, true);
-        }) : '',
-        mix && mirror?.enabled ? button('Mix onto mirror axis', () => store.update('mic', mix.id, { x: mirror.xMetres })) : '',
-      ),
       h('h3', {}, 'Immersive layout'),
       row('Preset', select(settings.layout.preset, [{ value: NO_LAYOUT, label: 'None — speakers by hand' }, ...Object.entries(LAYOUTS).map(([value, l]) => ({ value, label: l.label }))], (v) => set({ layout: { ...settings.layout, preset: v } }))),
       // the width carries the placed speakers with it, so they stay round the listener
@@ -741,6 +725,33 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Panel size', num(ap.w, (v) => set({ autoPanels: { ...ap, w: v } }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(ap.h, (v) => set({ autoPanels: { ...ap, h: v } }), { unit: 'm tall', min: 0.2, step: 0.05 })),
       row('Ceiling cloud', select(ap.ceiling, products, (v) => set({ autoPanels: { ...ap, ceiling: v } }))),
       h('p', { class: 'hint' }, 'A panel goes wherever a speaker’s first reflection meets a wall on its way to the mix seat, named LEFT-1, RIGHT-2 … on the wall’s elevation. They move when the speakers or the seat move, and the room hears them like any treatment.'),
+    ];
+  }
+
+  /** The room's symmetry in one place: which walls match and which side leads, the CAD's mirror, and the pairs placed about it. */
+  function symmetryPane() {
+    const { settings } = S();
+    const mix = S().mics.find((m) => m.mix);
+    const room = engine.out.room;
+    const mirror = S().cad.mirror;
+    return [
+      h('h3', {}, 'Symmetry'),
+      ...symmetryPart().slice(1),
+      h('h4', {}, 'The CAD mirror'),
+      h('p', { class: 'stat' }, mirror ? `Virtual Mirror ${mirror.enabled ? 'ON' : 'off'} at x = ${fmt(mirror.xMetres)} m${mirror.axes?.length > 1 ? ` (${mirror.axes.length} axes)` : ''}` : 'CAD has not reported a mirror yet.'),
+      row('Place in mirrored pairs', check(settings.symmetric, (v) => set({ symmetric: v }))),
+      row('Speakers follow the mixer', check(settings.followListener, (v) => set({ followListener: v }))),
+      row('Console at the mixer’s nose', check(settings.console?.follow !== false, (v) => set({ console: { ...settings.console, follow: v } })), num(settings.console?.people ?? 2, (v) => set({ console: { ...settings.console, people: Math.max(0, v) } }), { step: 0.5, min: 0, unit: 'people clear' })),
+      h(
+        'div',
+        { class: 'actions' },
+        room ? button('Centre CAD mirror on room', () => {
+          const xs = room.poly.map((p) => p.x);
+          const k = METRES_PER_UNIT[S().cad.geometry?.units ?? 'm'] ?? 1;
+          cad.link?.setMirror((Math.min(...xs) + Math.max(...xs)) / 2 / k, true);
+        }) : '',
+        mix && mirror?.enabled ? button('Mix onto mirror axis', () => store.update('mic', mix.id, { x: mirror.xMetres })) : '',
+      ),
     ];
   }
 
@@ -984,7 +995,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     else store.select({ kind: 'wall', id: key });
   }
 
-  const PANES = { Inspect: inspectPane, Acoustics: acousticsPane, Room: roomPane, Build: buildPane, Treatments: treatmentsPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Subs: subsPane, Advisor: advisorPane, File: filePane };
+  const PANES = { Inspect: inspectPane, Acoustics: acousticsPane, Room: roomPane, Build: buildPane, Treatments: treatmentsPane, Symmetry: symmetryPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Subs: subsPane, Advisor: advisorPane, File: filePane };
 
   return {
     render,

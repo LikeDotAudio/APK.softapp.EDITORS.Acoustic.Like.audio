@@ -19,7 +19,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
-body { display: grid; grid-template-rows: auto 1fr auto 210px; overflow: hidden; }
+body { display: grid; grid-template-rows: auto 1fr auto var(--foot-h, 210px); overflow: hidden; }
 
 button, select, input, .button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; }
 button, .button { cursor: pointer; }
@@ -43,9 +43,9 @@ button.danger:hover { border-color: var(--bad); color: var(--bad); }
 .freq output small { font-size: 8px; color: var(--muted); }
 .status { margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 
-main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
+main { position: relative; display: grid; grid-template-columns: 1fr var(--inspector-w, 360px); min-height: 0; }
 
-#views { display: grid; gap: 4px; padding: 4px; min-height: 0; background: #111; }
+#views { position: relative; display: grid; gap: 1px; padding: 0; min-height: 0; background: var(--line); }
 /* the six views in pairs that look alike: the two looking down (plan over ceiling), the long walls, the short walls */
 #views.six { grid-template-columns: 1.3fr 1.3fr 1fr; grid-template-rows: 1.5fr 1fr; grid-template-areas: "plan left front" "ceiling right back"; }
 /* the CAD out, the plan is small: even rows — only in the default shape, the wide and tall ones keep their own rows */
@@ -71,7 +71,7 @@ main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
 #views.maxed .tile:not(.max) { display: none; }
 #views.maxed .tile.max { grid-area: max; }
 
-.tile { position: relative; background: #0f1218; border: 1px solid var(--line); border-radius: 4px; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.tile { position: relative; background: #0f1218; border: 0; border-radius: 0; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .tile.plan { grid-area: plan; }
 .tile[data-face=ceiling] { grid-area: ceiling; }
 .tile[data-face=front] { grid-area: front; }
@@ -108,6 +108,7 @@ main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
 .tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px; border-bottom: 1px solid var(--line); }
 .tabs button { padding: 3px 7px; font-size: 12px; position: relative; }
 .tabs button.file { margin-left: auto; }
+#inspector .tabs > .popbtn { position: static; opacity: 1; padding: 3px 7px; font-size: 12px; line-height: normal; }
 .badge { font-style: normal; background: var(--warn); color: #111; border-radius: 8px; padding: 0 5px; margin-left: 4px; font-size: 10px; font-weight: 700; }
 .body { overflow-y: auto; padding: 8px 12px 24px; }
 h3 { margin: 10px 0 6px; font-size: 13px; color: var(--accent); }
@@ -154,15 +155,16 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 #fieldScale { padding-top: 12px; }
 #fieldScale .freqNow { color: #fde047; }
 /* the file end of the app: open on the top left, save and export on the bottom right */
-.foot { display: flex; min-height: 0; background: #121418; border-top: 1px solid var(--line); }
+.foot { position: relative; display: flex; min-height: 0; background: #121418; border-top: 1px solid var(--line); }
 #saves { align-self: flex-end; padding: 6px; }
 /* a warning about the last change, with its undo: one speaker of an arrangement moved on its own */
 #notice { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 40; max-width: min(720px, calc(100vw - 32px)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #2a1d0b; color: #fde68a; border: 1px solid var(--warn); border-radius: 6px; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5); font-size: 12px; }
 #notice[hidden] { display: none; }
-#meters { flex: 1; min-width: 0; display: flex; gap: 6px; padding: 6px; overflow-x: auto; }
-.meter { flex: 0 0 200px; display: flex; flex-direction: column; background: #0b0d12; border: 1px solid #262b36; border-radius: 6px; padding: 4px 6px; min-height: 0; }
-.meter.wide { flex-basis: 320px; }
-.meter.m-spl { flex-basis: 112px; }
+#meters { flex: 1; min-width: 0; display: flex; gap: 1px; padding: 0; overflow-x: auto; background: var(--line); }
+/* the meters flex to fill the strip, each in proportion to what it needs; a sash between two trades their share (ui/sashes.js) */
+.meter { position: relative; flex: 200 1 0; min-width: 60px; display: flex; flex-direction: column; background: #0b0d12; border: 0; border-radius: 0; padding: 4px 6px; min-height: 0; }
+.meter.wide { flex-grow: 320; }
+.meter.m-spl { flex-grow: 112; }
 .meter h4 { margin: 0 0 2px; font-size: 10px; color: #cbd5e1; display: flex; gap: 6px; align-items: center; }
 .meter h4 .sub { text-transform: none; letter-spacing: 0; }
 .meter canvas { flex: 1; width: 100%; min-height: 0; }
@@ -172,7 +174,7 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 .tiles .tile b { display: block; font: 600 12px var(--mono); color: #7dd3fc; }
 .tiles .tile span { font-size: 9px; color: var(--muted); }
 .tiles .tile.wide { grid-column: 1 / -1; }
-.meter.m-iso { flex-basis: 230px; }
+.meter.m-iso { flex-grow: 230; }
 .listen { margin-left: auto; padding: 0 6px; font-size: 10px; }
 #meters.empty .meter canvas { opacity: .6; }
 
@@ -197,6 +199,7 @@ table.surfaces tr.treated td:first-child { color: #fde047; }
 table.treat tr.name td { padding-top: 5px; border-bottom: 0; text-align: left; font: 12px system-ui, sans-serif; color: var(--text); }
 table.treat tr.vals td { color: var(--muted); }
 table.treat tr.name, table.treat tr.vals { cursor: default; }
+table.treat tr.name td { overflow-wrap: anywhere; }
 table.grid.treat tr[class~=on] td { background: #3a3a3d; }
 table.grid.treat tr.on td:first-child { color: var(--accent); }
 table.treat.pick tr.name, table.treat.pick tr.vals { cursor: pointer; }
@@ -245,7 +248,17 @@ td.ok { color: #4ade80; }
 .arrayFields { gap: 6px; align-items: center; }
 .arrayField { display: flex; align-items: center; gap: 3px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .arrayField input { width: 64px; padding: 2px 4px; }
-.arrayFields input[type="range"] { width: 96px; }
+.arrayFields input[type="range"] { width: 100%; margin: 0; }
+/* the Width slider with its scale under it (main.js syncWidthScale): the thumb is 16px, so everything sits 8px in */
+.widthScale { display: flex; flex-direction: column; width: 300px; }
+.widthScale .lanes { position: relative; height: 26px; font: 8px/1 var(--mono); color: var(--muted); cursor: help; }
+.widthScale .lanes .foot { position: absolute; left: 8px; right: 8px; top: 0; height: 3px; opacity: .7; }
+.widthScale .lanes .tick { position: absolute; top: 3px; width: 1px; height: 3px; background: var(--muted); }
+.widthScale .lanes .tick.major { height: 5px; background: var(--text); }
+.widthScale .lanes .m { position: absolute; top: 9px; transform: translateX(-50%); }
+.widthScale .lanes .mark { position: absolute; transform: translateX(-50%); top: 17px; font-weight: 600; }
+.widthScale .lanes .mark.direct { color: #7dd3fc; }
+.widthScale .lanes .mark.gap { color: #fbbf24; }
 
 /* ---------------------------------------------------------------- the song player (ui/player.js) */
 .player { flex-basis: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -305,3 +318,23 @@ td.ok { color: #4ade80; }
 .wb-table tr.on .tag { color: var(--accent); }
 .wb-table tr.base td, .wb-table tr.share td { color: var(--muted); }
 .wb-table tr.total td { border-top: 1px solid var(--line); font-weight: 700; }
+
+/* ---------------------------------------------------------------- sashes (ui/sashes.js): every hairline between panels drags */
+.sash { position: absolute; z-index: 30; touch-action: none; }
+.sash::after { content: ''; position: absolute; background: transparent; transition: background .1s; }
+.sash:hover::after, .sash.drag::after { background: var(--accent); }
+.sash.v { top: 0; bottom: 0; width: 7px; margin-left: -3px; cursor: col-resize; }
+.sash.v::after { top: 0; bottom: 0; left: 2px; width: 3px; }
+.sash.h { left: 0; right: 0; height: 7px; margin-top: -3px; cursor: row-resize; }
+.sash.h::after { left: 0; right: 0; top: 2px; height: 3px; }
+#views > .sashes { position: absolute; inset: 0; pointer-events: none; z-index: 30; }
+#views > .sashes > .sash { pointer-events: auto; }
+.inspector-sash { right: var(--inspector-w, 360px); margin-left: 0; margin-right: -4px; }
+main.inspector-out > .inspector-sash, .popped > .sash, body.popout .sash { display: none; }
+.foot > .sash.h { top: 0; }
+.meter > .sash.v { right: -4px; margin-left: 0; }
+.meter:last-child > .sash, #meters > .meter:last-of-type > .sash { display: none; }
+/* while a sash drags, the CAD's iframe must not swallow the pointer */
+body.sashing-v, body.sashing-v * { cursor: col-resize !important; }
+body.sashing-h, body.sashing-h * { cursor: row-resize !important; }
+body.sashing-v iframe, body.sashing-h iframe { pointer-events: none; }
