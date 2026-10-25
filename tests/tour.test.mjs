@@ -37,3 +37,18 @@ test("the tour's sweep frames: a twelfth of an octave apart, bottom to top, each
   assert.ok(frames.every((f, i) => ladder.has(f) && (i === 0 || f > frames[i - 1])));
   assert.ok(frames.length > 90 && frames.length < 120, `${frames.length} frames`);
 });
+
+test('keeping everything inside a room it is already in leaves the lists as they were — a new list is a new scene, and drops the frames', async () => {
+  const { createStore } = await import('../js/model/store.js');
+  const { buildRoom } = await import('../js/acoustics/room.js');
+  const { makeMic } = await import('../js/acoustics/devices.js');
+  const store = createStore();
+  const room = buildRoom([{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 5 }, { x: 0, y: 5 }], { ...store.state.settings, roomHeight: 3 });
+  store.seat([makeMic('mixer', { x: 2, y: 2, z: 1.2 }, { mix: true })]);
+  store.addSpeaker('monitor', { x: 1, y: 4, z: 1.2 });
+  const { speakers, mics, furniture } = store.state;
+  assert.equal(store.keepInside(room), false);
+  assert.equal(store.state.speakers, speakers);
+  assert.equal(store.state.mics, mics);
+  assert.equal(store.state.furniture, furniture);
+});

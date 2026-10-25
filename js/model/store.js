@@ -382,11 +382,16 @@ export function createStore() {
           moved = true;
           return kind === 'furniture' ? { ...d, x: dest.x, y: dest.y } : { ...d, x: dest.x, y: dest.y, z: dest.z };
         });
-      state.speakers = fix(state.speakers, 'speaker');
-      state.mics = fix(state.mics, 'mic');
-      state.furniture = fix(state.furniture ?? [], 'furniture');
-      if (moved) changed();
-      return moved;
+      const speakers = fix(state.speakers, 'speaker');
+      const mics = fix(state.mics, 'mic');
+      const furniture = fix(state.furniture ?? [], 'furniture');
+      // the lists are replaced only when something moved: a new list is a new scene to the engine, and drops its painted frames
+      if (!moved) return false;
+      state.speakers = speakers;
+      state.mics = mics;
+      state.furniture = furniture;
+      changed();
+      return true;
     },
     isLocked(id) {
       return state.locked.includes(id);

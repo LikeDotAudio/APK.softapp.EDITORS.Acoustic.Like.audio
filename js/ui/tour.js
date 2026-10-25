@@ -127,7 +127,7 @@ export function createTour({ store, engine, onStart, onStop, sweepTo, caption, n
     run = { win, recorder, chunks, type, frame, state, timer: 0, watch: 0 };
     run.timer = setInterval(() => {
       const now = performance.now();
-      const dt = Math.min(0.1, (now - tick) / 1000); // a late tick is not a jump in the video
+      const dt = (now - tick) / 1000; // what was recorded since the last tick: the waits are not, they return before the clock moves
       tick = now;
       if (t >= total) return finish();
       const at = tourAt(t, timing);

@@ -609,7 +609,7 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
       ${bars}
       <p class="wb-calc">τ = Σ Sᵢ·10^(−TLᵢ/10) / S · TL = −10·log10 τ${windows.length ? ` · glass on the STC contour from its single number` : ''} · rated by the highest contour it clears (no octave &gt; 8 dB under, &gt; 10 dB summed). Treatment on the room side adds next to nothing and is left out.${iso.walls === 'unset' ? ' Build not set: single stud assumed.' : ''}</p>
       ${leak}
-      <p class="wb-calc">Under the rating's bands, where a sub lives: composite TL ${trans.low.freqs.map((f, i) => `${f} Hz ${f0(trans.low.tl[i])} dB`).join(' · ')} — each part's 125 Hz figure carried down the mass law, 6 dB per octave, so at best. A single-number rating (≈STC, NRC) is fitted from 125 Hz up and says nothing here.</p>
+      <p class="wb-calc">Under the rating's bands, where a sub lives: composite TL ${trans.low.freqs.map((f, i) => `${f} Hz ${f0(trans.low.tl[i])} dB`).join(' · ')} — each part's 125 Hz figure carried down the mass law, 6 dB per octave, so at best. A single-number rating (≈STC) is fitted from 125 Hz up and says nothing here.</p>
       <p class="wb-small">Estimates of design intent from typical published figures, not a test report.</p>`;
   }
 

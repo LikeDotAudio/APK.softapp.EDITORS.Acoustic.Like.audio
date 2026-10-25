@@ -134,8 +134,8 @@ export function houseLeak(room, iso, roomDb) {
 /**
  * BELOW 125 Hz: WHAT A SUB PUTS THROUGH THE WALL
  *
- * A single-number rating (STC, and the NRC that goes with it) is fitted from
- * 125 Hz up — built for speech in offices and schools — and says nothing about
+ * A single-number rating is built for speech in offices and schools — STC is
+ * fitted from 125 Hz up, NRC averages 250 Hz – 2 kHz — and says nothing about
  * the octaves a subwoofer lives in. So the two below are carried too, 31 and
  * 63 Hz (bands.js BANDS_9). No build here was rated there, so each is the
  * 125 Hz figure carried down the mass law, 6 dB per octave: AT BEST, since a

@@ -100,8 +100,8 @@ $90 - \text{TL} + 10\log_{10}1.08 = [73.3, 59.3, 50.3, 44.3, 51.3, 47.3]$ dB.
 
 ## 12.4 Below 125 Hz: the octaves a sub lives in
 
-A single-number rating (STC, and NRC on the absorption side) is fitted from
-125 Hz up and says nothing about 31 and 63 Hz. `LOW_BANDS` = [31, 63] carries
+A single-number rating says nothing about 31 and 63 Hz: STC is fitted from
+125 Hz up, and NRC, on the absorption side, averages 250 Hz – 2 kHz. `LOW_BANDS` = [31, 63] carries
 them. No build in `WALL_BUILDS` is rated there, so `lowWallTl(iso)` takes the
 build's 125 Hz figure (room-in-room leaf included) down the mass law,
 `LOW_SLOPE_DB` = 6 dB per octave:
