@@ -14,7 +14,7 @@ import { furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
 import { makeMic } from './acoustics/devices.js';
 import { makeWindow } from './acoustics/windows.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
-import { buildMarks, furnitureLayer, hashOf, MARK_KEYS } from './cad/marks.js';
+import { buildMarks, furnitureLayer, hashOf, MARK_KEYS, spacesOf } from './cad/marks.js';
 import { F_MAX, F_MIN } from './compute/compute.js';
 import { createAcousticX } from './acoustx/acoustx.js';
 import { makePoppable } from './ui/popout.js';
@@ -749,8 +749,16 @@ function syncMarks() {
       if (onSheet[key] === hash || (onSheet[key] === undefined && !items.length)) continue;
       cad.link.marks(key, hash, items);
     }
+    // every drawing on the sheet a model space of its own, one scale for all (marks.js spacesOf)
+    const spaces = spacesOf(engine.out.room, sets, k);
+    const spacesHash = hashOf(spaces);
+    if (spacesHash !== lastSpaces) {
+      lastSpaces = spacesHash;
+      cad.link.spaces(spaces);
+    }
   }, 350);
 }
+let lastSpaces = null;
 
 // ------------------------------------------------------------------ sweep and tour
 const sweepBtn = document.getElementById('sweep');

@@ -1297,3 +1297,79 @@ function scaleItem(it, k) {
   };
 }
 
+
+// ------------------------------------------------------------------ spaces
+
+/** Where a set of marks (drawing units, as buildMarks returns them) lies: { x0, x1, y0, y1 }, or null when empty. */
+function itemsBounds(items = []) {
+  const b = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
+  const add = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    b.x0 = Math.min(b.x0, x);
+    b.x1 = Math.max(b.x1, x);
+    b.y0 = Math.min(b.y0, y);
+    b.y1 = Math.max(b.y1, y);
+  };
+  for (const it of items) {
+    if (it.kind === 'fill') for (const [x, y] of it.points) add(x, y);
+    else if (it.kind === 'text') {
+      add(it.at[0], it.at[1]);
+      add(it.at[0] + String(it.text).length * it.height * 0.6, it.at[1] + it.height);
+    } else if (it.at) {
+      const [ox, oy] = it.at;
+      for (const [a, c, d, e] of it.lines ?? []) {
+        add(ox + a, oy + c);
+        add(ox + d, oy + e);
+      }
+      for (const t of it.texts ?? []) {
+        add(ox + t.x, oy + t.y);
+        add(ox + t.x + String(t.text).length * t.height * 0.6, oy + t.y + t.height);
+      }
+      for (const f of it.fills ?? []) for (const [x, y] of f.points) add(ox + x, oy + y);
+    }
+  }
+  return b.x0 <= b.x1 ? b : null;
+}
+
+const unionB = (...bs) => {
+  const real = bs.filter(Boolean);
+  if (!real.length) return null;
+  return { x0: Math.min(...real.map((b) => b.x0)), x1: Math.max(...real.map((b) => b.x1)), y0: Math.min(...real.map((b) => b.y0)), y1: Math.max(...real.map((b) => b.y1)) };
+};
+
+/**
+ * THE MODEL SPACES: every drawing this app keeps on the sheet as a named
+ * window onto it — the plan, each wall's elevation with its schedule and
+ * details, the blow-up tower, the cut-aways, the construction sections —
+ * for the CAD's tabs (bridge `spaces`), where each opens at one scale for all
+ * of them, so a metre is the same size whichever you are looking at. Bounds
+ * are where the marks were drawn (`sets`, drawing units, as buildMarks
+ * returns them) and, for the plan and the walls, the room's own outline;
+ * every one is measured, like the slices, from the brass marker.
+ */
+export function spacesOf(room, sets, k = 1) {
+  const u = (v) => v / k;
+  const pad = (b) => {
+    const m = Math.max(b.x1 - b.x0, b.y1 - b.y0) * 0.06;
+    return [+(b.x0 - m).toFixed(3), +(b.y0 - m).toFixed(3), +(b.x1 + m).toFixed(3), +(b.y1 + m).toFixed(3)];
+  };
+  const out = [];
+  const add = (id, name, subtitle, b) => b && out.push({ id: `host:${id}`, name, subtitle, bounds: pad(b) });
+  const p = bboxOf(room.poly);
+  const plan = { x0: u(p.x0), x1: u(p.x1), y0: u(p.y0), y1: u(p.y1) };
+  const onLayer = (key, layer) => itemsBounds((sets[key] ?? []).filter((it) => it.layer === layer));
+  add('plan', 'Plan', `${mm(room.L)} × ${mm(room.W)} mm`, unionB(plan, ...['labels', 'slices', 'arrangement'].map((key) => itemsBounds((sets[key] ?? []).filter((it) => !elevationFaceOf(it.layer) && it.layer !== CUTAWAY_LAYER && it.layer !== SECTION_LAYER)))));
+  for (const face of ELEVATION_FACES) {
+    const o = elevationOrigin(room, face);
+    if (!o) continue;
+    const span = face === 'left' || face === 'right' ? room.L : room.W;
+    const top = room.Hmax ?? room.H;
+    const wall = { x0: u(o.x), x1: u(o.x + span), y0: u(o.y), y1: u(o.y + top) };
+    const layer = ELEVATION_LAYER[face];
+    add(`elevation-${face}`, `${face[0].toUpperCase()}${face.slice(1)} elevation`, `${mm(span)} × ${mm(top)} mm`, unionB(wall, ...['labels', 'panels', 'finishes', 'symmetry', 'windows'].map((key) => onLayer(key, layer))));
+  }
+  add('blowup', 'Blow-up', 'the room’s surfaces laid out round its plan', itemsBounds(sets.blowup));
+  add('cutaways', 'Cut-aways', 'the room in 3-D, three ways', itemsBounds(sets.cutaways));
+  add('sections', 'Construction', 'wall and floor builds', itemsBounds(sets.sections));
+  return out;
+}

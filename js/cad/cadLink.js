@@ -54,6 +54,8 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
   const target = () => (popup && !popup.closed ? popup : iframe.contentWindow);
   const send = (type, body = {}) => target()?.postMessage({ protocol: HOST_PROTOCOL, type, ...body }, window.location.origin);
   let palette = null;
+  /** The last model spaces sent (marks.js spacesOf), resent with the palette whenever the CAD comes up again. */
+  let spaces = null;
   let sessionWaiters = [];
 
   window.addEventListener('message', (e) => {
@@ -67,6 +69,7 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     if (e.source !== target()) return;
     if (msg.type === 'ready') {
       if (palette) send('palette', palette);
+      if (spaces) send('spaces', { items: spaces });
       if (carry) send('open', { session: carry });
       carry = null;
       onReady?.();
@@ -118,6 +121,11 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     remove: (ids) => send('remove', { ids }),
     /** Make painted regions ('fill:<n>', …) another palette item where they lie (the wall builder's region select). One undo step in the CAD. */
     repaint: (ids, paletteId) => send('repaint', { ids, paletteId }),
+    /** The drawings kept on the sheet as named windows onto it, the CAD's tabs: [{ id, name, subtitle, bounds: [x1, y1, x2, y2] }] in CAD units. */
+    spaces: (items) => {
+      spaces = items;
+      send('spaces', { items });
+    },
     /** Reshape the room's lines (Walls mode): { op: 'begin' | 'vertex' | 'edge' | 'end' | 'add', … } in CAD units (hostWalls.ts). */
     walls: (op) => send('walls', op),
     /** Layers on or off by name: { 'Blow-up': false, … }. Hidden, nothing on them can be clicked in the CAD. */
@@ -164,6 +172,7 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
         // it said ready while the docked CAD was still answering: hand over now
         if (openingReady) {
           if (palette) send('palette', palette);
+          if (spaces) send('spaces', { items: spaces });
           if (carry) send('open', { session: carry });
           carry = null;
         }
