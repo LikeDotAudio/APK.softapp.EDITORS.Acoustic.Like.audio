@@ -284,7 +284,7 @@ function syncToolbar() {
   for (const b of document.querySelectorAll('#furniture button[data-arm]')) b.classList.toggle('on', mode === 'place-furniture' && b.dataset.arm === placeKind?.furniture);
   views.className = settings.view === '3d' || settings.view === 'rays' ? 'three' : 'six';
   const { sheet } = store.state;
-  inPlan('sheetName').textContent = sheet === 'plan' ? 'draw the room here · click an elevation to draw that wall' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
+  inPlan('sheetName').textContent = sheet === 'plan' ? '' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
   inPlan('toPlan').hidden = sheet === 'plan';
   const popped = store.state.cad.popped;
   const pop = inPlan('popCad');
@@ -334,7 +334,12 @@ window.addEventListener('keydown', (e) => {
   if ((e.key === 'Delete' || e.key === 'Backspace') && store.state.selected) store.remove(store.state.selected.kind, store.state.selected.id);
 });
 
-new ResizeObserver(() => renderGeometry()).observe(views);
+new ResizeObserver(() => {
+  // the pairs lay out by the shape of the space they get: a letterbox in one row, a tall one in three
+  const aspect = views.clientWidth / Math.max(1, views.clientHeight);
+  views.dataset.shape = aspect > 3.2 ? 'wide' : aspect < 1.1 ? 'tall' : '';
+  renderGeometry();
+}).observe(views);
 
 // ------------------------------------------------------------------ the slider, read as a log scale
 {

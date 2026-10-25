@@ -45,7 +45,13 @@ button.danger:hover { border-color: var(--bad); color: var(--bad); }
 main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
 
 #views { display: grid; gap: 4px; padding: 4px; min-height: 0; background: #111; }
-#views.six { grid-template-columns: 1.7fr 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; grid-template-areas: "plan ceiling front" "plan left right" "plan back back"; }
+/* the six views in pairs that look alike: the two looking down (plan over ceiling), the long walls, the short walls */
+#views.six { grid-template-columns: 1.3fr 1.3fr 1fr; grid-template-rows: 1.5fr 1fr; grid-template-areas: "plan left front" "ceiling right back"; }
+#views.six:has(.tile.plan.cad-out) { grid-template-rows: 1fr 1fr; }
+/* a letterbox of a screen: one row, still in pairs */
+#views.six[data-shape=wide] { grid-template-columns: 1.6fr 1fr 1.3fr 1.3fr 1fr 1fr; grid-template-rows: 1fr; grid-template-areas: "plan ceiling left right front back"; }
+/* a tall one: the pairs side by side, one under another */
+#views.six[data-shape=tall] { grid-template-columns: 1fr 1fr; grid-template-rows: 1.4fr 1fr 1fr; grid-template-areas: "plan ceiling" "left right" "front back"; }
 #views.six .t3d { display: none; }
 #views.three { grid-template-columns: 1fr 1.5fr; grid-template-areas: "plan d3"; }
 #views.three .face { display: none; }
@@ -72,18 +78,18 @@ main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
 .stage .hits { position: absolute; inset: 0; pointer-events: none; }
 .stage .hit { position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 50%; pointer-events: auto; cursor: grab; }
 .stage .hit:active { cursor: grabbing; }
-/* the CAD's gear (a library room's console, desks, rack, couch): a ring at its centre, under any speaker or seat standing on it */
-.stage .hit { z-index: 1; }
-.stage .hit[data-kind="gear"] { z-index: 0; border: 1px dashed rgba(251, 191, 36, 0.75); }
-.stage .capture { position: absolute; inset: 0; display: none; cursor: crosshair; background: rgba(244,144,44,.04); outline: 2px dashed rgba(244,144,44,.5); outline-offset: -3px; }
-.stage .capture.on { display: block; }
-/* a speaker turning after Ctrl-click: this sheet takes the pointer from the CAD's iframe until a click sets it */
 .stage .hit.locked, .stage .hit.locked:active { cursor: not-allowed; }
 .stage .hit.locked::after { content: '🔒'; position: absolute; right: -10px; top: -10px; font-size: 11px; pointer-events: none; }
 .stage .plan-menu { position: absolute; z-index: 20; display: flex; flex-direction: column; min-width: 120px; padding: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); pointer-events: auto; }
 .stage .plan-menu button { text-align: left; border: 0; background: none; padding: 5px 10px; }
 .stage .plan-menu button:hover:not(:disabled) { background: var(--panel-2); color: var(--accent); }
 .stage .plan-menu button:disabled { opacity: 0.4; }
+/* the CAD's gear (a library room's console, desks, rack, couch): a ring at its centre, under any speaker or seat standing on it */
+.stage .hit { z-index: 1; }
+.stage .hit[data-kind="gear"] { z-index: 0; border: 1px dashed rgba(251, 191, 36, 0.75); }
+.stage .capture { position: absolute; inset: 0; display: none; cursor: crosshair; background: rgba(244,144,44,.04); outline: 2px dashed rgba(244,144,44,.5); outline-offset: -3px; }
+.stage .capture.on { display: block; }
+/* a speaker turning after Ctrl-click: this sheet takes the pointer from the CAD's iframe until a click sets it */
 .stage .spin { position: absolute; inset: 0; z-index: 6; cursor: crosshair; }
 
 #inspector { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
@@ -160,7 +166,7 @@ table.modes button { padding: 0 5px; font-size: 10px; }
 
 @media (max-width: 900px) {
   main { grid-template-columns: 1fr; grid-template-rows: 1fr 300px; }
-  #views.six { grid-template-columns: 1fr 1fr; grid-template-areas: "plan plan" "ceiling front" "left right" "back back"; grid-template-rows: 2fr 1fr 1fr 1fr; }
+  #views.six { grid-template-columns: 1fr 1fr; grid-template-areas: "plan ceiling" "left right" "front back"; grid-template-rows: 1.4fr 1fr 1fr; }
 }
 
 /* The CAD holds the plan and every wall's elevation; these jump it between them. */
