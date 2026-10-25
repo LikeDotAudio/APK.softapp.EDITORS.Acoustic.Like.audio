@@ -12,8 +12,14 @@
  * updated and offers ⟳ Refresh; nothing reloads by itself. The room is kept
  * in this browser as you work (model/store.js), so a refresh loses nothing.
  *
+ * ⟳ Refresh flushes before it reloads. The host (GitHub Pages) lets browsers
+ * keep each file ten minutes, and a plain reload happily mixes a new page with
+ * old modules from that cache. So every file of ours — this page's and the
+ * CAD frame's — is fetched again with `cache: 'reload'`, which overwrites the
+ * browser's copy, and any Cache Storage or service worker is dropped first.
+ *
  * Asked only while the tab is visible: every minute, and when the tab comes
- * back into view. Files from other origins (the CAD's own frame, CDNs) are
+ * back into view. Files from other origins (CDNs) are
  * not this app's and are left alone.
  */
 
@@ -41,6 +47,36 @@ function ownFiles() {
   return [...urls];
 }
 
+/** Everything of ours the browser may hold, the CAD frame's files included. */
+function everyOwnFile() {
+  const urls = new Set(ownFiles());
+  for (const f of document.querySelectorAll('iframe')) {
+    try {
+      const w = f.contentWindow;
+      if (w.location.origin !== location.origin) continue;
+      urls.add(w.location.href.split('#')[0].split('?')[0]);
+      for (const e of w.performance.getEntriesByType('resource')) {
+        const u = new URL(e.name);
+        if (u.origin === location.origin) urls.add(u.origin + u.pathname);
+      }
+    } catch {
+      // a frame from elsewhere is not ours to flush
+    }
+  }
+  return [...urls];
+}
+
+/** Drop every cached copy of this app, then load it again. */
+async function flushAndReload() {
+  try {
+    if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+    if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+    await Promise.all(everyOwnFile().map((url) => fetch(url, { cache: 'reload' }).catch(() => null)));
+  } finally {
+    location.reload();
+  }
+}
+
 export function watchForUpdates({ banner }) {
   const seen = new Map();
   let changed = false;
@@ -66,7 +102,12 @@ export function watchForUpdates({ banner }) {
   }
 
   function show() {
-    banner.querySelector('[data-act=refresh]').onclick = () => location.reload();
+    const button = banner.querySelector('[data-act=refresh]');
+    button.onclick = () => {
+      button.disabled = true;
+      button.textContent = '⟳ Refreshing…';
+      flushAndReload();
+    };
     banner.querySelector('[data-act=close]').onclick = () => (banner.hidden = true);
     banner.hidden = false;
   }
