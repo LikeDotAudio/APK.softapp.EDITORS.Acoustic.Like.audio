@@ -485,5 +485,5 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     readout.textContent = '';
   });
 
-  return { render };
+  return { render, tile };
 }

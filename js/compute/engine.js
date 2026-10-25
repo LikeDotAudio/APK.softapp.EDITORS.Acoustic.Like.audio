@@ -187,14 +187,19 @@ export function createEngine(store, onResult) {
   }
 
   /**
-   * THE SWEEP'S FRAMES
+   * THE SWEEP'S FRAMES — A CACHE FILLED IN THE BACKGROUND
    *
-   * While a sweep runs, the idle worker paints the field ahead of it at the
-   * round frequencies — 20, 30, 50, 100, 200, 300, 500, 1k … — then the ones
-   * between (40, 60, 70 …), then halves the gaps again and again. The sweep
-   * plays whichever are ready, so the loop starts coarse and slowly fills in
-   * smooth. Any change but the frequency starts the frames over. The tour
-   * hands its own list instead (`sweepFrames`), in the order it will play them.
+   * Whenever the worker is idle it paints the field at frequencies it has not
+   * got yet, and keeps every frame: the sweep, the tour and the slider play
+   * whichever are ready, and nothing is painted twice. First the ladder's
+   * SEEDS, a decade at a time — 1k, 10k, 100, then 20, 200, 2k and the top,
+   * then 50, 500, 5k — so the whole range is roughed in at once; then, again
+   * and again, the middle (on a log scale) of the widest gap between two
+   * frames it has, the gaps near the current frequency first: the room fills
+   * in smooth from where you are looking outward. Anything but the frequency
+   * changing — a setting, something moved — flushes it and starts again from
+   * 1k. The tour hands its own list instead (`sweepFrames`), in the order it
+   * will play them, and gets those first.
    *
    * The modal field stops at MODAL_MAX (compute.js): every frame above it is
    * that one, so it is painted once and kept for them all.
@@ -204,7 +209,6 @@ export function createEngine(store, onResult) {
   const cache = new Map(); // freq → { result, job }, for `scene`
   let scene = null;
   let sceneKey = '';
-  let precalc = false;
   let last = null; // the last full-resolution job: the template a frame is painted from
   const failed = new Set();
 
@@ -219,14 +223,15 @@ export function createEngine(store, onResult) {
   }
 
   function syncFrames() {
-    out.frames = { ready: [...cache.keys()].sort((x, y) => x - y), ladder: precalc || cache.size ? wanted : [] };
+    out.frames = { ready: [...cache.keys()].sort((x, y) => x - y), ladder: LADDER, wanted };
   }
 
-  /** The worker is free: paint the next frame the sweep has not got yet. */
+  /** The worker is free: paint the next frame the cache has not got yet. */
   function pump() {
-    if (!precalc || busy || !last || last.settings.method === 'energy') return;
+    if (busy || !last || last.settings.method === 'energy') return;
     for (;;) {
-      const f = wanted.find((g) => !cache.has(g) && !failed.has(g));
+      const have = (g) => cache.has(g) || failed.has(g);
+      const f = wanted !== LADDER ? wanted.find((g) => !have(g)) ?? nextFrame(LADDER, have, last.settings.freq) : nextFrame(LADDER, have, last.settings.freq);
       if (f === undefined) return;
       const above = last.settings.method === 'modal' && f > MODAL_MAX;
       if (above && cache.has(MODAL_MAX)) {
@@ -239,12 +244,11 @@ export function createEngine(store, onResult) {
     }
   }
 
-  /** Paint frames ahead of the sweep (the ladder's, or `list` in its order), or stop. The frames already painted stay. */
+  /** Paint `list`'s frames first, in its order (the tour's), or — off — go back to filling the whole ladder. The frames already painted stay. */
   function frames(on, list = LADDER) {
-    precalc = on;
-    wanted = list;
+    wanted = on ? list : LADDER;
     syncFrames();
-    if (on) pump();
+    pump();
   }
 
   /** Recompute. `coarse` halves the resolution — used while something is being dragged. */
@@ -304,6 +308,31 @@ export function createEngine(store, onResult) {
   return { update, out, currentRoom, frames, setResponsePoints };
 }
 
+/** How many of the ladder's first frequencies are its seeds, painted in their order before any gap is split. */
+export const SEEDS = 10;
+
+/**
+ * The next frame to paint: the ladder's seeds in order; then, of the ladder's
+ * frequencies not had yet, the one farthest (in octaves) from any it has — the
+ * middle of the widest gap — each gap counted smaller the farther it lies from
+ * `near`, the current frequency, so the cache fills in from where you are.
+ */
+export function nextFrame(ladder, have, near) {
+  const seed = ladder.slice(0, SEEDS).find((g) => !have(g));
+  if (seed !== undefined) return seed;
+  const got = ladder.filter(have).sort((x, y) => x - y);
+  let best;
+  let bestScore = -Infinity;
+  for (const f of ladder) {
+    if (have(f)) continue;
+    let gap = Infinity;
+    for (const g of got) gap = Math.min(gap, Math.abs(Math.log2(f / g)));
+    const score = gap / (1 + Math.abs(Math.log2(f / near)));
+    if (score > bestScore) [best, bestScore] = [f, score];
+  }
+  return best;
+}
+
 /**
  * The frames a sweep that moves `step` of an octave at a time plays, bottom
  * to top: the ladder's frame nearest each step, each once.
@@ -315,33 +344,36 @@ export function sweepFrames(step = 1 / 12, ladder = frameLadder()) {
     const near = sorted.reduce((best, g) => (Math.abs(Math.log(g / f)) < Math.abs(Math.log(best / f)) ? g : best));
     if (near !== out.at(-1)) out.push(near);
   }
+  // the steps stop short of the top by a fraction of one: the sweep ends on it all the same
+  if (out.at(-1) !== sorted.at(-1)) out.push(sorted.at(-1));
   return out;
 }
 
 /**
- * The order the sweep's frames are painted in: the 1-2-3-5 steps of every
- * decade, then the rest of the round numbers, then the gaps halved (on a log
- * scale, to two figures) until they are under a 24th of an octave.
+ * The frequencies the sweep's frames are painted at. First the SEEDS, a decade
+ * at a time from the middle out — 1k, 10k, 100, then 20, 200, 2k and the top,
+ * then 50, 500, 5k (10 Hz, 5 Hz and 20 kHz would be outside the range, the
+ * ends stand in for them) — then the gaps halved on a log scale, to two
+ * figures, until they are under a 24th of an octave. The engine picks among
+ * the halves by where you are (nextFrame); this order is only the seeds'.
  */
 export function frameLadder(lo = F_MIN, hi = F_MAX) {
-  const decades = [];
-  for (let d = 10 ** Math.floor(Math.log10(lo)); d <= hi; d *= 10) decades.push(d);
   const seen = new Set();
   const order = [];
-  const take = (fs) => {
-    for (const f of fs.filter((g) => g >= lo && g <= hi && !seen.has(g)).sort((x, y) => x - y)) {
+  const take = (fs, sorted = true) => {
+    const keep = fs.map((g) => Math.min(hi, Math.max(lo, g))).filter((g, i, a) => !seen.has(g) && a.indexOf(g) === i);
+    for (const f of sorted ? keep.sort((x, y) => x - y) : keep) {
       seen.add(f);
       order.push(f);
     }
   };
-  take(decades.flatMap((d) => [1, 2, 3, 5].map((m) => Math.round(m * d))));
-  take(decades.flatMap((d) => [1.5, 4, 6, 7, 8, 9].map((m) => Math.round(m * d))));
+  take([1000, 10000, 100, 20, 200, 2000, hi, 50, 500, 5000], false);
   for (;;) {
     const sorted = [...seen].sort((x, y) => x - y);
     const mids = [];
     for (let i = 1; i < sorted.length; i++) {
       if (sorted[i] / sorted[i - 1] < 2 ** (1 / 24)) continue;
-      const m = Number((Math.sqrt(sorted[i] * sorted[i - 1])).toPrecision(2));
+      const m = Number(Math.sqrt(sorted[i] * sorted[i - 1]).toPrecision(2));
       if (m > sorted[i - 1] && m < sorted[i]) mids.push(m);
     }
     if (!mids.length) break;

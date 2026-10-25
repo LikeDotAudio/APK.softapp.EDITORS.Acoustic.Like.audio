@@ -68,11 +68,13 @@ let scaleZoom = null;
 
 const engine = createEngine(store, (out, phase) => {
   if (phase === 'frame') {
-    // a sweep frame painted ahead: only the response chart's markers change
+    // a sweep frame painted ahead: only the response chart's markers and the cache strip change
     meters.render();
+    showCache();
     return;
   }
   out.scale = fieldScale(out.values, store.state.settings.rangeDb, scaleZoom);
+  showCache();
   if (phase === 'room') {
     status.textContent = '⟳ computing…';
     renderGeometry();
@@ -219,11 +221,14 @@ function relayoutViews() {
 }
 
 let frame = 0;
+/** Is this tile on a screen — laid out, here or in a window of its own? A hidden one is not drawn; it draws when it shows. */
+const onScreen = (el) => Boolean(el && el.getClientRects().length && el.clientWidth && el.clientHeight);
 function renderGeometry() {
   relayoutViews();
   plan.render();
-  for (const f of faces) f.render();
-  view3d.render();
+  // lazy: only the views that can be seen; the frames they would show stay in the cache for when they can
+  for (const f of faces) if (onScreen(f.tile)) f.render();
+  if (onScreen(document.querySelector('.tile.t3d canvas'))) view3d.render();
   if (store.state.settings.view === 'wall') wallBuilder.render();
 }
 function renderAll() {
@@ -563,6 +568,36 @@ new ResizeObserver(() => {
   views.dataset.shape = aspect > 3.2 ? 'wide' : aspect < 1.1 ? 'tall' : '';
   renderGeometry();
 }).observe(views);
+
+/**
+ * The frames cached so far (engine.js): a tick under the slider for each one,
+ * and the tour's button filled as far as the cache is — breathing while it fills.
+ */
+function showCache() {
+  const strip = document.getElementById('freqCache');
+  const { ready = [], ladder = [] } = engine.out.frames ?? {};
+  const w = strip.clientWidth;
+  const h = strip.clientHeight;
+  if (w && h) {
+    const dpr = window.devicePixelRatio || 1;
+    if (strip.width !== Math.round(w * dpr)) [strip.width, strip.height] = [Math.round(w * dpr), Math.round(h * dpr)];
+    const ctx = strip.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const lo = Math.log10(F_MIN);
+    const span = Math.log10(F_MAX) - lo;
+    ctx.fillStyle = 'rgba(253, 224, 71, .7)';
+    for (const f of ready) ctx.fillRect(((Math.log10(f) - lo) / span) * (w - 1), 0, 1, h);
+  }
+  const share = ladder.length ? Math.min(1, ready.length / ladder.length) : 0;
+  // looked up here: the engine can answer before the tour's part of this file has run
+  const tourBtn = document.getElementById('tour');
+  tourBtn.dataset.title ??= tourBtn.title;
+  tourBtn.style.setProperty('--cache', share.toFixed(3));
+  tourBtn.classList.toggle('filling', share > 0 && share < 1);
+  tourBtn.classList.toggle('full', share >= 1);
+  tourBtn.title = `${tourBtn.dataset.title} — ${ready.length} of ${ladder.length} frames painted`;
+}
 
 // ------------------------------------------------------------------ the slider, read as a log scale
 {

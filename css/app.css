@@ -367,6 +367,14 @@ main.inspector-out { grid-template-columns: 1fr; }
 
 /* ---------------------------------------------------------------- the frequency slider, read as a log scale */
 .freq { position: relative; }
+/* the cache under the slider: a tick for each frame painted */
+.freq #freqCache { position: absolute; left: 0; width: 100%; top: 50%; height: 8px; transform: translateY(-50%); pointer-events: none; }
+.freq input { position: relative; }
+/* the tour's button fills as the frames come in, and breathes while they do */
+#tour { background-image: linear-gradient(90deg, rgba(253, 224, 71, .28) calc(var(--cache, 0) * 100%), transparent 0); }
+#tour.filling { animation: cacheBreath 1.6s ease-in-out infinite; }
+#tour.full { border-color: #fde047; }
+@keyframes cacheBreath { 50% { box-shadow: 0 0 10px rgba(253, 224, 71, .55); } }
 .freq .ticks { position: absolute; left: 0; width: 100%; top: 100%; height: 10px; pointer-events: none; font: 8px var(--mono); color: var(--muted); }
 .freq .ticks i { position: absolute; top: -3px; width: 1px; height: 4px; background: var(--muted); }
 .freq .ticks span { position: absolute; top: 1px; transform: translateX(-50%); }
