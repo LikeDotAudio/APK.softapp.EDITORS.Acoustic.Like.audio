@@ -44,3 +44,18 @@ test('the casing and the sill follow the numbers', () => {
   const floor = glassBottom - 1.0;
   assert.ok(Math.abs(Math.max(...ys('casing-wood')) - floor - (1.0 + 1.4 + 0.15)) < 1e-9);
 });
+
+test('the broadcast set hears its two screens: an LED wall on the front, the aux TV on the back, both laid on a wall', () => {
+  const set = roomById('broadcast-set');
+  const s = { ...DEFAULT_SETTINGS, roomHeight: set.h, frontDeg: 90, cadMarks: { windows: true }, windows: { Room: set.windows } };
+  const r = buildRoom(set.poly.map(([x, y]) => ({ x, y })), s);
+  const fills = buildMarks({ room: r, state: { settings: s, mics: [], speakers: [] }, planLayer: 'Room', sheetBounds: null, k: 1, layers: new Set(), rooms: [] }).windows.filter((it) => it.kind === 'fill');
+  const { pieces, warnings } = layPatches(r, fills.map((f, i) => ({ id: `f${i}`, paletteId: f.paletteId, layer: f.layer, poly: f.points.map(([x, y]) => ({ x, y })) })));
+  assert.deepEqual(warnings, []);
+  const screens = pieces.filter((p) => p.paletteId === 'led-wall');
+  assert.deepEqual([...new Set(screens.map((p) => p.face))].sort(), ['back', 'front']);
+  const area = (face) => screens.filter((p) => p.face === face).reduce((a, p) => a + p.area, 0);
+  assert.ok(Math.abs(area('front') - 5.4 * 3.0) < 0.05, `LED wall ${area('front')} m²`);
+  assert.ok(Math.abs(area('back') - 2.4 * 1.4) < 0.05, `TV ${area('back')} m²`);
+  assert.ok(screens[0].material.alpha.every((a) => a <= 0.1), 'a screen is a reflector');
+});

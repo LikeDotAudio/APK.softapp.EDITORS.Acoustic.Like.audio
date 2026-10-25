@@ -3,6 +3,7 @@
 import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
 import { MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
+import { receiverOrder, sourceGroups } from '../acoustics/groups.js';
 import { outside } from '../acoustics/inRoom.js';
 import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
 import { activeSet, arrangedSpeakers, arrayFront, isMain, LAYOUTS, layoutCentre, layoutPositions, NO_LAYOUT, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
@@ -122,15 +123,54 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     store.select({ kind, id });
   }
 
-  function inspectPane() {
-    const { speakers, mics, selected } = S();
-    const dev = selectedDevice(S());
-    const list = h(
-      'div',
-      { class: 'devlist' },
-      ...speakers.map((d) => item('speaker', d, `🔊 ${d.role || d.name}`, d.color)),
-      ...mics.map((d) => item('mic', d, `${d.mix ? '🎧' : '🎤'} ${d.name}`, d.mix ? '#ff3b3b' : '#ddd')),
+  /**
+   * The ACOUSTIC GROUPS (acoustics/groups.js) as one tree: Room, Surfaces,
+   * Sources by speaker set, Receivers. A branch folded shut stays shut across
+   * redraws; `room: false` leaves the first two out (the transducer picker).
+   */
+  const shut = new Set();
+  function branch(key, summary, kids, cls = '') {
+    const el = h('details', { class: `branch ${cls}`.trim(), open: !shut.has(key) }, h('summary', {}, ...[summary].flat()), h('div', { class: 'leaves' }, ...kids));
+    el.addEventListener('toggle', () => (el.open ? shut.delete(key) : shut.add(key)));
+    return el;
+  }
+  function acousticTree({ room: withRoom = true, speaker, mic }) {
+    const { speakers, mics, settings, selected } = S();
+    const room = engine.out.room;
+    const out = [];
+    if (withRoom && room) {
+      const wall = (w) => h('button', { class: `dev ${selected?.kind === 'wall' && selected.id === w.key ? 'on' : ''}`, style: '--c:#9ca3af', onclick: () => store.select({ kind: 'wall', id: w.key }) }, surfaceLabel(room, `wall:${w.i}`), h('small', {}, ` ${fmt(w.len, 2)} m`));
+      out.push(branch('room', ['📐 Room', h('small', {}, ` ${fmt(room.area, 1)} m² · H ${fmt(room.H)} m · V ${fmt(room.V, 1)} m³`)], room.walls.map(wall)));
+      const surface = (sf) =>
+        h('button', { class: 'dev', style: '--c:#9ca3af', title: `α ${sf.material.alpha.map((a) => a.toFixed(2)).join(' ')} · s ${sf.material.scatter.map((a) => a.toFixed(2)).join(' ')}`, onclick: () => showSurface(sf.key) }, surfaceLabel(room, sf.key), ' ', spark(sf.material.alpha));
+      out.push(branch('surfaces', ['🧱 Surfaces', h('small', {}, ` ᾱ ${fmt(room.perBand[2]?.abar)} at 500 Hz`)], (room.surfaces ?? []).map(surface)));
+    }
+    const sets = sourceGroups(speakers, settings);
+    out.push(
+      branch(
+        'sources',
+        ['🔊 Sources', h('small', {}, ` ${speakers.length}`)],
+        sets.length ? sets.map((g) => branch(`set:${g.key}`, [g.title, h('small', {}, ` ${g.preset ?? 'by hand'}${g.live ? ' · sounding' : ''} · ${g.items.length}`)], g.items.map(speaker), g.live ? 'live' : '')) : [h('p', { class: 'hint' }, 'None yet — ＋ Speaker.')],
+      ),
     );
+    out.push(branch('receivers', ['🎧 Receivers', h('small', {}, ` ${mics.length}`)], mics.length ? receiverOrder(mics).map(mic) : [h('p', { class: 'hint' }, 'None yet — ＋ Mic.')]));
+    return h('div', { class: 'tree' }, ...out);
+  }
+  /** A surface's α and s, band by band: the Wall half of the Acoustics tab. */
+  function showSurface(key) {
+    tab = 'Acoustics';
+    acoustics = { view: 'Wall', for: undefined, surface: key };
+    if (S().selected) store.select(null);
+    else render();
+  }
+
+  function inspectPane() {
+    const { selected } = S();
+    const dev = selectedDevice(S());
+    const list = acousticTree({
+      speaker: (d) => item('speaker', d, `🔊 ${d.role || d.name}`, d.color),
+      mic: (d) => item('mic', d, `${d.mix ? '🎧' : '🎤'} ${d.name}`, d.mix ? '#ff3b3b' : '#ddd'),
+    });
     function item(kind, d, label, colour) {
       const lost = outside(engine.out.room, d);
       return h(
@@ -149,7 +189,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       select(S().placeKind.mic, Object.entries(MIC_PRESETS).map(([value, p]) => ({ value, label: p.label })), (v) => store.setPlaceKind('mic', v)),
       button('＋ Mic', () => store.setMode('place-mic')),
     );
-    const parts = [h('h3', {}, 'Devices'), add, list];
+    const parts = [h('h3', {}, 'Acoustic groups'), add, list];
     if (selected?.kind === 'patch') parts.push(...patchDetails(selected.id, true));
     else if (selected?.kind === 'wall') parts.push(...wallForm(selected.id));
     else if (!dev) parts.push(h('p', { class: 'hint' }, 'Pick ＋ Speaker or ＋ Mic, then click on the plan. Drag to move, Shift-drag to aim; drag in an elevation to set height. Click a treatment in an elevation to see what it is. ▭ Walls, then touch a wall, to say what it is.'));
@@ -306,8 +346,9 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     }
     const d = sel?.kind === 'speaker' ? S().speakers.find((x) => x.id === sel.id) : null;
     if (!d) {
-      const list = S().speakers.map((x) => h('button', { onclick: () => store.select({ kind: 'speaker', id: x.id }) }, x.role || x.name));
-      return [h('h3', {}, 'Transducer acoustics'), h('p', { class: 'hint' }, list.length ? 'Pick a speaker to see how it sounds:' : 'No speakers yet — place one with ＋ Speaker.'), h('div', { class: 'actions' }, ...list)];
+      const pickOne = (kind, label) => (x) => h('button', { class: 'dev', style: `--c:${kind === 'speaker' ? x.color : x.mix ? '#ff3b3b' : '#ddd'}`, onclick: () => store.select({ kind, id: x.id }) }, label(x));
+      const tree = acousticTree({ room: false, speaker: pickOne('speaker', (x) => x.role || x.name), mic: pickOne('mic', (x) => x.name) });
+      return [h('h3', {}, 'Transducer acoustics'), h('p', { class: 'hint' }, 'Pick a speaker to see how it sounds, or a mic for its pickup:'), tree];
     }
     const up = (patch) => store.update('speaker', d.id, patch);
     const room = engine.out.room;

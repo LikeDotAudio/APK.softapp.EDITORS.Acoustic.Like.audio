@@ -56,6 +56,8 @@ button.danger:hover { border-color: var(--bad); color: var(--bad); }
 .group button { border-radius: 0; }
 .group button:first-child { border-radius: 4px 0 0 4px; }
 .group button:last-child { border-radius: 0 4px 4px 0; }
+/* a fold closing a group (＋ Furniture ▾) is its last button */
+.group > .fold:last-child > .foldBtn { border-radius: 0 4px 4px 0; }
 /* the speaker sets, a row each: the one that sounds bright, the others' picks dimmed */
 #arrangement { display: flex; flex-direction: column; gap: 2px; }
 .speakerSet button { padding: 1px 7px; }
@@ -153,6 +155,16 @@ h4 { margin: 12px 0 4px; font-size: 11px; color: var(--muted); text-transform: u
 .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .adders { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
 .devlist { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+/* the acoustic groups: Room, Surfaces, Sources (a branch per speaker set), Receivers — folded per branch */
+.tree { margin: 8px 0; display: flex; flex-direction: column; gap: 2px; }
+.branch > summary { cursor: pointer; padding: 3px 2px; font-weight: 600; user-select: none; }
+.branch > summary small { font-weight: 400; color: var(--muted); }
+.branch .branch > summary { font-weight: 500; font-size: 12px; }
+.branch.live > summary { color: var(--accent); }
+.leaves { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 6px 14px; border-left: 1px solid var(--line); margin-left: 5px; }
+.leaves > .branch { flex-basis: 100%; }
+.leaves > .hint { margin: 2px 0; }
+.leaves .dev small { color: var(--muted); }
 .dev { border-left: 3px solid var(--c); font-size: 12px; }
 .dev i { font-style: normal; color: #00f7ff; margin-left: 4px; }
 .dev.on { background: #3a3a3d; border-color: var(--c); }
@@ -379,7 +391,7 @@ td.ok { color: #4ade80; }
 .player .wave { flex: 3 1 200px; height: 34px; min-width: 0; cursor: pointer; background: #0b0d12; border-radius: 3px; }
 .player .spec { flex: 2 1 160px; height: 34px; min-width: 0; cursor: ew-resize; background: #0b0d12; border-radius: 3px; }
 .player .time, .player .hz { font: 11px ui-monospace, monospace; color: #9aa4b2; white-space: nowrap; }
-.devlist .dev.lost { border-style: dashed; opacity: .75; }
+.tree .dev.lost, .devlist .dev.lost { border-style: dashed; opacity: .75; }
 
 /* ------------------------------------------------------------------ the wall builder (views/wallBuilder.js) */
 .wb { padding: 10px 14px 18px; display: flex; flex-direction: column; gap: 10px; color: var(--text); }

@@ -358,10 +358,12 @@ store.subscribe((state, what) => {
 });
 
 // ------------------------------------------------------------------ toolbar
-document.getElementById('modes').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-mode]');
-  if (b) store.setMode(b.dataset.mode);
-});
+// the edit modes (CAD, Walls) and the placing ones (＋ Speaker, ＋ Mic), grouped apart on the bar
+for (const id of ['modes', 'place'])
+  document.getElementById(id).addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-mode]');
+    if (b) store.setMode(b.dataset.mode);
+  });
 document.getElementById('viewmode').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-view]');
   if (b) store.setSettings({ view: b.dataset.view });
@@ -470,7 +472,7 @@ const rampDrag = { from: null, sel: null };
 
 function syncToolbar() {
   const { mode, settings, placeKind } = store.state;
-  for (const b of document.querySelectorAll('#modes button')) b.classList.toggle('on', b.dataset.mode === mode);
+  for (const b of document.querySelectorAll('button[data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
   for (const b of document.querySelectorAll('#viewmode button')) b.classList.toggle('on', b.dataset.view === settings.view);
   for (const b of document.querySelectorAll('#method button')) b.classList.toggle('on', b.dataset.method === settings.method);
   for (const b of document.querySelectorAll('#furniture button[data-arm]')) b.classList.toggle('on', mode === 'place-furniture' && b.dataset.arm === placeKind?.furniture);

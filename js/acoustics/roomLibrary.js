@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 
 /**
- * FIFTY-FOUR ROOMS TO PLAY WITH
+ * FIFTY-FIVE ROOMS TO PLAY WITH
  *
  * Plans of the kinds of room studios are actually built in, at real sizes:
  * the spare bedroom and the garage, the rooms drawn to a published ratio, the
@@ -25,6 +25,12 @@
  *
  * A room may carry `windows` (acoustics/windows.js): its glass, drawn into its
  * elevations with their casings when the room is picked, and editable after.
+ * Or its screens: a window whose pane is 'led-wall' is an LED wall or a big
+ * TV — hard and glossy, the most reflective thing in the room.
+ *
+ * A room laid out as drawn — a broadcast set's anchor desk — carries its own
+ * `furniture` and `seats` (as furnish() returns them), and is furnished with
+ * those instead of a mix room's.
  *
  * Every plan is in metres with the listener facing +Y (the front wall at the
  * top, frontDeg 90), centred on x = 0 and starting at y = 0, wound counter-
@@ -85,6 +91,16 @@ function traced(px, pxPerM, front) {
 /** Tanda's floor plan (studio_layout_large.jpg, 700 × 1279 px): pixels to the metre, from the chairs, consoles and couches drawn in it. */
 const TANDA_PX_PER_M = 60;
 const tanda = (px, front) => traced(px, TANDA_PX_PER_M, front);
+
+/**
+ * The broadcast set's plan (no scale either): 60 px to the metre from its
+ * chairs and desks, traced with the camera side as the front. Its anchor desk
+ * is five desks on an arc round SET_ARC, the talent behind them facing in to
+ * the cameras: a desk at each of `deg` either side of the centre line.
+ */
+const SET_ARC = { x: 0, y: 4.55, desk: 2.7, chair: 3.6, deg: [0, 38, -38, 76, -76] };
+const SET_TALENT = ['mixer', 'producer', 'producer', 'client', 'client'];
+const onArc = (r, deg) => ({ x: +(SET_ARC.x + r * Math.sin(deg * Math.PI / 180)).toFixed(3), y: +(SET_ARC.y - r * Math.cos(deg * Math.PI / 180)).toFixed(3) });
 
 export const ROOM_LIBRARY = [
   // ---------------------------------------------------------------- home and project
@@ -147,6 +163,21 @@ export const ROOM_LIBRARY = [
   { id: 'abbey-road-1', group: 'Famous studios', name: 'Abbey Road Studio One, London', note: 'published size about 28 × 16.5 m, 12 m high: the orchestral room. A box that size, not a survey', h: 12.2, live: true, poly: rect(16.5, 28.2) },
   { id: 'abbey-road-2', group: 'Famous studios', name: 'Abbey Road Studio Two, London', note: 'published size about 60 × 38 ft, 28 ft high: the Beatles’ room. A box that size, not a survey', h: 28 * FT, live: true, poly: ft(rect(38, 60)) },
   { id: 'sun-studio', group: 'Famous studios', name: 'Sun Studio, Memphis', note: 'published size about 18 × 30 ft; the ceiling height is assumed. A box that size, not a survey', h: 3.0, live: true, poly: ft(rect(18, 30)) },
+
+  // ---------------------------------------------------------------- broadcast sets
+  // traced off a set plan: backgrounds on the two back diagonals, the aux-monitor TV on the back wall behind the anchor, an LED wall facing the desk between the cameras
+  {
+    id: 'broadcast-set', group: 'Broadcast sets', name: 'Five-seat anchor-desk set',
+    note: 'an arc of five desks between two backgrounds, a big TV behind the anchor and an LED wall facing them: two hard screens the voices bounce between. Traced without a scale; ceiling assumed',
+    h: 4.5,
+    poly: traced([[490, 17], [318, 44], [108, 262], [150, 385], [163, 425], [325, 437], [655, 437], [817, 425], [830, 385], [872, 262], [662, 44]], 60, 'down'),
+    windows: [
+      { face: 'front', at: (872 - 108) / 120, w: 5.4, h: 3.0, sill: 0.3, casing: 0.05, glass: 'led-wall' },
+      { face: 'back', at: (872 - 108) / 120, w: 2.4, h: 1.4, sill: 1.0, casing: 0.03, glass: 'led-wall' },
+    ],
+    furniture: SET_ARC.deg.map((deg) => ({ paletteId: 'desk-1800x900', ...onArc(SET_ARC.desk, deg), rotation: deg })),
+    seats: SET_ARC.deg.map((deg, i) => ({ kind: SET_TALENT[i], ...onArc(SET_ARC.chair, deg), z: 1.2, aim: 90 + deg, ...(i === 0 ? { mix: true } : {}) })),
+  },
 
   // ---------------------------------------------------------------- Tanda, Saskatoon: the studio's own rooms, traced off its plan
   // control rooms face the console's front wall; the live rooms and booths face their glass
@@ -224,6 +255,7 @@ export function furnish(room) {
   const ear = 1.2;
   const face = 90;
   const door = doorOf(room);
+  if (room.seats) return { furniture: room.furniture ?? [], seats: room.seats, door };
   if (room.group === 'Live rooms' || room.live) {
     seats.push({ kind: 'mixer', x: cx, y: y0 + L * 0.5, z: room.id.includes('booth') || room.id.includes('iso') ? 1.6 : ear, aim: face, mix: true });
     return { furniture, seats, door };

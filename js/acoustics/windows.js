@@ -18,7 +18,7 @@ import { elevationOrigin, faceCoords } from './patches.js';
  *   w × h   the glass, TRUE size along the wall
  *   sill    the bottom of the glass above the floor
  *   casing  the frame's width round the glass, every side
- *   glass   the pane's material (materials.js)
+ *   glass   the pane's material (materials.js) — or a screen, 'led-wall'
  *
  * An elevation draws a splayed wall foreshortened, so a window on one is
  * drawn narrower by the wall's cos — on the wall itself it is w wide.
@@ -26,7 +26,7 @@ import { elevationOrigin, faceCoords } from './patches.js';
 
 export const DEFAULT_WINDOW = { face: 'front', w: 1.8, h: 1.2, sill: 0.9, casing: 0.1, glass: 'glass-heavy' };
 export const CASING_MATERIAL = 'casing-wood';
-export const GLASS_TYPES = ['glass-heavy', 'glass-window'];
+export const GLASS_TYPES = ['glass-heavy', 'glass-window', 'led-wall'];
 
 /** A window filled out with the defaults, and an id when it has none. */
 export function makeWindow(w = {}, i = 0) {

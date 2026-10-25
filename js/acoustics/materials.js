@@ -91,6 +91,8 @@ export const MATERIALS = [
   // glass — blues
   m('glass-window', 'Glass, ordinary window', 'Glass', [0.35, 0.25, 0.18, 0.12, 0.07, 0.04], 28, 0.05, 'flat', '#7fb4d8'),
   m('glass-heavy', 'Plate glass, window pane', 'Glass', [0.18, 0.06, 0.04, 0.03, 0.02, 0.02], 35, 0.05, 'flat', '#4f8fc0'),
+  // a screen: an LED wall or a big TV, a hard glossy face on a rigid frame — more a mirror than a pane, its low end an estimate (law 7)
+  m('led-wall', 'LED wall or large TV, hard glossy face', 'Glass', [0.1, 0.04, 0.03, 0.02, 0.02, 0.02], 30, 0.05, 'flat', '#1e293b'),
   // floors
   m('wood-floor', 'Wood floor', 'Floor', [0.15, 0.11, 0.1, 0.07, 0.06, 0.07], 40, 0.1, 'flat', '#b5834c'),
   m('concrete-floor', 'Concrete / tile floor', 'Floor', [0.01, 0.01, 0.015, 0.02, 0.02, 0.02], 50, 0.05, 'flat', '#8a8a86'),
