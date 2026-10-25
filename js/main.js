@@ -591,8 +591,12 @@ function syncMarks() {
       name: String(names.get(loop.layerId) ?? loop.layerId).replace(/^Room · /, ''),
       room: loop.layerId === engine.out.planLayer && !engine.out.virtual ? engine.out.room : buildRoom(loop.poly, { ...settings, roomHeight: settings.roomHeights?.[loop.layerId] ?? settings.roomHeight }, [], patches),
     }));
-    const wallPatches = patchesFromCad(g).filter((p) => elevationFaceOf(p.layer) && !p.host);
-    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms, wallPatches });
+    // the user's own on the walls, and the mirrored copies the symmetry made (the schedule lists both)
+    const wallPatches = patchesFromCad(g).filter((p) => elevationFaceOf(p.layer) && (!p.host || p.host === 'symmetry'));
+    const wallLines = (g.walls ?? [])
+      .map((w) => ({ layer: names.get(w.layerId) ?? w.layerId, a: { x: w.a[0] * k, y: w.a[1] * k }, b: { x: w.b[0] * k, y: w.b[1] * k } }))
+      .filter((w) => elevationFaceOf(w.layer));
+    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms, wallPatches, wallLines });
     const onSheet = g.marks ?? {};
     for (const key of MARK_KEYS) {
       const items = sets[key];

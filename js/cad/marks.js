@@ -53,6 +53,13 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  *                schedule: the section through that bay, true size, wall,
  *                frame at its division lines, the build and its face, its
  *                width and depth in mm and its edges from the centre line.
+ *   symmetry     the room's symmetry as the user defines it (settings.symmetry):
+ *                the side walls matched — what is painted and divided on the
+ *                master side drawn mirrored onto the other, the same distance
+ *                from the front, the same height — and the front and back
+ *                walls each mirrored about their own centre line, the master
+ *                half onto the other. The copies are palette fills, so the
+ *                room hears them, and the finish schedule lists them.
  *   sections     the wall build and the floor build as sections, layer by
  *                layer, drawn five times true size so the layers read.
  *   arrangement  the speaker layout's reference lines from the mix seat — the
@@ -74,7 +81,7 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  * Everything here works in sheet METRES; `toCad` scales to drawing units last.
  */
 
-export const MARK_KEYS = ['labels', 'panels', 'finishes', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup'];
+export const MARK_KEYS = ['labels', 'panels', 'finishes', 'symmetry', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup'];
 
 const LAYOUT_LAYER = 'Speaker layout';
 const CUTAWAY_LAYER = '3-D cut-aways';
@@ -94,7 +101,7 @@ const r3 = (v) => Math.round(v * 1000) / 1000;
 const mm = (v) => Math.round(v * 1000);
 
 /** Every set of marks for this room: { key: items } in drawing units. */
-export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, rooms = [], wallPatches = [] }) {
+export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, rooms = [], wallPatches = [], wallLines = [] }) {
   const out = Object.fromEntries(MARK_KEYS.map((key) => [key, []]));
   if (!room) return out;
   const { settings } = state;
@@ -106,6 +113,9 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
   if (on.labels) out.labels = toCad(labelMarks(room, settings, planLayer));
   const panels = on.panels && mix ? panelMarks(room, state, mix) : [];
   out.panels = toCad(panels);
+  // symmetry first: its copies come back as patches, but the schedule can name them now
+  const mirrored = symmetryMarks(room, state.settings, wallPatches.filter((p) => !p.host), wallLines);
+  out.symmetry = toCad(mirrored);
   if (on.finishes !== false) out.finishes = toCad(finishMarks(room, state.settings, wallPatches, panels));
   if (on.windows !== false) out.windows = toCad(windowMarks(room, settings.windows?.[planLayer] ?? []));
   if (on.arrangement) out.arrangement = toCad(arrangementMarks(room, settings, mix, state));
@@ -288,7 +298,7 @@ function finishMarks(room, settings, patches, panelItems) {
     const signed = (v) => (v > 0 ? `+${mm(v)}` : `${mm(v)}`);
     for (const r of regions) {
       const mat = material(r.p.paletteId);
-      const how = String(r.p.id).startsWith('block:') ? 'block' : PRODUCTS.some((x) => x.id === r.p.paletteId) ? 'fill' : 'finish';
+      const how = r.p.host === 'symmetry' ? 'mirrored' : String(r.p.id).startsWith('block:') ? 'block' : PRODUCTS.some((x) => x.id === r.p.paletteId) ? 'fill' : 'finish';
       y -= size * 1.5;
       texts.push({ text: `${r.tag} · ${r.name} · ${how} · ${mm(r.x1 - r.x0)} × ${mm(r.y1 - r.y0)} · x ${signed(r.x0 - mid)} → ${signed(r.x1 - mid)} · z ${mm(r.y0)} → ${mm(r.y1)} · ${r.area.toFixed(2)} m² · α125 ${mat.alpha[0].toFixed(2)} α500 ${mat.alpha[2].toFixed(2)} α2k ${mat.alpha[4].toFixed(2)} · s ${mat.scatter[3].toFixed(2)}`, x: sx, y: r3(y), height: size * 0.85 });
     }
@@ -413,6 +423,68 @@ function detailDrawing(lines, texts, d, x, top, mid, size) {
   texts.push({ text: signed(r.x0 - mid), x: r3(x - size * 0.5), y: r3(dy - size * 1.3), height: size * 0.65 });
   texts.push({ text: signed(r.x1 - mid), x: r3(x + W - size * 0.5), y: r3(dy - size * 1.3), height: size * 0.65 });
   return dy - size * 3;
+}
+
+// ------------------------------------------------------------------ symmetry
+
+/** Which side of a symmetry is the master: 'left' or 'right' (as the wall's sheet shows it, for a front or back), or off. */
+export const SYMMETRY_DEFAULT = { sides: 'off', front: 'off', back: 'off' };
+
+/**
+ * The mirrored copies the room's symmetry calls for, in sheet metres:
+ *
+ *   sides  'left' | 'right'  every region painted and every division line
+ *          drawn on that side wall's elevation, onto the other side wall —
+ *          the same distance from the front, the same height. On the sheets
+ *          that is d → span − d: the left wall is drawn from its back end,
+ *          the right from its front.
+ *   front, back  'left' | 'right'  that wall's master half (as its sheet
+ *          shows it) onto the other half, about the wall's centre line:
+ *          d → span − d on the same sheet. What straddles the centre line is
+ *          already its own mirror and is left alone.
+ *
+ * `patches` are the user's own (no host marks), `lines` the user's line work
+ * on the elevation layers: [{ layer, a: {x, y}, b: {x, y} }].
+ */
+export function symmetryMarks(room, settings, patches, lines = []) {
+  const sym = { ...SYMMETRY_DEFAULT, ...settings.symmetry };
+  const items = [];
+  const spanOf = (face) => (face === 'left' || face === 'right' ? room.L : room.W);
+  const copy = (from, to, keep) => {
+    const o = elevationOrigin(room, from);
+    const t = elevationOrigin(room, to);
+    if (!o || !t) return;
+    const span = spanOf(from);
+    const flip = (q) => [r3(t.x + span - (q.x - o.x)), r3(t.y + (q.y - o.y))];
+    for (const p of patches) {
+      if (elevationFaceOf(p.layer) !== from || !keep(p.poly.map((q) => q.x - o.x))) continue;
+      items.push({ kind: 'fill', layer: ELEVATION_LAYER[to], paletteId: p.paletteId, points: p.poly.map(flip).reverse() });
+    }
+    // the division lines, not the wall's own outline: a line along the drawing's edge is that
+    const top = room.Hmax ?? room.H;
+    const e = 1e-3;
+    const along = (u, v, at) => Math.abs(u - at) < e && Math.abs(v - at) < e;
+    const outline = (l) => {
+      const [ax, bx, ay, by] = [l.a.x - o.x, l.b.x - o.x, l.a.y - o.y, l.b.y - o.y];
+      return along(ax, bx, 0) || along(ax, bx, span) || along(ay, by, 0) || along(ay, by, top);
+    };
+    const mine = lines.filter((l) => elevationFaceOf(l.layer) === from && !outline(l) && keep([l.a.x - o.x, l.b.x - o.x]));
+    if (mine.length) {
+      // drawn from the target's origin, so the drawing's own coordinates are the mirrored sheet offsets
+      items.push({ kind: 'drawing', layer: ELEVATION_LAYER[to], name: `mirror-${from}-to-${to}`, at: [r3(t.x), r3(t.y)], lines: mine.map((l) => [r3(span - (l.a.x - o.x)), r3(l.a.y - o.y), r3(span - (l.b.x - o.x)), r3(l.b.y - o.y)]), texts: [] });
+    }
+  };
+  const all = () => true;
+  if (sym.sides === 'left') copy('left', 'right', all);
+  else if (sym.sides === 'right') copy('right', 'left', all);
+  for (const face of ['front', 'back']) {
+    const side = sym[face];
+    if (side !== 'left' && side !== 'right') continue;
+    const half = spanOf(face) / 2;
+    const eps = 1e-6;
+    copy(face, face, (ds) => (side === 'left' ? Math.max(...ds) <= half + eps : Math.min(...ds) >= half - eps));
+  }
+  return items;
 }
 
 // ------------------------------------------------------------------ windows

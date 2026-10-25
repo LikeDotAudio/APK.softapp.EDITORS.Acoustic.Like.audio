@@ -437,7 +437,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
   // --------------------------------------------------------------- Treatments
   function treatmentsPane() {
     const room = engine.out.room;
-    const parts = [h('h3', {}, 'Treatments'), h('p', { class: 'hint' }, HOW_TO_TREAT), ...cadMarksPart(), ...windowsPart()];
+    const parts = [h('h3', {}, 'Treatments'), h('p', { class: 'hint' }, HOW_TO_TREAT), ...cadMarksPart(), ...symmetryPart(), ...windowsPart()];
     if (!room) return parts;
     const warnings = room.patchWarnings ?? [];
     if (warnings.length) parts.push(h('ul', { class: 'advice' }, ...warnings.map((w) => h('li', { class: 'warn' }, h('span', {}, w)))));
@@ -720,6 +720,21 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Panel size', num(ap.w, (v) => set({ autoPanels: { ...ap, w: v } }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(ap.h, (v) => set({ autoPanels: { ...ap, h: v } }), { unit: 'm tall', min: 0.2, step: 0.05 })),
       row('Ceiling cloud', select(ap.ceiling, products, (v) => set({ autoPanels: { ...ap, ceiling: v } }))),
       h('p', { class: 'hint' }, 'A panel goes wherever a speaker’s first reflection meets a wall on its way to the mix seat, named LEFT-1, RIGHT-2 … on the wall’s elevation. They move when the speakers or the seat move, and the room hears them like any treatment.'),
+    ];
+  }
+
+  /** The room's symmetry, as the designer defines it: which walls match, and which side leads. */
+  function symmetryPart() {
+    const { settings } = S();
+    const sym = { sides: 'off', front: 'off', back: 'off', ...settings.symmetry };
+    const put = (key, v) => set({ symmetry: { ...sym, [key]: v } });
+    const halves = [{ value: 'off', label: 'off' }, { value: 'left', label: 'left half leads' }, { value: 'right', label: 'right half leads' }];
+    return [
+      h('h4', {}, 'Symmetry'),
+      row('Side walls', select(sym.sides, [{ value: 'off', label: 'off' }, { value: 'left', label: 'left wall leads, right matches' }, { value: 'right', label: 'right wall leads, left matches' }], (v) => put('sides', v))),
+      row('Front wall', select(sym.front, halves, (v) => put('front', v))),
+      row('Back wall', select(sym.back, halves, (v) => put('back', v))),
+      h('p', { class: 'hint' }, 'What is painted and divided on the leading side is drawn mirrored onto the other — the side walls the same distance from the front, a front or back wall about its own centre line — and the room hears the copies. Leave the matching side bare: anything drawn there stays as well.'),
     ];
   }
 

@@ -64,6 +64,7 @@ export const DEFAULT_SETTINGS = {
   /** The glass in each plan loop's walls, by layer id (acoustics/windows.js): drawn into its elevations with their casings. */
   windows: {},
   /** What this app draws into the CAD itself (cad/marks.js): labels, reflection panels, cut-aways, construction sections. */
+  symmetry: { sides: 'off', front: 'off', back: 'off' },
   cadMarks: { labels: true, panels: true, finishes: true, ceilingPanels: true, cutaways: true, reflections: true, sections: true, arrangement: true, blowup: true, windows: true },
   autoPanels: { wall: 'panel-1200x600x100', ceiling: 'cloud-1200', w: 0.6, h: 1.2 },
   show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true, arrangement: true },
@@ -169,6 +170,7 @@ export function createStore() {
       show: { ...DEFAULT_SETTINGS.show, ...d.show },
       isolation: { ...DEFAULT_ISOLATION, ...d.isolation, shared: { ...DEFAULT_ISOLATION.shared, ...d.isolation?.shared } },
       cadMarks: { ...DEFAULT_SETTINGS.cadMarks, ...d.cadMarks },
+      symmetry: { ...DEFAULT_SETTINGS.symmetry, ...d.symmetry },
       autoPanels: { ...DEFAULT_SETTINGS.autoPanels, ...d.autoPanels },
       roomHeights: { ...d.roomHeights },
       windows: { ...d.windows },
