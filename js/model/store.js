@@ -73,7 +73,7 @@ export const DEFAULT_SETTINGS = {
   symmetry: { sides: 'off', front: 'off', back: 'off' },
   cadMarks: { labels: true, panels: true, finishes: true, slices: true, ceilingPanels: true, cutaways: true, reflections: true, sections: true, arrangement: true, blowup: true, windows: true },
   autoPanels: { wall: 'panel-1200x600x100', ceiling: 'cloud-1200', w: 0.6, h: 1.2 },
-  show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true, arrangement: true, talk: true },
+  show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true, arrangement: true, talk: true, trace: false },
 };
 
 const KEY = 'acoustic.like.audio/v1/';
@@ -183,6 +183,8 @@ export function createStore() {
       layoutSets: { ...DEFAULT_SETTINGS.layoutSets, ...d.layoutSets },
       monitor: { ...DEFAULT_MONITOR, ...d.monitor },
     };
+    // ray tracing was a view of its own; it is an overlay now, over the 3-D room it was drawn in
+    if (state.settings.view === 'rays') state.settings = { ...state.settings, view: '3d', show: { ...state.settings.show, trace: true } };
     state.speakers = doc.speakers ?? [];
     state.mics = doc.mics ?? [];
     state.furniture = doc.furniture ?? [];

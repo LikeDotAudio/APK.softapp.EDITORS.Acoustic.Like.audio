@@ -744,6 +744,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
         check(sh.coverage, (v) => store.setShow({ coverage: v }), 'Coverage'),
         check(sh.rays, (v) => store.setShow({ rays: v }), 'Reflections'),
         check(sh.talk, (v) => store.setShow({ talk: v }), 'Talk paths (STI)'),
+        check(sh.trace, (v) => store.setShow({ trace: v }), 'Ray tracing (every view)'),
         check(sh.rc, (v) => store.setShow({ rc: v }), 'Critical distance'),
         check(sh.rings, (v) => store.setShow({ rings: v }), 'Distance rings'),
         check(sh.nulls, (v) => store.setShow({ nulls: v }), 'Modal nulls'),

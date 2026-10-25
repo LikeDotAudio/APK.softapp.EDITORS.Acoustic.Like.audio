@@ -373,6 +373,9 @@ for (const id of ['modes', 'place'])
 document.getElementById('viewmode').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-view]');
   if (b) store.setSettings({ view: b.dataset.view });
+  // ray tracing is not a view: an overlay over whichever is up
+  const t = e.target.closest('button[data-show]');
+  if (t) store.setShow({ [t.dataset.show]: !store.state.settings.show[t.dataset.show] });
 });
 // the 3-D room's bar: kept by its node, not looked up — it goes to another window with the tile
 const viewbar = document.querySelector('.tile.t3d .viewbar');
@@ -380,7 +383,7 @@ viewbar.addEventListener('click', (e) => {
   const m = e.target.closest('button[data-method]');
   if (m) return store.setSettings({ method: m.dataset.method });
   const sh = e.target.closest('button[data-show]');
-  if (sh) return store.setShow({ [sh.dataset.show]: store.state.settings.show[sh.dataset.show] === false });
+  if (sh) return store.setShow({ [sh.dataset.show]: !(store.state.settings.show[sh.dataset.show] ?? true) });
   if (e.target.closest('.viewMore')) viewbar.classList.toggle('open');
 });
 const freq = document.getElementById('freq');
@@ -486,10 +489,10 @@ function syncToolbar() {
   for (const b of document.querySelectorAll('button[data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
   for (const b of document.querySelectorAll('#viewmode button')) b.classList.toggle('on', b.dataset.view === settings.view);
   for (const b of viewbar.querySelectorAll('button[data-method]')) b.classList.toggle('on', b.dataset.method === settings.method);
-  for (const b of viewbar.querySelectorAll('button[data-show]')) b.classList.toggle('on', settings.show[b.dataset.show] !== false);
+  for (const b of [...viewbar.querySelectorAll('button[data-show]'), ...document.querySelectorAll('#viewmode button[data-show]')]) b.classList.toggle('on', Boolean(settings.show[b.dataset.show] ?? true));
   viewbar.querySelector('.viewMore').classList.toggle('on', viewbar.classList.contains('open'));
   for (const b of document.querySelectorAll('#furniture button[data-arm]')) b.classList.toggle('on', mode === 'place-furniture' && b.dataset.arm === placeKind?.furniture);
-  views.className = settings.view === '3d' || settings.view === 'rays' ? 'three' : settings.view === 'wall' ? 'wall' : 'six';
+  views.className = settings.view === '3d' ? 'three' : settings.view === 'wall' ? 'wall' : 'six';
   const { sheet } = store.state;
   inPlan('sheetName').textContent = sheet === 'plan' ? '' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
   inPlan('toPlan').hidden = sheet === 'plan';
@@ -1185,8 +1188,9 @@ const wizard = createWizard({
       jumpTo('plan');
       inspector.show('Inspect');
     },
-    go: ({ view, method, meters: kinds, sweep: sweepToo, report }) => {
+    go: ({ view, method, trace, meters: kinds, sweep: sweepToo, report }) => {
       store.setSettings({ view, method });
+      if (trace) store.setShow({ trace: true });
       // the graphs hidden by 📈: shown again by it, so it remembers
       if (document.body.classList.contains('meters-hidden')) document.getElementById('graphsBtn').click();
       for (const k of kinds) meters.open(k);

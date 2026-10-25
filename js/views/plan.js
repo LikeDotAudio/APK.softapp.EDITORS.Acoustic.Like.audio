@@ -10,6 +10,7 @@ import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
 import { PRODUCTS, furnitureHeight } from '../acoustics/materials.js';
 import { pieceFootprint, pieceTop, piecesOf } from '../acoustics/pieces.js';
 import { rgba } from './treatments.js';
+import { drawRayOverlay } from './rayOverlay.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { patchesFromCad } from '../compute/engine.js';
 import { elevationFaceOf } from '../acoustics/elevations.js';
@@ -855,6 +856,9 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       const picked = state.selected?.kind === 'speaker' ? state.selected.id : null;
       if (show.rays && mix && (picked ? picked === s.id : soloed.has(s))) drawRays(ctx, room, s, mix, toScreen, Boolean(picked));
     }
+
+    // ray tracing over the plan, seen from above (views/rayOverlay.js)
+    if (show.trace) drawRayOverlay(ctx, (q) => toScreen(q.x, q.y), room, state);
 
     // Placed furniture (desks, consoles, racks, couches) — under the people and the boxes, so they stay in reach
     const placedFurniture = state.furniture ?? [];

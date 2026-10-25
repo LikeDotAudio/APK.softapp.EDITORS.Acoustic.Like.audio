@@ -48,7 +48,7 @@ const QUESTIONS = [
   { id: 'rt', icon: '⏱', label: 'How long does it ring?', note: 'RT60 per octave against the aim — Sabine, Eyring, Fitzroy', meters: ['rt60'], report: 'reverb' },
   { id: 'modes', icon: '〰', label: 'Where does the bass pile up?', note: 'room modes, Bonello, the low end swept', meters: ['response'], method: 'modal', view: '3d', sweep: true, report: 'modal' },
   { id: 'sbir', icon: '🔊', label: 'What do the walls do to the speakers?', note: 'speaker boundary interference, its nulls', meters: ['response'], method: 'wave', report: 'sbir' },
-  { id: 'rays', icon: '✳', label: 'Where do the reflections come from?', note: 'every path to the listener, up to 3rd order', meters: ['echogram'], view: 'rays', report: 'rays' },
+  { id: 'rays', icon: '✳', label: 'Where do the reflections come from?', note: 'every path to the listener, up to 3rd order', meters: ['echogram'], view: '3d', trace: true, report: 'rays' },
   { id: 'cover', icon: '▦', label: 'Is it the same at every seat?', note: 'coverage over the plan, ceiling and walls', meters: ['spl', 'rta'], method: 'energy', view: 'six' },
 ];
 
@@ -281,14 +281,15 @@ export function createWizard({ store, engine, rooms, act }) {
 
   function launch() {
     const qs = QUESTIONS.filter((q) => asked.has(q.id));
-    // the last ticked that has an opinion wins the view and the method; rays beat six views beat 3-D
+    // the last ticked that has an opinion wins the view and the method; six views beat 3-D, and the rays go over either
     const views = qs.map((q) => q.view).filter(Boolean);
-    const view = ['rays', 'six', '3d'].find((v) => views.includes(v)) ?? '3d';
+    const view = ['six', '3d'].find((v) => views.includes(v)) ?? '3d';
     const method = qs.map((q) => q.method).filter(Boolean).at(-1) ?? S().settings.method;
     close(false);
     act.go({
       view,
       method,
+      trace: qs.some((q) => q.trace),
       meters: [...new Set(qs.flatMap((q) => q.meters))],
       sweep: qs.some((q) => q.sweep),
       report: report ? [...new Set(qs.map((q) => q.report).filter(Boolean))] : [],

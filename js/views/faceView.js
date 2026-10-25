@@ -9,6 +9,7 @@ import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, dr
 import { nullLines } from './guides.js';
 import { gridCanvas, sampleGrid } from './paint.js';
 import { drawPatch, patchName, rgba, shortName } from './treatments.js';
+import { drawRayOverlay } from './rayOverlay.js';
 
 /**
  * FIVE OF THE SIX DRAWINGS
@@ -178,6 +179,12 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     // over the guides too: a panel on the wall is a thing in the room, the guides are only ideas about it
     drawPatches(ctx, room, state, outline);
     drawFloorThings(ctx, room);
+    // ray tracing over this view: the paths seen from the side, or from below on the ceiling
+    if (show.trace)
+      drawRayOverlay(ctx, (q) => {
+        const { u, v } = map.project(q);
+        return map.toS(u, v);
+      }, room, state);
     drawDevices(ctx, state);
     drawCaption(ctx, w, room, state);
   }
