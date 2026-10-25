@@ -126,7 +126,8 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
   // symmetry first: its copies come back as patches, but the schedule can name them now
   const mirrored = symmetryMarks(room, state.settings, wallPatches.filter((p) => !p.host), wallLines);
   out.symmetry = toCad(mirrored);
-  if (on.finishes !== false) out.finishes = toCad(finishMarks(room, state.settings, wallPatches, panels));
+  const finishes = on.finishes !== false ? finishMarks(room, state.settings, wallPatches, panels) : [];
+  out.finishes = toCad(finishes);
   if (on.slices !== false) out.slices = toCad(sliceMarks(room, state, patches));
   if (on.windows !== false) out.windows = toCad(windowMarks(room, settings.windows?.[planLayer] ?? []));
   if (on.arrangement) out.arrangement = toCad(arrangementMarks(room, settings, mix, state));
@@ -137,7 +138,10 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
   if (on.cutaways) out.cutaways = toCad(cutawayMarks(room, state, plan.x0, towers.find((t) => t.room === room)?.top ?? plan.y1 + 1.2, has));
   // under the room being designed and its elevations: the sections
   const b = localBounds(room);
-  if (on.sections) out.sections = toCad(sectionMarks(settings, b.x0, b.y0 - Math.max(1, 0.15 * Math.max(room.L, room.W))));
+  const gap = Math.max(1, 0.15 * Math.max(room.L, room.W));
+  // the floor's section goes under the left and right walls' schedules and details, which run down past their elevations
+  const sides = itemsBounds([...panels, ...finishes].filter((it) => /-(left|right)$/.test(it.name ?? '')));
+  if (on.sections) out.sections = toCad(sectionMarks(settings, b.x0, b.y0 - gap, sides ? sides.y0 - gap : Infinity));
   return out;
 }
 
@@ -1182,7 +1186,7 @@ function pieceName(pc) {
 const EXAGGERATE = 5;
 const TEXT = 0.04;
 
-function sectionMarks(settings, x0, top0) {
+function sectionMarks(settings, x0, top0, floorTop = Infinity) {
   const iso = settings.isolation ?? {};
   const items = [];
   const wall = WALL_BUILDS[iso.walls];
@@ -1196,6 +1200,7 @@ function sectionMarks(settings, x0, top0) {
     items.push({ kind: 'drawing', layer: SECTION_LAYER, layerColor: '#cbd5e1', name: 'wall', at: [r3(x), r3(top - d.height)], lines: d.lines, texts: d.texts });
     top -= d.height + 0.6;
   }
+  top = Math.min(top, floorTop);
   if (floor?.layers) {
     const d = section(floor.layers, 'floor', `FLOOR BUILD · ${floor.label}${floor.f0 || iso.f0 ? ` · f0 ${iso.f0 ?? floor.f0} Hz` : ''} · drawn ×${EXAGGERATE}`);
     items.push({ kind: 'drawing', layer: SECTION_LAYER, layerColor: '#cbd5e1', name: 'floor', at: [r3(x), r3(top - d.height)], lines: d.lines, texts: d.texts });

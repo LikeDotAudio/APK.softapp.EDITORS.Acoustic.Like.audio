@@ -6,6 +6,8 @@ import { buildRoom } from '../js/acoustics/room.js';
 import { elevationOrigin } from '../js/acoustics/patches.js';
 import { buildMarks } from '../js/cad/marks.js';
 import { DEFAULT_SETTINGS } from '../js/model/store.js';
+import { MATERIALS } from '../js/acoustics/materials.js';
+import { detailBuild } from '../js/acoustics/wallPlan.js';
 
 // the callouts sheet's front wall: 4200 wide, 3000 high
 const settings = { ...DEFAULT_SETTINGS, roomHeight: 3, frontDeg: 90, cadMarks: { finishes: true } };
@@ -61,4 +63,20 @@ test('every region with depth is called out to a detail, one detail per build, t
 test('a wall with nothing painted on it draws nothing', () => {
   assert.deepEqual(marks([]), []);
   assert.deepEqual(marks([bay('fill:1', 'absorber-100', 10, 10, 11, 11)]), []);
+});
+
+test('the floor build is drawn under the left and right walls’ schedules and details', () => {
+  const s = { ...settings, cadMarks: { finishes: true, sections: true }, isolation: { floor: 'floating-slab', walls: 'unset' } };
+  const r = buildRoom([{ x: -2.1, y: 0 }, { x: 2.1, y: 0 }, { x: 2.1, y: 5 }, { x: -2.1, y: 5 }], s);
+  const ro = elevationOrigin(r, 'right');
+  // ten builds, so ten details stacked down beside the elevation
+  const builds = MATERIALS.filter((m) => detailBuild(m.id)).slice(0, 10).map((m) => m.id);
+  const bays = builds.map((paletteId, i) => ({ id: `fill:${i}`, paletteId, layer: 'Elevation Right', poly: [[0.1 + i * 0.48, 0.5], [0.5 + i * 0.48, 0.5], [0.5 + i * 0.48, 2.5], [0.1 + i * 0.48, 2.5]].map(([x, y]) => ({ x: ro.x + x, y: ro.y + y })) }));
+  const out = buildMarks({ room: r, state: { settings: s, mics: [], speakers: [] }, planLayer: 'Room', sheetBounds: null, k: 1, layers: new Set(), rooms: [], wallPatches: bays });
+  const right = out.finishes.find((d) => d.name === 'finish-schedule-right');
+  const lowest = Math.min(...right.texts.map((t) => right.at[1] + t.y), ...right.lines.flatMap(([, b, , d]) => [right.at[1] + b, right.at[1] + d]));
+  assert.ok(lowest < ro.y, 'the right wall’s details run below its elevation');
+  const floor = out.sections.find((d) => d.name === 'floor');
+  const floorTop = floor.at[1] + Math.max(...floor.texts.map((t) => t.y + t.height));
+  assert.ok(floorTop < lowest, `floor top ${floorTop} under the details' bottom ${lowest}`);
 });
