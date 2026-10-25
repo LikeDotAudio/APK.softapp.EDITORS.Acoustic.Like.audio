@@ -502,6 +502,8 @@ function syncToolbar() {
     const key = input.dataset.array;
     input.value = Math.round(key === 'radius' ? (settings.layout.radius ?? 2) * 1000 : key === 'rotate' ? settings.layout.rotate ?? 0 : settings.layout.offset?.[key] ?? 0);
   }
+  const spreader = document.getElementById('spreader');
+  if (spreader) spreader.hidden = !LAYOUTS[setLayout(settings, activeSet(settings)).preset];
   const arrayBtn = document.getElementById('arrayBtn');
   if (arrayBtn) arrayBtn.textContent = `◎ r ${Math.round((settings.layout.radius ?? 2) * 1000)}${settings.layout.rotate ? ` ⟲${Math.round(settings.layout.rotate)}°` : ''} ▾`;
 }
@@ -643,12 +645,14 @@ const widthLanes = { key: [], list: [] };
     lanes.title = near ? laneText(near) : '';
   });
   scale.append(width, lanes);
-  fields.append(scale, ticks, find);
+  // the spreader stays on the bar while an arrangement is chosen, to space the speakers without opening anything
+  const spreader = Object.assign(document.createElement('div'), { id: 'spreader', className: 'group arrayFields' });
+  spreader.append(scale, ticks, find);
   // the fields fold behind one button over the views; the warning that the room is too small stays on the bar
   const arrayBtn = Object.assign(document.createElement('button'), { id: 'arrayBtn', title: 'The array: its centre off the mix seat, its width and its turn — the placed speakers follow' });
   bar.after(arrayBtn);
   makeFold(arrayBtn, fields);
-  arrayBtn.parentNode.after(grow);
+  arrayBtn.parentNode.after(spreader, grow);
 }
 const monitor = createMonitor({ root: document.getElementById('monitor'), store, engine });
 makeFold(document.getElementById('monitorBtn'), document.getElementById('monitor'), { sticky: true, onOpen: () => monitor.render() });
