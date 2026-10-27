@@ -33,7 +33,8 @@
  * things to draw and keep under `key` (cad/marks.js); `arm(paletteId)` picks
  * a product for the user to place next (＋ Desk); `session()` resolves with
  * the CAD's whole drawing session and `open(session)` puts one back — what
- * the session file (File tab) is made of.
+ * the session file (File tab) is made of. `floorPlan(file)` hands it a .dxf
+ * or an image to open as a new drawing.
  *
  * The protocol string is the contract; it lives in
  * EDITORS.CAD.Like.audio/src/shell/hostBridge/hostBridge.ts.
@@ -145,6 +146,8 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
       });
     },
     open: (session) => send('open', { session }),
+    /** A floor plan the user picked (a .dxf, or an image to trace) opened in the CAD as a new drawing under its own name. */
+    floorPlan: (file) => send('floorplan', { file }),
     get popped() {
       return Boolean(popup);
     },

@@ -4,8 +4,8 @@
 /**
  * THE LICENCE KEY, A PLACEBO
  *
- * 📂 Open asks for a licence key first, in a Windows 95 box like the one the
- * 1997 Acoustic-X put up. Nothing checks it: any key (or none) and Enter
+ * 📂 Open project and 📐 Open floor plan ask for a licence key first, in a
+ * Windows 95 box like the one the 1997 Acoustic-X put up. Nothing checks it: any key (or none) and Enter
  * goes on to the file. The last key typed is offered again, so Enter alone
  * does it the next time. Styled by css/acoustx.css, scoped under .acx.
  */

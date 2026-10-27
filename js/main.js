@@ -276,6 +276,7 @@ cad.link = connectCad(iframe, {
     const first = !store.state.cad.geometry || msg.fileName !== store.state.fileName;
     store.setCad({ geometry: msg, connected: true }, 'geometry');
     if (first && msg.fileName !== store.state.fileName) store.load(msg.fileName);
+    if (msg.fileName && msg.fileName === pendingPlan) startPlan();
     if (!opened) opening(msg);
     engine.update();
   },
@@ -898,12 +899,25 @@ function placePendingLayout() {
   inspector.placeLayout();
 }
 
-/** Once the CAD has drawn it, the new loop becomes the room. */
+/** The floor plan's drawing is on the sheet: a clean overlay for it, and its room furnished once the engine finds one. */
+function startPlan() {
+  const name = pendingPlan;
+  pendingPlan = null;
+  const doc = store.exportDoc();
+  store.importDoc({ ...doc, settings: { ...doc.settings, lastLibraryRoom: null }, speakers: [], mics: [], furniture: [], locked: [] });
+  const k = METRES_PER_UNIT[store.state.cad.geometry?.units ?? 'm'] ?? 1;
+  const h = store.state.settings.roomHeight;
+  pendingRoom = { layer: null, h, id: 'floorplan', entry: { id: 'floorplan', group: 'Control rooms', name, h }, ox: 0, oy: 0, k };
+}
+
+/** Once the CAD has drawn it, the new loop becomes the room (a floor plan's: the first plan loop, on whatever layer). */
 function pickDrawnRoom() {
   if (!pendingRoom) return;
-  const loop = engine.out.rooms?.find((r) => r.layerId === pendingRoom.layer);
+  const loop = pendingRoom.layer === null ? engine.out.rooms?.[0] : engine.out.rooms?.find((r) => r.layerId === pendingRoom.layer);
   if (!loop) return;
-  const { h, id, entry, ox, oy, k } = pendingRoom;
+  const { h, id, ox, oy, k } = pendingRoom;
+  // a floor plan's room is only known now: furnished from the loop the CAD found
+  const entry = pendingRoom.entry.poly ? pendingRoom.entry : { ...pendingRoom.entry, poly: loop.poly.map((q) => [q.x, q.y]) };
   pendingRoom = null;
   const heights = { ...store.state.settings.roomHeights, [loop.layerId]: +h.toFixed(3) };
   // its glass, if it has any, belongs to the loop just drawn
@@ -953,8 +967,9 @@ for (const group of [...new Set(ROOM_LIBRARY.map((r) => r.group))]) {
 roomPick.value = roomById(store.state.settings.lastLibraryRoom) ? store.state.settings.lastLibraryRoom : '';
 roomPick.addEventListener('change', () => drawRoom(roomById(roomPick.value)));
 store.subscribe(() => {
-  const id = store.state.settings.lastLibraryRoom;
-  if (roomById(id) && roomPick.value !== id) roomPick.value = id;
+  // a floor plan's room is none of the library's: the picker goes back to its prompt
+  const id = roomById(store.state.settings.lastLibraryRoom) ? store.state.settings.lastLibraryRoom : '';
+  if (roomPick.value !== id) roomPick.value = id;
 });
 
 // ------------------------------------------------------------------ what this app draws into the CAD file
@@ -1150,23 +1165,47 @@ async function openSession(file) {
     return;
   }
   const fileName = doc.cad?.currentFileName ?? doc.overlay?.fileName ?? null;
+  pendingPlan = null;
   store.adopt(fileName, doc.overlay);
   if (doc.cad && cad.link) cad.link.open(doc.cad);
   status.textContent = `📂 opened ${fileName ?? 'session'}`;
 }
 
+/**
+ * A floor plan as a new room layout: the CAD opens it under the file's name, and when its geometry
+ * comes back under that name the overlay starts again (startPlan) — no speakers, mics or furniture
+ * carried over from the last room, the settings and speaker sets kept. A DXF is the walls; an image
+ * goes under a cleared sheet to trace them over. Either way the first room loop on the sheet is
+ * furnished and seated as a library room is (pickDrawnRoom), and the toolbar's arrangement placed.
+ */
+let pendingPlan = null;
+function openFloorPlan(file) {
+  if (!cad.link) {
+    alert('The CAD has not started yet — try again in a moment.');
+    return;
+  }
+  pendingPlan = file.name;
+  cad.link.floorPlan(file);
+  status.textContent = /\.dxf$/i.test(file.name) ? `📐 opening ${file.name} as a new room layout…` : `📐 ${file.name} is under the sheet — draw the walls over it (▭ Walls)`;
+}
+
 document.getElementById('saveSession').addEventListener('click', saveSession);
-// 📂 Open asks for a licence key first, as the 1997 program did. A placebo: any key, Enter, and the file picker opens.
-document.getElementById('openSession').closest('label').addEventListener('click', (e) => {
-  if (e.target.id === 'openSession') return;
-  e.preventDefault();
-  askLicence(() => document.getElementById('openSession').click());
-});
-document.getElementById('openSession').addEventListener('change', (e) => {
-  const f = e.target.files?.[0];
-  if (f) openSession(f);
-  e.target.value = '';
-});
+const openFold = makeFold(document.getElementById('openBtn'), document.getElementById('open'));
+// 📂 Open project and 📐 Open floor plan ask for a licence key first, as the 1997 program did. A placebo: any key, Enter, and the file picker opens.
+for (const [id, open] of [['openSession', openSession], ['openFloorPlan', openFloorPlan]]) {
+  const input = document.getElementById(id);
+  input.closest('label').addEventListener('click', (e) => {
+    if (e.target === input) return;
+    e.preventDefault();
+    openFold.open = false;
+    askLicence(() => input.click());
+  });
+  input.addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    if (f) open(f);
+    e.target.value = '';
+  });
+}
 
 // ------------------------------------------------------------------ every panel can have a window of its own
 for (const tile of document.querySelectorAll('.tile.face, .tile.t3d')) {
@@ -1219,6 +1258,7 @@ const wizard = createWizard({
       jumpTo('plan');
     },
     openFile: () => document.getElementById('openSession').closest('label').click(),
+    openFloorPlan: () => document.getElementById('openFloorPlan').closest('label').click(),
     // the toolbar's own furniture buttons, so a piece is armed exactly as the fold arms it
     furniture: () => [...document.querySelectorAll('#furniture button[data-arm]')].map((b) => ({ id: b.dataset.arm, label: b.textContent, title: b.title })),
     arm: (id) => document.querySelector(`#furniture button[data-arm="${id}"]`)?.click(),

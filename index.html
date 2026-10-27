@@ -13,7 +13,11 @@
     <div class="brand">🔊 ACOUSTIC<span>.LIKE.AUDIO</span></div>
     <div class="group" id="opens">
       <button id="wizardBtn" title="The wizard: a room, what is in it, the system, the walls and what covers them, then what you want to know">🧭 Wizard</button>
-      <label class="button" title="Open a saved session file">📂 Open<input type="file" id="openSession" accept=".json,application/json"></label>
+      <button id="openBtn" title="Open a project, or a floor plan to start a new room layout from">📂 Open ▾</button>
+      <div class="group" id="open">
+        <label class="button" title="Open a saved project: the CAD drawing, speakers, mics and settings (a .acoustic-session.json file)">📂 Open project<input type="file" id="openSession" accept=".json,application/json"></label>
+        <label class="button" title="Open a floor plan as a new room layout: a DXF becomes the drawing, an image goes under it to trace the walls over">📐 Open floor plan<input type="file" id="openFloorPlan" accept=".dxf,image/*"></label>
+      </div>
       <button id="grabBag" title="A room from the library, picked at random, drawn into the CAD">🎲 Room</button>
       <select id="roomPick" title="Pick a room shape from the library, drawn into the CAD"></select>
     </div>

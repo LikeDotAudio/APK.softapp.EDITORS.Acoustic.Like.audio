@@ -154,7 +154,8 @@ export function createWizard({ store, engine, rooms, act }) {
         { class: 'wizActs' },
         h('button', { onclick: () => pick(act.dice()) }, '🎲 Any room'),
         h('button', { onclick: () => ((drawingOwn = true), act.drawOwn(), render()) }, '✏ Draw my own walls'),
-        h('button', { onclick: () => (close(false), act.openFile()) }, '📂 Open a session'),
+        h('button', { onclick: () => (close(false), act.openFloorPlan()) }, '📐 Open a floor plan'),
+        h('button', { onclick: () => (close(false), act.openFile()) }, '📂 Open a project'),
       ),
       h('div', { class: 'wizScroll' }, ...cards),
     ];
