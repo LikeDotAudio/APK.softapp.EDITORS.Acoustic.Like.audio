@@ -574,3 +574,29 @@ body.sashing-v iframe, body.sashing-h iframe { pointer-events: none; }
 /* the monitor controller at the end of the last set's row, set apart from its ⤓ */
 .speakerSet > .fold { margin-left: 10px; }
 .speakerSet > .fold > .foldBtn { border-radius: 4px !important; }
+
+/* the rack (ui/rackPanel.js): its front U by U and its side, depth by depth */
+svg.rack-drawing { display: block; margin: 6px 0; background: #14171d; border-radius: 4px; font: 9px var(--mono); }
+svg.rack-drawing .rk-head { fill: #94a3b8; font: 600 9px system-ui, sans-serif; }
+svg.rack-drawing .rk-frame { fill: none; stroke: #4b5563; }
+svg.rack-drawing .rk-u { fill: #6b7280; }
+svg.rack-drawing .rk-free { fill: rgba(74, 222, 128, 0.08); stroke: rgba(74, 222, 128, 0.6); stroke-dasharray: 3 2; }
+svg.rack-drawing .rk-free-t { fill: #86efac; }
+svg.rack-drawing .rk-item { fill: #334155; stroke: #64748b; }
+svg.rack-drawing .rk-item.unknown { fill: #3f3f46; stroke: #a1a1aa; stroke-dasharray: 2 2; }
+svg.rack-drawing .rk-item.bad { fill: #7f1d1d; stroke: #f87171; }
+svg.rack-drawing .rk-item-t { fill: #e5e7eb; }
+svg.rack-drawing .rk-cable { fill: rgba(148, 163, 184, 0.35); }
+svg.rack-drawing .rk-limit { stroke: #fbbf24; stroke-dasharray: 4 3; }
+svg.rack-drawing .rk-limit-t { fill: #fbbf24; }
+table.rack-items { table-layout: fixed; }
+table.rack-items th:nth-child(1), table.rack-items th:nth-child(2) { width: 3.4em; }
+table.rack-items th:nth-child(4) { width: 4.4em; }
+table.rack-items th:nth-child(5) { width: 3.6em; }
+table.rack-items th:nth-child(6) { width: 2.2em; }
+table.rack-items input { width: 100%; min-width: 0; box-sizing: border-box; padding: 1px 3px; }
+table.rack-items button { padding: 0 4px; }
+table.rack-items tr.bad td { color: var(--bad); }
+ul.warn { color: var(--bad); margin: 4px 0; padding-left: 16px; font-size: 11px; }
+table.rack-items input[type=number] { -moz-appearance: textfield; appearance: textfield; text-align: right; }
+table.rack-items input[type=number]::-webkit-inner-spin-button, table.rack-items input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

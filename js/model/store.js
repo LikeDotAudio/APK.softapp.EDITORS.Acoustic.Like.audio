@@ -60,6 +60,8 @@ export const DEFAULT_SETTINGS = {
   isolation: DEFAULT_ISOLATION,
   /** What the user has said each wall is, by wallKey: { material?, note? } — its own finish, and what it is in their words. */
   walls: {},
+  /** What each equipment rack holds, by its CAD block id (acoustics/rack.js): { units, railDepth, cable, items: [{ name, at, units, depth }] }. */
+  racks: {},
   /** The widest gap between wall pieces still read as an opening (a door, a pass-through), metres; wider is a plan not yet closed. */
   maxOpening: 4,
   /** Speakers are placed relative to the listener: moving the mix seat carries them (subs and flush-mounted boxes stay). */
@@ -72,7 +74,7 @@ export const DEFAULT_SETTINGS = {
   windows: {},
   /** What this app draws into the CAD itself (cad/marks.js): labels, reflection panels, cut-aways, construction sections. */
   symmetry: { sides: 'off', front: 'off', back: 'off' },
-  cadMarks: { labels: true, panels: true, finishes: true, slices: true, ceilingPanels: true, cutaways: true, reflections: true, sections: true, arrangement: true, blowup: true, windows: true },
+  cadMarks: { labels: true, panels: true, finishes: true, slices: true, ceilingPanels: true, cutaways: true, reflections: true, sections: true, arrangement: true, blowup: true, windows: true, schematic: true },
   autoPanels: { wall: 'panel-1200x600x100', ceiling: 'cloud-1200', w: 0.6, h: 1.2 },
   show: { field: true, devices: true, rays: true, rings: false, nulls: true, guides: true, rc: true, coverage: true, arrangement: true, talk: true, trace: false },
 };

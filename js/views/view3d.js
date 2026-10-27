@@ -5,8 +5,8 @@ import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
 import { boxSize, isListener, MIC_PRESETS } from '../acoustics/devices.js';
 import { arrangedSpeakers, soundingSpeakers } from '../acoustics/layouts.js';
-import { furnitureHeight } from '../acoustics/materials.js';
-import { pieceFootprint, piecesOf } from '../acoustics/pieces.js';
+import { pieceHeight } from '../acoustics/materials.js';
+import { partsOf, pieceFootprint } from '../acoustics/pieces.js';
 import { talkers, talkPaths } from '../acoustics/talk.js';
 import { firstReflections, heatOf } from '../acoustics/reflectionPanels.js';
 import { css, colourOf, turbo } from './paint.js';
@@ -418,9 +418,9 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
         if (!wall || (B.eye.x - wall.a.x) * wall.nIn.x + (B.eye.y - wall.a.y) * wall.nIn.y < 0) continue;
         n = { x: wall.nIn.x, y: wall.nIn.y, z: 0 };
       }
-      const tall = p.surface === 'floor' ? furnitureHeight(p.paletteId) : 0;
+      const tall = p.surface === 'floor' ? pieceHeight(p) : 0;
       if (tall) {
-        const parts = p.at ? piecesOf(p.paletteId) : null;
+        const parts = partsOf(p);
         if (parts) pieces(p, parts, p.id === sel);
         else prism(p, tall, p.id === sel);
         continue;

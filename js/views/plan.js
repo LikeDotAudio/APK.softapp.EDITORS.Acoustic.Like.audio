@@ -7,8 +7,8 @@ import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, noseMarks, snapNos
 import { fromFrame } from '../acoustics/room.js';
 import { roomGrowth } from '../acoustics/roomFit.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
-import { PRODUCTS, furnitureHeight } from '../acoustics/materials.js';
-import { pieceFootprint, pieceTop, piecesOf } from '../acoustics/pieces.js';
+import { PRODUCTS, furnitureHeight, pieceHeight } from '../acoustics/materials.js';
+import { partsOf, pieceFootprint, pieceTop, piecesOf } from '../acoustics/pieces.js';
 import { rgba } from './treatments.js';
 import { drawRayOverlay } from './rayOverlay.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
@@ -926,7 +926,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     }
     for (const p of room.patches ?? []) {
       if (p.surface !== 'floor') continue;
-      if (!furnitureHeight(p.paletteId)) continue;
+      if (!pieceHeight(p)) continue;
       if (placedFurniture.some((f) => f.cadId === p.id)) continue;
       ctx.save();
       ctx.fillStyle = 'rgba(38, 38, 45, 0.75)';
@@ -941,7 +941,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      const parts = p.at ? piecesOf(p.paletteId) : null;
+      const parts = partsOf(p);
       if (parts) {
         const c = toScreen(p.at.x, p.at.y);
         ctx.translate(c.x, c.y);

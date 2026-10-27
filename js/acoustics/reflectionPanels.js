@@ -6,7 +6,7 @@ import { furnitureTops, specular } from './images.js';
 import { deviceGain } from './patterns.js';
 import { elevationOrigin, faceCoords } from './patches.js';
 import { heightsAtXY } from './elevations.js';
-import { furnitureHeight, lookup } from './materials.js';
+import { pieceHeight, lookup } from './materials.js';
 
 /**
  * WHERE THE PANELS GO
@@ -236,7 +236,7 @@ export function firstReflections(room, speakers, mix, band = 2) {
       if (!hit || !pointInPolygon(hit.x, hit.y, room.poly)) continue;
       // the floor under a console never hears the box: the console's top takes that bounce, below
       if (surface === 'floor' && tops.some((t) => pointInPolygon(hit.x, hit.y, t.poly))) continue;
-      const patch = (room.patches ?? []).find((p) => p.surface === surface && !(surface === 'floor' && furnitureHeight(p.paletteId)) && pointInPolygon(hit.x, hit.y, p.points3d));
+      const patch = (room.patches ?? []).find((p) => p.surface === surface && !(surface === 'floor' && pieceHeight(p)) && pointInPolygon(hit.x, hit.y, p.points3d));
       add(surface, null, surface, hit, mat, patch);
     }
     // the console bounce: the mirror laid on the desk — a top under both the box and the ears, the spot inside its outline

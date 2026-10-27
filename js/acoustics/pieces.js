@@ -27,6 +27,7 @@
  */
 
 import { MASSONBERG, STICK_DIFFUSER, stickBalance } from './materials.js';
+import { rackPieces } from './rack.js';
 
 const BLACK = '#18181b';
 const SHELL = '#b91c1c';
@@ -210,6 +211,12 @@ export function piecesOf(paletteId) {
   return cache.get(paletteId);
 }
 
+/** A placed piece's pieces: a rack drawn from what it holds (rack.js, `patch.rack` from room.js), anything else from its kind. */
+export function partsOf(patch) {
+  if (!patch.at) return null;
+  return patch.rack ? rackPieces(patch.rack, patch.paletteId) : piecesOf(patch.paletteId);
+}
+
 /** A piece's outline seen from above, in the product's frame: [[x, y]…]. */
 export function pieceFootprint(pc) {
   if (pc.shape === 'box') return [[pc.x - pc.w / 2, pc.y - pc.d / 2], [pc.x + pc.w / 2, pc.y - pc.d / 2], [pc.x + pc.w / 2, pc.y + pc.d / 2], [pc.x - pc.w / 2, pc.y + pc.d / 2]];
@@ -254,7 +261,7 @@ export function pieceFaces(pc) {
  */
 export function floorSolids(patch, height) {
   const floor = patch.points3d?.[0]?.z ?? 0;
-  const parts = patch.at ? piecesOf(patch.paletteId) : null;
+  const parts = partsOf(patch);
   if (!parts) {
     const base = patch.points3d.map((q) => [q.x, q.y]);
     return [{ colour: patch.material?.color ?? '#6b7280', faces: raisedFaces(base, floor, floor + height).map((f) => f.map(([x, y, z]) => ({ x, y, z }))) }];

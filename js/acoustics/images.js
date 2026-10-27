@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS } from './bands.js';
 import { mirrorPoint, pointInPolygon } from './geometry.js';
-import { furnitureHeight } from './materials.js';
+import { pieceHeight } from './materials.js';
 
 /**
  * IMAGE SOURCES FOR AN EXTRUDED ROOM
@@ -142,17 +142,17 @@ const topsCache = new WeakMap();
 /**
  * The tops of what stands on the floor — a console, a desk, a rack, a couch:
  * { id, paletteId, z, poly, material } from the room's floor pieces that have
- * a height (materials.js furnitureHeight), z where the top is.
+ * a height (materials.js pieceHeight), z where the top is.
  */
 export function furnitureTops(room) {
   if (!room?.patches) return [];
   if (topsCache.has(room)) return topsCache.get(room);
   const tops = room.patches
-    .filter((p) => p.surface === 'floor' && p.material && furnitureHeight(p.paletteId) > 0)
+    .filter((p) => p.surface === 'floor' && p.material && pieceHeight(p) > 0)
     .map((p) => ({
       id: p.id,
       paletteId: p.paletteId,
-      z: p.points3d.reduce((t, q) => t + (q.z ?? 0), 0) / p.points3d.length + furnitureHeight(p.paletteId),
+      z: p.points3d.reduce((t, q) => t + (q.z ?? 0), 0) / p.points3d.length + pieceHeight(p),
       poly: p.points3d.map((q) => ({ x: q.x, y: q.y })),
       material: p.material,
     }));

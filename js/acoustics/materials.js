@@ -203,7 +203,10 @@ export const PRODUCTS = [
   p('couch-2000x900', 'Couch 2000×900', 'upholstered', [2.0, 0.9]),
   p('couch-2400x1000', 'Client couch 2400×1000', 'upholstered', [2.4, 1.0]),
   p('armchair-900', 'Armchair 900×900', 'upholstered', [0.9, 0.9]),
+  // a 19-inch floor rack: its U, rails and what is in it are the rack's own (rack.js); 24 U stands the 1200 mm it always did
   p('rack-600x800', 'Equipment rack 600×800', 'rack', [0.6, 0.8]),
+  p('rack-600x1000', 'Equipment rack 600×1000, deep', 'rack', [0.6, 1.0]),
+  p('rack-800x1000', 'Equipment rack 800×1000, wide for cabling', 'rack', [0.8, 1.0]),
   p('drum-kit-1800x1500', 'Drum kit 1800×1500, with its throne', 'drum-kit', [1.8, 1.5]),
   p('guitar-amp-600x280', 'Guitar combo amp 600×280', 'guitar-amp', [0.6, 0.28]),
   p('guitar-stack-760x360', 'Guitar half stack, 4×12 and head, 760×360', 'guitar-amp', [0.76, 0.36]),
@@ -261,6 +264,9 @@ export function furnitureHeight(paletteId) {
   return lookup(id)?.category === 'Furniture' ? 0.8 : 0;
 }
 
+/** How tall a placed piece stands, metres: its own height when it has one (a rack, from its U — room.js), else its kind's. */
+export const pieceHeight = (p) => p.height ?? furnitureHeight(p.paletteId);
+
 /** Tables, desks and keyboards on their stands stand on legs: a top, open underneath. Everything else on the floor is a solid. */
 const ON_LEGS = /^(table|desk|producer-desk|keyboard)-/;
 
@@ -270,8 +276,8 @@ const ON_LEGS = /^(table|desk|producer-desk|keyboard)-/;
  * or a table's underside (its footprint again) — the faces that make it an
  * object in the room (ISO 354), absorbing in the air rather than lying on it.
  */
-export function exposedArea(paletteId, footprint, perimeter) {
-  const h = furnitureHeight(paletteId);
+export function exposedArea(paletteId, footprint, perimeter, height = furnitureHeight(paletteId)) {
+  const h = height;
   if (!h) return 0;
   return ON_LEGS.test(String(paletteId ?? '')) ? footprint : perimeter * h;
 }

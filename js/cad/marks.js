@@ -5,13 +5,14 @@ import { boxSize, isListener, MOUNTS } from '../acoustics/devices.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
 import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions, soundingSpeakers } from '../acoustics/layouts.js';
-import { PRODUCTS, furnitureHeight, material } from '../acoustics/materials.js';
+import { PRODUCTS, pieceHeight, material } from '../acoustics/materials.js';
 import { elevationOrigin } from '../acoustics/patches.js';
 import { areaOf, detailBuild, wallRegions } from '../acoustics/wallPlan.js';
 import { firstReflections, heatOf, panelOptions, panelProduct, reflectionPanels } from '../acoustics/reflectionPanels.js';
 import { fromFrame } from '../acoustics/room.js';
 import { turbo } from '../views/paint.js';
 import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows.js';
+import { schematicDrawing } from './schematic.js';
 
 /**
  * WHAT THIS APP DRAWS INTO THE CAD FILE
@@ -81,6 +82,11 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  *                floor, then every wall at its true length and height, special
  *                walls (a splay, a short return) each their own drawing; each
  *                with its treatments, size, finish and how much is treated.
+ *   schematic    the system's signal flow (cad/schematic.js): sources, the
+ *                monitor controller, a channel strip and a box per speaker set
+ *                by set, the measurement mics, and every rack U by U — to the
+ *                right of everything else on the sheet, its top level with the
+ *                plan's.
  *
  * Where they go: one column per room, at the plan's left edge. Above each plan
  * its tower — the blow-up, and on top of the room being designed its
@@ -91,12 +97,13 @@ import { CASING_MATERIAL, makeWindow, windowOnSheet } from '../acoustics/windows
  * Everything here works in sheet METRES; `toCad` scales to drawing units last.
  */
 
-export const MARK_KEYS = ['labels', 'panels', 'finishes', 'symmetry', 'slices', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup'];
+export const MARK_KEYS = ['labels', 'panels', 'finishes', 'symmetry', 'slices', 'windows', 'cutaways', 'sections', 'arrangement', 'blowup', 'schematic'];
 
 const LAYOUT_LAYER = 'Speaker layout';
 const CUTAWAY_LAYER = '3-D cut-aways';
 const REFLECTION_LAYER = 'Reflections';
 const SECTION_LAYER = 'Construction';
+const SCHEMATIC_LAYER = 'Schematic';
 
 /** A string hash: what the CAD compares to say "already on the sheet". */
 export function hashOf(value) {
@@ -142,6 +149,13 @@ export function buildMarks({ room, state, planLayer, sheetBounds, k, layers, roo
   // the floor's section goes under the left and right walls' schedules and details, which run down past their elevations
   const sides = itemsBounds([...panels, ...finishes].filter((it) => /-(left|right)$/.test(it.name ?? '')));
   if (on.sections) out.sections = toCad(sectionMarks(settings, b.x0, b.y0 - gap, sides ? sides.y0 - gap : Infinity));
+  if (on.schematic !== false) {
+    // clear of everything else drawn: past the right of every set and every room, level with this plan's top
+    const drawn = itemsBounds(MARK_KEYS.filter((key) => key !== 'schematic').flatMap((key) => out[key]));
+    const right = Math.max(b.x1, ...rooms.map((r) => localBounds(r.room).x1), drawn ? drawn.x1 * k : -Infinity);
+    const d = schematicDrawing(state, room.patches);
+    out.schematic = toCad([{ kind: 'drawing', layer: SCHEMATIC_LAYER, layerColor: '#7dd3fc', name: 'schematic', at: [r3(right + gap), r3(plan.y1 - d.h)], lines: d.lines, texts: d.texts }]);
+  }
   return out;
 }
 
@@ -495,7 +509,7 @@ function sliceMarks(room, state, patches) {
   const byMat = new Map();
   for (const p of patches) {
     const mat = material(p.paletteId);
-    if (!absorbs(mat) || furnitureHeight(p.paletteId) > 0) continue;
+    if (!absorbs(mat) || pieceHeight(p) > 0) continue;
     (byMat.get(mat.id) ?? byMat.set(mat.id, { mat, list: [] }).get(mat.id)).list.push(p);
   }
   [...byMat.values()].forEach(({ mat, list }, row) => {
@@ -791,7 +805,7 @@ function cutaway(room, state, camAz, has, rays = [], mix = null) {
   for (const p of room.patches ?? []) {
     if (p.surface === 'wall' && cut.has(p.wall)) continue;
     const layer = p.surface === 'wall' ? layerOr(ELEVATION_LAYER[p.face]) : p.surface === 'ceiling' ? layerOr('Ceiling') : undefined;
-    const tall = p.surface === 'floor' ? furnitureHeight(p.paletteId) : 0;
+    const tall = p.surface === 'floor' ? pieceHeight(p) : 0;
     poly3(p.points3d, layer);
     if (tall) {
       const up = p.points3d.map((q) => ({ ...q, z: q.z + tall }));
@@ -1113,11 +1127,11 @@ const FIGURE_LAYERS = { speaker: ['Speakers', '#facc15'], listener: ['Listeners'
  */
 export function furnitureOf(room) {
   return (room?.patches ?? [])
-    .filter((p) => p.surface === 'floor' && furnitureHeight(p.paletteId) > 0)
+    .filter((p) => p.surface === 'floor' && pieceHeight(p) > 0)
     .map((p) => {
       const c = centre(p.points3d);
       const name = String(PRODUCTS.find((x) => x.id === p.paletteId)?.name ?? p.paletteId).split(/[,(]/)[0].trim();
-      return { id: p.id, paletteId: p.paletteId, name, x: c.x, y: c.y, z: 0, h: furnitureHeight(p.paletteId), corners: p.points3d };
+      return { id: p.id, paletteId: p.paletteId, name, x: c.x, y: c.y, z: 0, h: pieceHeight(p), corners: p.points3d };
     });
 }
 
@@ -1376,5 +1390,6 @@ export function spacesOf(room, sets, k = 1) {
   add('blowup', 'Blow-up', 'the room’s surfaces laid out round its plan', itemsBounds(sets.blowup));
   add('cutaways', 'Cut-aways', 'the room in 3-D, three ways', itemsBounds(sets.cutaways));
   add('sections', 'Construction', 'wall and floor builds', itemsBounds(sets.sections));
+  add('schematic', 'Schematic', 'signal flow: sources, controller, sets, speakers · the racks U by U', itemsBounds(sets.schematic));
   return out;
 }

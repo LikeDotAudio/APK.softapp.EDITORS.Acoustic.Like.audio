@@ -26,6 +26,8 @@ import { groupPatches, shortName, swatch } from '../views/treatments.js';
 import { pickupCard, transducerCard } from '../views/transducer.js';
 import { alphaGraph, alphaSpark, INTENTS, intentDial, intentOf, SERIES, spread } from './alphaChart.js';
 import { button, check, download, h, num, row, select, slider, text } from './dom.js';
+import { isRack } from '../acoustics/rack.js';
+import { rackPanel } from './rackPanel.js';
 
 /**
  * THE INSPECTOR
@@ -630,8 +632,12 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
         return acc + p.area * (m.alpha[b] - (base?.alpha[b] ?? 0));
       }, 0),
     );
+    // a rack is first what is in it: its spaces, what fills them and how deep each goes (ui/rackPanel.js)
+    const rackFloor = isRack(g.paletteId) ? g.pieces.find((p) => p.surface === 'floor') : null;
+    const rack = rackFloor ? rackPanel(rackFloor, S().settings.racks ?? {}, (racks) => set({ racks }), render) : [];
     return [
-      withHeading ? h('h3', {}, `Treatment · ${g.name}`) : h('h4', {}, `Selected · ${g.name}`),
+      withHeading ? h('h3', {}, `${rackFloor ? 'Rack' : 'Treatment'} · ${g.name}`) : h('h4', {}, `Selected · ${g.name}`),
+      ...rack,
       h('p', { class: 'stat' }, swatch(m), ` ${m.name} · ${m.category}${product ? ` · ${product.size[0] * 1000}×${product.size[1] * 1000} mm block` : ' · finish'} · ${g.id}`),
       h(
         'table',
@@ -918,7 +924,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const products = PRODUCTS.map((p) => ({ value: p.id, label: p.name }));
     return [
       h('h4', {}, 'Drawn into the CAD'),
-      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('finishes', 'region tags & finish schedule on each wall'), toggle('slices', 'a layer per thing, from the brass marker'), toggle('windows', 'windows and their casings'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('reflections', 'rays & reflection heat in the cut-aways'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout')),
+      h('div', { class: 'checks' }, toggle('panels', 'reflection panels on the walls'), toggle('ceilingPanels', 'clouds at the ceiling reflections'), toggle('finishes', 'region tags & finish schedule on each wall'), toggle('slices', 'a layer per thing, from the brass marker'), toggle('windows', 'windows and their casings'), toggle('labels', 'wall and plan labels'), toggle('cutaways', '3 cut-away views'), toggle('reflections', 'rays & reflection heat in the cut-aways'), toggle('sections', 'wall & floor sections'), toggle('arrangement', 'speaker layout'), toggle('schematic', 'system schematic: signal flow and racks')),
       row('Wall panel', select(ap.wall, products, (v) => set({ autoPanels: { ...ap, wall: v } }))),
       row('Panel size', num(ap.w, (v) => set({ autoPanels: { ...ap, w: v } }), { unit: 'm wide', min: 0.2, step: 0.05 }), num(ap.h, (v) => set({ autoPanels: { ...ap, h: v } }), { unit: 'm tall', min: 0.2, step: 0.05 })),
       row('Ceiling cloud', select(ap.ceiling, products, (v) => set({ autoPanels: { ...ap, ceiling: v } }))),

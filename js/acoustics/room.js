@@ -4,7 +4,8 @@ import { buildAlpha, DEFAULT_ISOLATION } from './isolation.js';
 import { BANDS, BANDS_9, C, airM, airM9, FREQ_3RD, FREQ_OCTAVE } from './bands.js';
 import { DEG, angleDiff, ensureCCW, isConvex, signedArea, simplifyPolygon } from './geometry.js';
 import { measureSection, profileFromLoop } from './elevations.js';
-import { exposedArea, material } from './materials.js';
+import { exposedArea, material, pieceHeight } from './materials.js';
+import { isRack, rackHeight, rackOf, rackPlan } from './rack.js';
 import { layPatches } from './patches.js';
 import { openingsOn, wallKey } from './wallChains.js';
 
@@ -113,6 +114,13 @@ export function buildRoom(polyMetres, settings, loops = [], patches = [], openin
   const V = m.V;
 
   const laid = layPatches(room, patches);
+  // a rack stands as tall as its U, and carries what is in it for the views to draw (rack.js)
+  for (const p of laid.pieces) {
+    if (p.surface !== 'floor' || !isRack(p.paletteId)) continue;
+    p.rack = rackOf(settings.racks, p.id, p.paletteId);
+    p.height = rackHeight(p.rack);
+    p.rackPlan = rackPlan(p.rack);
+  }
   const on = (surface, wall = null) => laid.pieces.filter((p) => p.surface === surface && p.wall === wall);
   const floor = effective(withBuild(material(mats.floor), built.floor), m.floorArea, on('floor'));
   const ceiling = effective(material(mats.ceiling), m.ceilingArea, on('ceiling'));
@@ -222,7 +230,7 @@ function objectAbsorption(pieces) {
     if (p.surface !== 'floor') continue;
     const pts = p.points3d;
     const perimeter = pts.reduce((s, q, i) => s + Math.hypot(pts[(i + 1) % pts.length].x - q.x, pts[(i + 1) % pts.length].y - q.y), 0);
-    const exposed = exposedArea(p.paletteId, p.area, perimeter);
+    const exposed = exposedArea(p.paletteId, p.area, perimeter, pieceHeight(p));
     if (!(exposed > 0)) continue;
     const mat = p.material;
     out.count++;

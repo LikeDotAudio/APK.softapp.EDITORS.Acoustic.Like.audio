@@ -3,8 +3,9 @@
 import { silhouette, silhouetteLoop } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
-import { furnitureHeight } from '../acoustics/materials.js';
+import { pieceHeight } from '../acoustics/materials.js';
 import { floorSolids } from '../acoustics/pieces.js';
+import { rackFace, rackPlan } from '../acoustics/rack.js';
 import { FACE_COLOURS, dashedLine, deviceLabel, dragFrom, drawLabel, drawMic, drawSpeaker, fitCanvas } from './glyphs.js';
 import { nullLines } from './guides.js';
 import { gridCanvas, sampleGrid } from './paint.js';
@@ -215,7 +216,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
    * faces first; from below on the ceiling, its footprint dashed.
    */
   function drawFloorThings(ctx, room) {
-    const things = (room.patches ?? []).filter((p) => p.surface === 'floor' && furnitureHeight(p.paletteId));
+    const things = (room.patches ?? []).filter((p) => p.surface === 'floor' && pieceHeight(p));
     if (!things.length) return;
     ctx.save();
     ctx.lineWidth = 1;
@@ -237,7 +238,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     }
     // looking at the wall from inside: the farther from you, the nearer the wall, the sooner drawn
     const look = { x: -map.ra.y, y: map.ra.x };
-    const faces = things.flatMap((p) => floorSolids(p, furnitureHeight(p.paletteId)).flatMap((sol) => sol.faces.map((f) => ({ f, colour: sol.colour, depth: f.reduce((a, q) => a + q.x * look.x + q.y * look.y, 0) / f.length }))));
+    const faces = things.flatMap((p) => floorSolids(p, pieceHeight(p)).flatMap((sol) => sol.faces.map((f) => ({ f, colour: sol.colour, depth: f.reduce((a, q) => a + q.x * look.x + q.y * look.y, 0) / f.length }))));
     faces.sort((a, b) => b.depth - a.depth);
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
     for (const { f, colour } of faces) {
@@ -252,6 +253,109 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       ctx.fillStyle = rgba(colour, 0.8);
       ctx.fill();
       ctx.stroke();
+    }
+    ctx.restore();
+    for (const p of things) if (p.rack && p.at) drawRackWords(ctx, p, look);
+  }
+
+  /**
+   * A rack, read: seen from the front or the back, its empty U hatched and
+   * named (U5–U8 · 4 U free) and each item its name and its U; seen from the
+   * side, how deep each one really goes — its depth and its cables — against
+   * the dashed line where the rails stop taking gear. Words only once a U is
+   * tall enough on screen to hold them.
+   */
+  function drawRackWords(ctx, p, look) {
+    const face = rackFace(p.rack, p.paletteId);
+    const plan = p.rackPlan ?? rackPlan(p.rack);
+    const th = ((p.rotation ?? 0) * Math.PI) / 180;
+    const [c, s] = [Math.cos(th), Math.sin(th)];
+    const floor = p.points3d?.[0]?.z ?? 0;
+    const S = (x, y, z) => {
+      const { u, v } = map.project({ x: p.at.x + x * c - y * s, y: p.at.y + x * s + y * c, z: floor + z });
+      return map.toS(u, v);
+    };
+    const facing = s * look.x - c * look.y; // the rack's front, (0, −1) turned, against the way we look
+    const uPx = Math.abs(S(0, face.y, face.z(2)).y - S(0, face.y, face.z(1)).y);
+    ctx.save();
+    ctx.font = `${Math.max(8, Math.min(11, uPx * 0.7))}px system-ui, sans-serif`;
+    ctx.textBaseline = 'middle';
+    if (Math.abs(facing) > 0.6) {
+      // the front (or the back): a slot per U
+      const side = facing < 0 ? face.y : -face.y;
+      for (const r of plan.runs) {
+        const a = S(-face.x, side, face.z(r.from));
+        const b = S(face.x, side, face.z(r.to + 1));
+        const [x0, x1, y0, y1] = [Math.min(a.x, b.x), Math.max(a.x, b.x), Math.min(a.y, b.y), Math.max(a.y, b.y)];
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0, y0, x1 - x0, y1 - y0);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(74, 222, 128, 0.55)';
+        ctx.lineWidth = 1;
+        for (let k = -(y1 - y0); k < x1 - x0; k += 6) {
+          ctx.beginPath();
+          ctx.moveTo(x0 + k, y1);
+          ctx.lineTo(x0 + k + (y1 - y0), y0);
+          ctx.stroke();
+        }
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(74, 222, 128, 0.9)';
+        ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+        if (uPx * r.n >= 10) {
+          ctx.fillStyle = '#bbf7d0';
+          ctx.textAlign = 'center';
+          ctx.fillText(fitText(ctx, `${r.from === r.to ? `U${r.from}` : `U${r.from}–U${r.to}`} · ${r.n} U free`, x1 - x0 - 4), (x0 + x1) / 2, (y0 + y1) / 2);
+        }
+      }
+      if (uPx >= 8) {
+        ctx.fillStyle = '#e5e7eb';
+        ctx.textAlign = 'center';
+        for (const it of plan.items) {
+          const a = S(-face.x, side, face.z(Math.max(1, it.at)));
+          const b = S(face.x, side, face.z(Math.min(plan.units, it.top) + 1));
+          ctx.fillText(fitText(ctx, `${it.name} · ${it.units} U`, Math.abs(b.x - a.x) - 6), (a.x + b.x) / 2, (a.y + b.y) / 2);
+        }
+        // the U numbers down the left rail as you look at it
+        ctx.fillStyle = '#94a3b8';
+        ctx.textAlign = 'right';
+        ctx.font = `${Math.max(7, Math.min(9, uPx * 0.6))}px ui-monospace, monospace`;
+        const step = uPx >= 12 ? 1 : 5;
+        for (let u = 1; u <= plan.units; u += u === 1 && step > 1 ? step - 1 : step) {
+          const a = S(-face.x, side, face.z(u) + face.u / 2);
+          const b = S(face.x, side, face.z(u) + face.u / 2);
+          const left = a.x < b.x ? a : b;
+          ctx.fillText(String(u), left.x - 4, left.y);
+        }
+      }
+    } else {
+      // from the side: each item's reach, and where the rails stop
+      const dir = Math.sign(S(0, face.y + 0.1, 0).x - S(0, face.y, 0).x) || 1;
+      const lim = face.y + plan.railDepth / 1000;
+      const a = S(0, lim, face.z(1));
+      const b = S(0, lim, face.z(plan.units + 1));
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)';
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (uPx * plan.units >= 40) {
+        ctx.fillStyle = '#fbbf24';
+        ctx.textAlign = dir > 0 ? 'left' : 'right';
+        ctx.fillText(`rails ${Math.round(plan.railDepth)} mm`, b.x + 3 * dir, b.y - 6);
+      }
+      if (uPx >= 8) {
+        for (const it of plan.items) {
+          const mid = face.z(Math.max(1, it.at)) + (Math.min(plan.units, it.top) - Math.max(1, it.at) + 1) * face.u / 2;
+          const f = S(0, face.y, mid);
+          ctx.fillStyle = it.fits === false ? '#fca5a5' : '#e5e7eb';
+          ctx.textAlign = dir > 0 ? 'left' : 'right';
+          const deep = it.depth == null ? 'depth ?' : `${Math.round(it.depth)}${it.cable ? ` + ${Math.round(it.cable)}` : ''} = ${Math.round(it.reach)} mm`;
+          ctx.fillText(`${it.name} · ${deep}`, f.x + 3 * dir, f.y);
+        }
+      }
     }
     ctx.restore();
   }
