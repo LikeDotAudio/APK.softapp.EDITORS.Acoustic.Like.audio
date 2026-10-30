@@ -43,6 +43,20 @@ jobs:
         with:
           path: acoustic
 
+      # THE SUITE GATES THE PUBLISH. Both deploy jobs need this one, so a
+      # commit that breaks a test stops here and neither Pages nor FTPS ships
+      # it (LOOSE-editors-acoustic-like-audio-githubworkflowsdeployyml-
+      # publishes-to). Plain node:test over the repo's own modules — no
+      # install step, nothing to cache.
+      - name: 🟢 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 🧪 npm test
+        working-directory: acoustic
+        run: npm test
+
       - name: 🚚 Get the CAD
         uses: actions/checkout@v4
         with:

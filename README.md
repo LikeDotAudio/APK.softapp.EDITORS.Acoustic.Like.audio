@@ -69,7 +69,7 @@ The CAD never reads this app's state: what the app asks of it is drawn (`marks`,
 
 ## Hosting
 
-Published by `.github/workflows/deploy.yml` on every push to `main` and nightly: to GitHub Pages, and over FTPS to the Varial account that serves https://acoustics.like.audio/ (secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`; variable `FTP_SERVER_DIR`). The CAD's tracked `dist/` is copied into the site as `cad/` and the published page's iframe is pointed there (the tree's `../EDITORS.CAD.Like.audio/dist/` would climb out of a github.io project site), so the bridge stays same-origin; a CAD change shows up here on the next run.
+Published by `.github/workflows/deploy.yml` on every push to `main` and nightly, once `npm test` has passed: to GitHub Pages, and over FTPS to the Varial account that serves https://acoustics.like.audio/ (secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`; variable `FTP_SERVER_DIR`). The CAD's tracked `dist/` is copied into the site as `cad/` and the published page's iframe is pointed there (the tree's `../EDITORS.CAD.Like.audio/dist/` would climb out of a github.io project site), so the bridge stays same-origin; a CAD change shows up here on the next run.
 
 **Live now:** https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/
 
