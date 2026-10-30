@@ -623,7 +623,8 @@ const widthLanes = { key: [], list: [] };
 {
   const bar = document.getElementById('arrangement');
   // one row per speaker set (layouts.js SPEAKER_SETS): its letter selects it, a preset selects it and lays that
-  // arrangement over the room, ⤓ places it round the mix seat — only the selected set sounds
+  // arrangement over the room, Place puts it round the mix seat and Empty beside it silences the set —
+  // only the selected set sounds
   const pick = (k, patch = {}) => {
     const settings = selectSet(store.state.settings, k);
     store.setSettings({ speakerSet: settings.speakerSet ?? 'A', layout: { ...settings.layout, ...patch }, layoutSets: settings.layoutSets, ...(patch.preset && patch.preset !== NO_LAYOUT ? { show: { ...settings.show, arrangement: true } } : {}) });
@@ -640,10 +641,10 @@ const widthLanes = { key: [], list: [] };
     };
     const none = document.createElement('button');
     none.dataset.preset = NO_LAYOUT;
-    none.textContent = 'None';
-    none.title = 'None: this set is silent — every box in it muted. A speaker placed by hand afterwards makes it a set placed by hand, and it sounds';
+    none.textContent = 'Empty';
+    none.title = 'Empty: this set is silent — every box in it muted. A speaker placed by hand afterwards makes it a set placed by hand, and it sounds';
     none.onclick = () => pick(k, { preset: NO_LAYOUT });
-    row.append(letter, none);
+    row.append(letter);
     for (const preset of set.presets) {
       const l = LAYOUTS[preset];
       const b = document.createElement('button');
@@ -655,14 +656,14 @@ const widthLanes = { key: [], list: [] };
     }
     const place = document.createElement('button');
     place.dataset.place = '';
-    place.textContent = '⤓';
+    place.textContent = 'Place';
     place.title = `Place this arrangement around the mix seat (replaces the ${set.title.split(' — ')[0]}'s arranged speakers)`;
     place.onclick = () => {
       if (k !== activeSet(store.state.settings)) pick(k);
-      if (!LAYOUTS[store.state.settings.layout.preset]) status.textContent = '⚠ pick an arrangement to place — None and By hand place nothing';
+      if (!LAYOUTS[store.state.settings.layout.preset]) status.textContent = '⚠ pick an arrangement to place — Empty and By hand place nothing';
       else if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
     };
-    row.append(place);
+    row.append(place, none);
     bar.append(row);
   }
   // the monitor controller sits at the end of the last set's row, beside the sets it switches
@@ -1265,8 +1266,8 @@ const wizard = createWizard({
     seat: () => place('place-mic', 'mic', 'mixer'),
     mic: () => place('place-mic', 'mic', 'cardioid'),
     byHand: () => place('place-speaker'),
-    sets: () => Object.entries(SPEAKER_SETS).map(([k, set]) => ({ k, title: set.title, presets: [{ id: NO_LAYOUT, label: 'Nothing in this set', text: 'None' }, ...set.presets.map((id) => ({ id, label: LAYOUTS[id].label }))] })),
-    // the arrangement bar's own buttons: the preset picked on its row, then that row's ⤓
+    sets: () => Object.entries(SPEAKER_SETS).map(([k, set]) => ({ k, title: set.title, presets: [{ id: NO_LAYOUT, label: 'Nothing in this set', text: 'Empty' }, ...set.presets.map((id) => ({ id, label: LAYOUTS[id].label }))] })),
+    // the arrangement bar's own buttons: the preset picked on its row, then that row's Place
     system: (k, preset) => {
       const row = document.querySelector(`#arrangement .speakerSet[data-set="${k}"]`);
       row?.querySelector(`button[data-preset="${preset}"]`)?.click();

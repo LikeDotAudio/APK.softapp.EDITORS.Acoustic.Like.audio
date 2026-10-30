@@ -523,7 +523,7 @@ export function strayFromArrangement(before, state) {
   });
   if (!moved.length) return null;
   const names = moved.map((s) => s.role).join(' and ');
-  return `⚠ ${names} moved on ${moved.length === 1 ? 'its' : 'their'} own — no longer where the ${layout.label ?? state.settings.layout.preset} arrangement puts ${moved.length === 1 ? 'it' : 'them'}. Ctrl+Z puts ${moved.length === 1 ? 'it' : 'them'} back; ⤓ re-places the whole arrangement.`;
+  return `⚠ ${names} moved on ${moved.length === 1 ? 'its' : 'their'} own — no longer where the ${layout.label ?? state.settings.layout.preset} arrangement puts ${moved.length === 1 ? 'it' : 'them'}. Ctrl+Z puts ${moved.length === 1 ? 'it' : 'them'} back; Place re-places the whole arrangement.`;
 }
 
 /** Speakers that travel with the listener: not the subs (they belong to the room's modes) and not boxes built into a wall. */

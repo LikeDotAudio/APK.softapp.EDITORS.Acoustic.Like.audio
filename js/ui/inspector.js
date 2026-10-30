@@ -808,7 +808,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const boxes = [...Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub'), ...acx].map(([value, p]) => ({ value, label: p.label }));
     const parts = [
       h('h3', {}, SPEAKER_SETS[activeSet(settings)].title),
-      row('Preset', select(settings.layout.preset, [{ value: NO_LAYOUT, label: 'None — the set is silent' }, { value: HAND_LAYOUT, label: 'By hand — every box sounds' }, ...SPEAKER_SETS[activeSet(settings)].presets.map((value) => ({ value, label: LAYOUTS[value].label }))], (v) => set({ layout: { ...settings.layout, preset: v } }))),
+      row('Preset', select(settings.layout.preset, [{ value: NO_LAYOUT, label: 'Empty — the set is silent' }, { value: HAND_LAYOUT, label: 'By hand — every box sounds' }, ...SPEAKER_SETS[activeSet(settings)].presets.map((value) => ({ value, label: LAYOUTS[value].label }))], (v) => set({ layout: { ...settings.layout, preset: v } }))),
       // the width carries the placed speakers with it, so they stay round the listener
       row('Width', widthSlider(settings.layout.radius, best), num(settings.layout.radius, (v) => moveArray('radius', Math.max(0.8, v) * 1000), { unit: 'm radius', min: 0.8, step: 0.1 })),
       ...widthFitRows(fit, best, settings.layout.radius),
@@ -821,7 +821,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       h(
         'div',
         { class: 'actions' },
-        settings.layout.preset === NO_LAYOUT ? h('p', { class: 'hint' }, 'None: every box in this set is muted. Pick an arrangement, or By hand to hear the boxes you place.') : !LAYOUTS[settings.layout.preset] ? h('p', { class: 'hint' }, 'By hand: every speaker is yours to place, and every one sounds.') : mix && room ? button(`Place ${settings.layout.preset} around mix`, () => placeLayout(mix, room)) : h('p', { class: 'hint' }, 'Place a mix-position mic first.'),
+        settings.layout.preset === NO_LAYOUT ? h('p', { class: 'hint' }, 'Empty: every box in this set is muted. Pick an arrangement, or By hand to hear the boxes you place.') : !LAYOUTS[settings.layout.preset] ? h('p', { class: 'hint' }, 'By hand: every speaker is yours to place, and every one sounds.') : mix && room ? button(`Place ${settings.layout.preset} around mix`, () => placeLayout(mix, room)) : h('p', { class: 'hint' }, 'Place a mix-position mic first.'),
       ),
     ];
     if (out.layout.length)
@@ -878,7 +878,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     return [h('p', { class: 'hint grow' }, `⤢ This width needs a bigger room — ${growthText(g)}: ${growthDetail(g)}, keeping every box ${CLEAR_M} m clear. The dashed outline on the plan shows it.`)];
   }
 
-  /** The toolbar's ⤓: place the current preset around the mix seat. False when there is no mix seat or room. */
+  /** The toolbar's Place: place the current preset around the mix seat. False when there is no mix seat or room. */
   function placeCurrentLayout() {
     const mix = S().mics.find((m) => m.mix);
     const room = engine.out.room;

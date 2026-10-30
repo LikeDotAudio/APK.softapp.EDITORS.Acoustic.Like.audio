@@ -136,9 +136,9 @@ export function createMonitor({ root, store, engine }) {
       'div',
       { class: 'monRow' },
       sets,
-      h('label', { class: 'monVol' }, 'Vol', vol, volOut),
       button('Dim', () => setMonitor({ dim: !m.dim }), { class: m.dim ? 'on dim' : '', title: `Drop the volume by ${-m.dimDb} dB` }),
       button('Mute', () => setMonitor({ mute: !m.mute }), { class: m.mute ? 'on mute' : '', title: 'Cut every channel' }),
+      h('label', { class: 'monVol' }, 'Vol', vol, volOut),
     );
 
     const noise = h(
@@ -195,7 +195,7 @@ export function createMonitor({ root, store, engine }) {
     root.replaceChildren(
       master,
       noise,
-      chans.length ? table : h('p', { class: 'hint' }, `The ${set} set has no speakers yet — ⤓ on its row places them.`),
+      chans.length ? table : h('p', { class: 'hint' }, `The ${set} set has no speakers yet — Place on its row puts them out.`),
       cal,
     );
   }
