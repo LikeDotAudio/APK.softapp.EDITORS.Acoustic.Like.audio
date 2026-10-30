@@ -1,8 +1,11 @@
 name: Publish to acoustics.cad.like.audio
 
-# Publishes this page to GitHub Pages. Live at
-# https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/ until the custom domain
-# acoustics.cad.like.audio is switched on (see README, Hosting).
+# Publishes this page twice: to GitHub Pages at
+# https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/ and
+# over FTPS to the Varial account behind https://acoustics.like.audio/.
+#
+# FTPS needs the repository secrets FTP_SERVER, FTP_USERNAME, FTP_PASSWORD and
+# optionally the variable FTP_SERVER_DIR (defaults to the account root).
 #
 # The host bridge only talks to its own origin, so the CAD cannot come from
 # cad.like.audio: its tracked dist/ is copied into this site as cad/. In the
@@ -61,6 +64,12 @@ jobs:
         with:
           path: ./_site/
 
+      - name: 📦 Keep _site/ for FTPS
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: ./_site/
+
   deploy:
     name: Deploy
     needs: build
@@ -72,3 +81,30 @@ jobs:
       - name: 🚀 Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  ftps:
+    name: Deploy to acoustics.like.audio (FTPS)
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ftps-deploy
+      cancel-in-progress: false
+    steps:
+      - name: 📥 Get _site/
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: ./_site/
+
+      - name: 📂 Sync files via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: ./_site/
+          server-dir: ${{ vars.FTP_SERVER_DIR || './' }}
+          state-name: .ftp-deploy-sync-state.json
+          dangerous-clean-slate: false
