@@ -3,6 +3,7 @@
 import { BANDS } from '../acoustics/bands.js';
 import { directivityQ, deviceGain, frame } from '../acoustics/patterns.js';
 import { findNulls } from '../acoustics/nulls.js';
+import { setColour } from '../acoustics/layouts.js';
 import { allModes } from '../acoustics/room.js';
 import { F_MAX, F_MIN } from '../compute/compute.js';
 import { selectedDevice } from '../model/store.js';
@@ -30,7 +31,6 @@ export const FREQ_COLOUR = '#fde047';
 /** The whole room's curve: every seat, power-averaged. */
 const ROOM_COLOUR = '#a3e635';
 /** Each speaker set's curve on the response, its bar on the SPL, its marks on the RTA and its tile on ISO 3382, when it is not the one sounding. */
-const SET_COLOUR = { A: '#fb923c', B: '#818cf8', C: '#e879f9' };
 /** The meters tucked into the tray, remembered in this browser. */
 const MIN_KEY = 'acoustic.metersMinimised';
 /** Each meter's icon in the tray. */
@@ -226,7 +226,7 @@ function drawSpl(canvas, rep, settings, others = []) {
     { x: 4, db: value, label: settings.aWeight ? 'dBA' : 'dBZ' },
     { x: 40, db: rep.wave, label: `${settings.freq.toFixed(0)}` },
     // the other sets' broadband level, a bar each in the set's colour
-    ...others.map(([k, r], i) => ({ x: 76 + 30 * i, db: broadband(r, settings.aWeight), label: k, colour: SET_COLOUR[k] })),
+    ...others.map(([k, r], i) => ({ x: 76 + 30 * i, db: broadband(r, settings.aWeight), label: k, colour: setColour(settings, k) })),
   ];
   for (const b of bars) {
     for (let yy = bot; yy > top; yy -= seg + 1) {
@@ -282,7 +282,7 @@ function drawRta(canvas, rep, settings, others = []) {
     others.forEach(([k, r], j) => {
       const sx = x + 3 + ((bw - 6) * (j + 1)) / (others.length + 1);
       const sy = y(r.energy[i].total);
-      ctx.fillStyle = SET_COLOUR[k];
+      ctx.fillStyle = setColour(settings, k);
       ctx.fillRect(sx - 0.5, sy, 1, h - 18 - sy);
       ctx.beginPath();
       ctx.arc(sx, sy, 3, 0, Math.PI * 2);
@@ -294,13 +294,14 @@ function drawRta(canvas, rep, settings, others = []) {
   // the sets' key at the top left: the pop-out buttons sit over the top right
   let lx = 30;
   for (const [k] of others) {
-    ctx.fillStyle = SET_COLOUR[k];
+    ctx.fillStyle = setColour(settings, k);
     ctx.fillText(k, lx, 10);
     lx += ctx.measureText(k).width + 8;
   }
 }
 
-function drawResponse(canvas, out, settings, hover = null) {
+/** The frequency response at the mix seat, the current frequency marked on it; the tour draws it on every frame too. */
+export function drawResponse(canvas, out, settings, hover = null) {
   const { ctx, w, h } = fitCanvas(canvas);
   const r = out.response;
   if (!r || !out.room) return noData(ctx, w, h);
@@ -380,7 +381,7 @@ function drawResponse(canvas, out, settings, hover = null) {
   trace(r.modal, '#22d3ee', 1.2);
   if (r.room) trace(r.room, ROOM_COLOUR, 1.6);
   // the sets not sounding, under the one that is
-  for (const [k, vals] of sets) trace(vals, SET_COLOUR[k], 1.3);
+  for (const [k, vals] of sets) trace(vals, setColour(settings, k), 1.3);
   trace(r.wave, '#f43f5e', 1.8);
   // The sweep's frames: a faint tick for each one still to paint, a dot on the curve for each one ready.
   const { ready = [], ladder = [] } = out.frames ?? {};
@@ -425,7 +426,7 @@ function drawResponse(canvas, out, settings, hover = null) {
     ctx.fillText(label, lx + 4, h - 30);
   }
   const live = settings.speakerSet ?? 'A';
-  const legend = [[`wave · ${live}`, '#f43f5e'], ...sets.map(([k]) => [k, SET_COLOUR[k]]), ...(r.room ? [[`room ·${r.seats}`, ROOM_COLOUR]] : []), ['modal', '#22d3ee']];
+  const legend = [[`wave · ${live}`, '#f43f5e'], ...sets.map(([k]) => [k, setColour(settings, k)]), ...(r.room ? [[`room ·${r.seats}`, ROOM_COLOUR]] : []), ['modal', '#22d3ee']];
   let lx = w - 4;
   for (const [text, colour] of legend.reverse()) {
     lx -= ctx.measureText(text).width + 8;
@@ -558,7 +559,7 @@ function drawIso(el, rep, settings, others = []) {
   // the other sets, a wide tile each: the figures that change with the boxes (the decay is the room's, the same for every set)
   const sets = others.map(([k, r]) => {
     const eb = r.energy[settings.band];
-    return `<div class="tile wide" style="border-color:${SET_COLOUR[k]}"><span style="color:${SET_COLOUR[k]}">set ${k} · C50 ${f(r.iso.C50, 1)} dB · C80 ${f(r.iso.C80, 1)} dB · D50 ${f(r.iso.D50 * 100, 0)} % · ITDG ${f(r.itdgMs, 1)} ms · D/R ${f(eb.direct - eb.reverb, 1)} dB</span></div>`;
+    return `<div class="tile wide" style="border-color:${setColour(settings, k)}"><span style="color:${setColour(settings, k)}">set ${k} · C50 ${f(r.iso.C50, 1)} dB · C80 ${f(r.iso.C80, 1)} dB · D50 ${f(r.iso.D50 * 100, 0)} % · ITDG ${f(r.itdgMs, 1)} ms · D/R ${f(eb.direct - eb.reverb, 1)} dB</span></div>`;
   });
   el.innerHTML = tiles.map(([k, v]) => `<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('') + `<div class="tile wide"><span>@ ${BANDS[settings.band]} Hz octave · ${rep.firstReflections.length} early reflections</span></div>` + sets.join('');
 }

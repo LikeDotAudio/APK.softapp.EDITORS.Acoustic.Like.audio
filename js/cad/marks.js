@@ -4,7 +4,7 @@ import { ELEVATION_FACES, ELEVATION_LAYER, elevationFaceOf, heightsAtXY } from '
 import { boxSize, isListener, MOUNTS } from '../acoustics/devices.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { FLOOR_BUILDS, WALL_BUILDS, wallTl } from '../acoustics/isolation.js';
-import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions, soundingSpeakers } from '../acoustics/layouts.js';
+import { activeSet, arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, layoutPositions, setColour, soundingSpeakers } from '../acoustics/layouts.js';
 import { PRODUCTS, pieceHeight, material } from '../acoustics/materials.js';
 import { elevationOrigin } from '../acoustics/patches.js';
 import { areaOf, detailBuild, wallRegions } from '../acoustics/wallPlan.js';
@@ -727,7 +727,7 @@ export function arrangementMarks(room, settings, mix, state = null) {
     texts.push({ text: f.name, x: r3(f.x - seat.x - 0.2), y: r3(f.y - seat.y), height: 0.07 });
   }
 
-  return [{ kind: 'drawing', layer: LAYOUT_LAYER, layerColor: '#fde047', name: 'arrangement', at: [seat.x, seat.y], lines, texts }];
+  return [{ kind: 'drawing', layer: LAYOUT_LAYER, layerColor: setColour(settings, activeSet(settings)), name: 'arrangement', at: [seat.x, seat.y], lines, texts }];
 }
 
 function azOf(p, seat, settings) {

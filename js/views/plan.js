@@ -3,7 +3,7 @@
 import { BANDS, C } from '../acoustics/bands.js';
 import { criticalDistance } from '../acoustics/analysis.js';
 import { DEG, mirrorPoint, segmentCross } from '../acoustics/geometry.js';
-import { arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, noseMarks, snapNose } from '../acoustics/layouts.js';
+import { activeSet, arrangedSpeakers, arrayFront, LAYOUTS, layoutCentre, noseMarks, setColour, snapNose, speakerColour } from '../acoustics/layouts.js';
 import { fromFrame } from '../acoustics/room.js';
 import { roomGrowth } from '../acoustics/roomFit.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
@@ -881,12 +881,13 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       // a box outside the highlighted arrangement is muted: no coverage, R_c or rays, only its ghost below
       if (!soloed.has(s) && state.selected?.id !== s.id) continue;
       const p = toScreen(s.x, s.y);
+      const tint = speakerColour(s, settings);
       if (show.coverage && s.kind !== 'sub') {
         const half = ((s.pattern === 'horn' ? s.hCov : s.pattern === 'cardioid' ? 180 : 360) / 2) * (Math.PI / 180);
         const r = 2.5 * pxPerMetre();
         const a = (-s.aim * Math.PI) / 180;
         ctx.save();
-        ctx.fillStyle = s.color;
+        ctx.fillStyle = tint;
         ctx.globalAlpha = 0.08;
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
@@ -894,7 +895,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
         ctx.closePath();
         ctx.fill();
         ctx.globalAlpha = 0.5;
-        ctx.strokeStyle = s.color;
+        ctx.strokeStyle = tint;
         ctx.setLineDash([3, 4]);
         ctx.stroke();
         ctx.restore();
@@ -902,7 +903,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       if (show.rc) {
         const rc = criticalDistance(room, s, band) * pxPerMetre();
         ctx.save();
-        ctx.strokeStyle = s.color;
+        ctx.strokeStyle = tint;
         ctx.globalAlpha = 0.45;
         ctx.setLineDash([2, 5]);
         ctx.beginPath();
@@ -952,7 +953,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     }
     if (show.devices) {
       // under the glyphs: where each one points, out to the wall it faces
-      for (const s of state.speakers) if (s.kind !== 'sub' && soloed.has(s)) drawAimRay(ctx, room, s, s.color, toScreen);
+      for (const s of state.speakers) if (s.kind !== 'sub' && soloed.has(s)) drawAimRay(ctx, room, s, speakerColour(s, settings), toScreen);
       for (const m of state.mics) drawAimRay(ctx, room, m, MIC_PRESETS[m.kind].colour, toScreen);
       // names when the plan is big and uncrowded, tags (L, M3, MIX, E2) when it is not
       const roomy = pxPerMetre() >= 60 && state.speakers.length + state.mics.length <= 10;
@@ -969,7 +970,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
         const p = toScreen(s.x, s.y);
         // at true size: the glyph is 2·size across the front, never smaller than it always was
         ctx.globalAlpha = soloed.has(s) || state.selected?.id === s.id ? 1 : 0.25;
-        drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: Math.max(11, (boxSize(s).w * pxPerMetre()) / 2) });
+        drawSpeaker(ctx, p.x, p.y, (-s.aim * Math.PI) / 180, speakerColour(s, settings), { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: Math.max(11, (boxSize(s).w * pxPerMetre()) / 2) });
         ctx.globalAlpha = 1;
       }
       // the people again over the boxes, the mix seat last of all: what you grab is what you see (their labels are down already)
@@ -1210,13 +1211,14 @@ function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
   const seat = layoutCentre(mix ?? fromFrame(room, 0.38 * room.L, 0.5 * room.W), arrayFront(settings), settings.layout.offset);
   const r = settings.layout.radius ?? 2;
   const c = toScreen(seat.x, seat.y);
+  const tint = setColour(settings, activeSet(settings));
   const at = (az, k = 1) => {
     const b = (arrayFront(settings) + az) * DEG;
     return toScreen(seat.x + r * k * Math.cos(b), seat.y + r * k * Math.sin(b));
   };
   ctx.save();
-  ctx.strokeStyle = '#fde047';
-  ctx.fillStyle = 'rgba(253, 224, 71, 0.10)';
+  ctx.strokeStyle = tint;
+  ctx.fillStyle = tint;
   for (const s of layout.speakers) {
     if (s.top) continue;
     if (s.side !== 'C') {
@@ -1230,6 +1232,7 @@ function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
         ctx.lineTo(p.x, p.y);
       }
       ctx.closePath();
+      ctx.globalAlpha = 0.1;
       ctx.fill();
     }
     const p = at(s.az);
@@ -1240,7 +1243,7 @@ function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
     ctx.globalAlpha = 1;
-    drawLabel(ctx, p.x, p.y - 10, `${s.name} ${Math.abs(s.az)}°`, '#fde047');
+    drawLabel(ctx, p.x, p.y - 10, `${s.name} ${Math.abs(s.az)}°`, tint);
   }
   ctx.setLineDash([]);
   const bed = layout.speakers.filter((s) => s.el === 0).sort((a, b) => a.az - b.az);
@@ -1259,7 +1262,7 @@ function drawArrangement(ctx, room, settings, mix, toScreen, ppm) {
   ctx.arc(c.x, c.y, r * ppm, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
-  drawLabel(ctx, c.x, c.y + r * ppm + 14, `${layout.label} · r ${r.toFixed(1)} m${mix ? '' : ' · no mix mic: seat at 38 %'}`, '#fde047');
+  drawLabel(ctx, c.x, c.y + r * ppm + 14, `${layout.label} · r ${r.toFixed(1)} m${mix ? '' : ' · no mix mic: seat at 38 %'}`, tint);
 }
 
 const GROW = '#f59e0b';

@@ -4,7 +4,7 @@ import { heightsAtXY } from '../acoustics/elevations.js';
 import { DEG, pointInPolygon } from '../acoustics/geometry.js';
 import { clampInside, CLEAR_M } from '../acoustics/inRoom.js';
 import { boxSize, isListener, MIC_PRESETS } from '../acoustics/devices.js';
-import { arrangedSpeakers, soundingSpeakers } from '../acoustics/layouts.js';
+import { arrangedSpeakers, soundingSpeakers, speakerColour } from '../acoustics/layouts.js';
 import { pieceHeight } from '../acoustics/materials.js';
 import { partsOf, pieceFootprint } from '../acoustics/pieces.js';
 import { talkers, talkPaths } from '../acoustics/talk.js';
@@ -438,7 +438,7 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
       const f = { x: Math.cos(s.aim * DEG) * Math.cos(s.tilt * DEG), y: Math.sin(s.aim * DEG) * Math.cos(s.tilt * DEG), z: Math.sin(s.tilt * DEG) };
       const rt = norm({ x: Math.sin(s.aim * DEG), y: -Math.cos(s.aim * DEG), z: 0 });
       const size = boxSize(s);
-      box(s, { rt, f, up: cross(rt, f) }, size.w, size.d, size.h, rgbOf(s.color).map((v) => Math.round(v * 0.55)), { front: [24, 27, 34], spk: s, selected: s.id === picked });
+      box(s, { rt, f, up: cross(rt, f) }, size.w, size.d, size.h, rgbOf(speakerColour(s, state.settings)).map((v) => Math.round(v * 0.55)), { front: [24, 27, 34], spk: s, selected: s.id === picked });
     }
     for (const m of state.mics) if (isListener(m) || m.mix) figure(m, rgbOf(MIC_PRESETS[m.kind]?.colour ?? '#ff3b3b'), m.id === picked);
     stage(deviceFrom, 'device');
@@ -498,7 +498,7 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
         ctx.closePath();
         ctx.fillStyle = fill;
         ctx.fill();
-        ctx.strokeStyle = spk.color;
+        ctx.strokeStyle = speakerColour(spk, store.state.settings);
         ctx.lineWidth = 1;
         ctx.stroke();
       };
@@ -638,7 +638,7 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
     // what the solids do not say: the stand under a box, a measurement mic's dot and aim, every name
     const person = (m) => isListener(m) || m.mix;
     const devices = [
-      ...sounding.map((d) => ({ d, colour: d.color, label: d.role || d.name, under: d.z - boxSize(d).h / 2, top: d.z + boxSize(d).h / 2 })),
+      ...sounding.map((d) => ({ d, colour: speakerColour(d, state.settings), label: d.role || d.name, under: d.z - boxSize(d).h / 2, top: d.z + boxSize(d).h / 2 })),
       ...state.mics.map((d) => ({ d, colour: d.mix ? '#ff3b3b' : '#e5e7eb', r: person(d) ? 0 : 5, label: d.mix ? 'MIX' : d.name, under: person(d) ? 0 : d.z, top: d.z + (person(d) ? 0.2 : 0) })),
     ]
       .map((o) => ({ ...o, s: proj(o.d), t: proj({ ...o.d, z: o.top }), u: proj({ ...o.d, z: o.under }), base: proj({ ...o.d, z: 0 }) }))

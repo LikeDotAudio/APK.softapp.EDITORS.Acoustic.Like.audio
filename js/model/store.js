@@ -55,6 +55,8 @@ export const DEFAULT_SETTINGS = {
   /** The speaker set that sounds (layouts.js SPEAKER_SETS), and the arrays of the others, waiting: `layout` is the selected one's. */
   speakerSet: 'A',
   layoutSets: { B: SPEAKER_SETS.B.layout, C: SPEAKER_SETS.C.layout },
+  /** Each set's colour, when one is picked (layouts.js setColour): a set not in it keeps its own. */
+  setColours: {},
   /** The monitor controller (acoustics/monitor.js): volume, dim, mute and the noise it plays; each channel's own state is on its speaker. */
   monitor: DEFAULT_MONITOR,
   isolation: DEFAULT_ISOLATION,
@@ -184,6 +186,7 @@ export function createStore() {
       roomHeights: { ...d.roomHeights },
       windows: { ...d.windows },
       layoutSets: { ...DEFAULT_SETTINGS.layoutSets, ...d.layoutSets },
+      setColours: { ...d.setColours },
       monitor: { ...DEFAULT_MONITOR, ...d.monitor },
     };
     // B and C once shared the A set's DMT 8s or a generic box: a set still on them is given its own drivers
@@ -314,6 +317,13 @@ export function createStore() {
       const mic = makeMic(kind, at, extra);
       if (!state.mics.some((m) => m.mix)) mic.mix = true;
       add('mic', mic);
+    },
+    /** The mix seat is always there: with none, a mixer is put at `at` facing `aim`, unselected. True when one was added. */
+    ensureMix(at, aim) {
+      if (state.mics.some((m) => m.mix)) return false;
+      state.mics = [...state.mics, { ...makeMic('mixer', at, { mix: true }), aim, mix: true }];
+      changed();
+      return true;
     },
     addFurniture(paletteId, at, rotation = 0) {
       const item = { id: newId('f'), paletteId, x: +at.x.toFixed(3), y: +at.y.toFixed(3), rotation };

@@ -30,6 +30,10 @@ import { STI_RATINGS } from '../acoustics/intelligibility.js';
  *  - a summary of every view together, swept up and down;
  *  - and a summary of the summary: all of them again, quickly.
  *
+ * On every frame, whatever the chapter, the frequency response at the mix seat
+ * sits in the corner with the current frequency marked on it, and where that
+ * seat is.
+ *
  * A sweep waits for its frames: while the next one is still being painted the
  * recording pauses and the tour's clock stands still, so the video is as long
  * as its chapters and the sweep smooth however long the room takes to paint.
@@ -291,9 +295,10 @@ function drawTalkChart(ctx, people, paths, h) {
  * engine painting the sweep's frames; `sweepTo(u)` puts the field at `u` of
  * the way up the frequency range, or answers false while that frame is not painted yet; `soundtrack()` is the song, { stream, duration }, or null; `caption()`
  * is the line under each chapter's title (the room, the method, the frequency);
- * `name()` what the video is called.
+ * `name()` what the video is called; `drawResponse(canvas, out, settings)` draws
+ * the frequency response (ui/meters.js) for the corner of every frame.
  */
-export function createTour({ store, engine, onStart, onStop, sweepTo, caption, name, soundtrack = () => null }) {
+export function createTour({ store, engine, onStart, onStop, sweepTo, caption, name, drawResponse, soundtrack = () => null }) {
   let run = null;
 
   function start() {
@@ -378,6 +383,24 @@ ${OFFERED.map(([k, t]) => `<label><input type="checkbox" name="view" value="${k}
       views[v] = { canvas, view };
     }
 
+    // the frequency response, drawn off screen at the inset's size and copied onto every frame
+    const FR = { w: 640, h: 230, pad: 24 };
+    const fr = doc.createElement('canvas');
+    fr.style.cssText = `position:absolute;left:-10000px;width:${FR.w}px;height:${FR.h}px`;
+    doc.body.append(fr);
+    const drawInset = () => {
+      drawResponse(fr, engine.out, store.state.settings);
+      const x = FRAME.w - FR.w - FR.pad;
+      const y = FRAME.h - BAND - FR.h - FR.pad - 26;
+      ctx.fillStyle = 'rgba(11, 13, 18, .86)';
+      ctx.fillRect(x - 10, y - 4, FR.w + 20, FR.h + 36);
+      const mix = store.state.mics.find((m) => m.mix);
+      ctx.fillStyle = '#e5e7eb';
+      ctx.font = '600 18px system-ui, sans-serif';
+      ctx.fillText(`Frequency response · ${mix ? `${mix.name || 'mix seat'} at ${mix.x.toFixed(2)}, ${mix.y.toFixed(2)} m, ${mix.z.toFixed(2)} m up` : 'no mix seat'}`, x, y + 18);
+      ctx.drawImage(fr, x, y + 28, FR.w, FR.h);
+    };
+
     // what is recorded: the chapter, its title and caption, the time along the bottom
     const frame = doc.createElement('canvas');
     frame.width = FRAME.w;
@@ -445,6 +468,7 @@ ${OFFERED.map(([k, t]) => `<label><input type="checkbox" name="view" value="${k}
         const x = (FRAME.w - inRow * cwFit) / 2 + col * cwFit;
         ctx.drawImage(canvas, x + 2, Math.max(0, y0) + row * ch + 2, cwFit - 4, ch - 4);
       });
+      drawInset();
       ctx.fillStyle = 'rgba(10, 12, 18, .78)';
       ctx.fillRect(0, FRAME.h - BAND, FRAME.w, BAND);
       ctx.fillStyle = '#e5e7eb';

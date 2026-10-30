@@ -109,9 +109,9 @@ export const LAYOUTS = {
  */
 const EVERY = Object.keys(LAYOUTS);
 export const SPEAKER_SETS = {
-  A: { label: 'A', title: 'A set — the mains', presets: EVERY, layout: { preset: '7.1.4', radius: 2.0, rotate: 0, mains: 'dmt12', surround: 'dmt8' } },
-  B: { label: 'B', title: 'B set — the mid-fields', presets: EVERY, layout: { preset: '5.1', radius: 1.6, rotate: 0, mains: 'genelec-1032a', surround: 'genelec-1031a' } },
-  C: { label: 'C', title: 'C set — the nearfields', presets: EVERY, layout: { preset: '2.0', radius: 1.2, rotate: 0, mains: 'dynaudio-bm5', surround: 'dynaudio-bm5' } },
+  A: { label: 'A', title: 'A set — the mains', colour: '#fde047', presets: EVERY, layout: { preset: '7.1.4', radius: 2.0, rotate: 0, mains: 'dmt12', surround: 'dmt8' } },
+  B: { label: 'B', title: 'B set — the mid-fields', colour: '#38bdf8', presets: EVERY, layout: { preset: '5.1', radius: 1.6, rotate: 0, mains: 'genelec-1032a', surround: 'genelec-1031a' } },
+  C: { label: 'C', title: 'C set — the nearfields', colour: '#4ade80', presets: EVERY, layout: { preset: '2.0', radius: 1.2, rotate: 0, mains: 'dynaudio-bm5', surround: 'dynaudio-bm5' } },
 };
 
 /** The boxes a set had before each set was its own drivers: a set still holding them is given its own. */
@@ -120,6 +120,10 @@ export const OLD_SET_BOXES = { B: ['dmt8', 'dmt8'], C: ['monitor', 'monitor'] };
 /** The selected set, and the set a speaker belongs to: A for both when nothing says otherwise. */
 export const activeSet = (settings) => settings.speakerSet ?? 'A';
 export const setOf = (spk) => spk.set ?? 'A';
+
+/** A set's colour: the one picked for it, else its own. Its speakers, their patterns and its arrangement are drawn in it. */
+export const setColour = (settings, k) => settings.setColours?.[k] ?? SPEAKER_SETS[k]?.colour ?? SPEAKER_SETS.A.colour;
+export const speakerColour = (spk, settings) => setColour(settings, setOf(spk));
 
 /** A set's array: the live `layout` for the selected one, else where it waits. */
 export const setLayout = (settings, k) => (k === activeSet(settings) ? settings.layout : { ...SPEAKER_SETS[k]?.layout, ...settings.layoutSets?.[k] });

@@ -11,6 +11,7 @@ import { nullLines } from './guides.js';
 import { gridCanvas, sampleGrid } from './paint.js';
 import { drawPatch, patchName, rgba, shortName } from './treatments.js';
 import { drawRayOverlay } from './rayOverlay.js';
+import { speakerColour } from '../acoustics/layouts.js';
 
 /**
  * FIVE OF THE SIX DRAWINGS
@@ -473,7 +474,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     for (const s of state.speakers) {
       const { u, v } = map.project(s);
       const p = map.toS(u, v);
-      drawSpeaker(ctx, p.x, p.y, screenAngle(s), s.color, { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: 8 });
+      drawSpeaker(ctx, p.x, p.y, screenAngle(s), speakerColour(s, state.settings), { selected: state.selected?.id === s.id, label: deviceLabel(s, 'speaker', state, roomy), size: 8 });
     }
     for (const m of state.mics) {
       const { u, v } = map.project(m);

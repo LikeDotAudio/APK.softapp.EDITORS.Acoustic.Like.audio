@@ -2,6 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { listen } from './audio/auralize.js';
 import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
+import { middleOf } from './acoustics/inRoom.js';
 import { buildRoom } from './acoustics/room.js';
 import { elevationOrigin, faceCoords } from './acoustics/patches.js';
 import { activeSet, arrangedSpeakers, arrayFront, LAYOUTS, NO_LAYOUT, relayArray, selectSet, setLayout, setOf, SPEAKER_SETS } from './acoustics/layouts.js';
@@ -22,7 +23,7 @@ import { createMeterFold } from './ui/meterFold.js';
 import { installSashes } from './ui/sashes.js';
 import { watchForUpdates } from './ui/freshness.js';
 import { crossings, DIRECT_MARKS_MS, GAP_MARKS_MS, radiusLanes } from './acoustics/radiusScale.js';
-import { hz } from './ui/meters.js';
+import { drawResponse, hz } from './ui/meters.js';
 import { REFINE_LABEL, createEngine, patchesFromCad, sweepFrames } from './compute/engine.js';
 import { createStore } from './model/store.js';
 import { createInspector } from './ui/inspector.js';
@@ -88,6 +89,8 @@ const engine = createEngine(store, (out, phase) => {
   if (out.error) console.error(out.error);
   // nothing ever stands outside the rooms: whatever left one (a layout, a carried array, a smaller plan) comes back, and this runs again
   if (out.room && store.keepInside(out.room, (out.rooms ?? []).map((l) => l.poly))) return;
+  // the mix seat is always placed: none (a new room, or it was deleted) puts one in the middle of the room, facing the front
+  if (out.room && store.ensureMix({ ...middleOf(out.room), z: 1.2 }, store.state.settings.frontDeg)) return;
   renderAll();
   syncMarks();
   followConsole();
@@ -1097,6 +1100,7 @@ const TOUR_FRAMES = sweepFrames(1 / 12);
 const tour = createTour({
   store,
   engine,
+  drawResponse,
   // with a song loaded, the tour plays it from the top, the field following it, and records it under the pictures
   soundtrack: () => (player.loaded ? { stream: player.stream(), duration: player.duration } : null),
   onStart: (seconds, withSong) => {

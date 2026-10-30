@@ -234,9 +234,8 @@ function bandsSvg({ drivers, crossovers }) {
 const NAMES = { woofer: 'Woofer', mid: 'Mid', tweeter: 'Tweeter', horn: 'Compression horn', coax: 'Coaxial tweeter' };
 
 /** The card: face, the two polars, the bands and a line per driver. */
-export function transducerCard(spk) {
+export function transducerCard(spk, colour = spk.color || '#f4902c') {
   const parts = driversOf(spk);
-  const colour = spk.color || '#f4902c';
   const ways = parts.ways === 1 ? 'one driver' : `${parts.ways}-way`;
   const legend = h(
     'ul',

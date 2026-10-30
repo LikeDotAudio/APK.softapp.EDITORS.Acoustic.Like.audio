@@ -7,7 +7,7 @@ import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { receiverOrder, sourceGroups } from '../acoustics/groups.js';
 import { outside } from '../acoustics/inRoom.js';
 import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0, floorLoss, houseLeak, sharedFaces, wallTl } from '../acoustics/isolation.js';
-import { activeSet, arrangedSpeakers, arrayFront, HAND_LAYOUT, isMain, LAYOUTS, layoutCentre, layoutPositions, NO_LAYOUT, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
+import { activeSet, arrangedSpeakers, arrayFront, HAND_LAYOUT, isMain, LAYOUTS, layoutCentre, layoutPositions, NO_LAYOUT, setColour, setOf, SPEAKER_SETS, speakerColour } from '../acoustics/layouts.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from '../acoustics/roomFit.js';
 import { LOW_END } from '../acoustics/widthFinder.js';
 import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
@@ -115,6 +115,22 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
   const S = () => store.state;
   const set = (patch) => store.setSettings(patch);
 
+  /** The set picked in the Colour row's drop-down, and the set the row was showing then: picked again elsewhere, it starts on its own. */
+  let colourSet = null;
+  /** Colour: which set (A B C), and that set's colour — its speakers, their patterns and its arrangement take it. */
+  function colourRow(own) {
+    const { settings } = S();
+    const k = colourSet?.own === own ? colourSet.k : own;
+    return row(
+      'Colour',
+      select(k, Object.entries(SPEAKER_SETS).map(([value, x]) => ({ value, label: x.title })), (v) => {
+        colourSet = { own, k: v };
+        render();
+      }),
+      h('input', { type: 'color', value: setColour(settings, k), title: `${SPEAKER_SETS[k].title}: its speakers, their patterns and its arrangement are drawn in this colour`, onchange: (e) => set({ setColours: { ...S().settings.setColours, [k]: e.target.value } }) }),
+    );
+  }
+
   // ------------------------------------------------------------------ Inspect
   // The list is rebuilt on every selection, so a double click never reaches the same button twice: clicks are counted here.
   let lastClick = { id: null, at: 0 };
@@ -175,7 +191,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     const { selected } = S();
     const dev = selectedDevice(S());
     const list = acousticTree({
-      speaker: (d) => item('speaker', d, `🔊 ${d.role || d.name}`, d.color),
+      speaker: (d) => item('speaker', d, `🔊 ${d.role || d.name}`, speakerColour(d, S().settings)),
       mic: (d) => item('mic', d, `${d.mix ? '🎧' : '🎤'} ${d.name}`, d.mix ? '#ff3b3b' : '#ddd'),
     });
     function item(kind, d, label, colour) {
@@ -316,7 +332,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Z (acoustic centre)', num(d.z, (v) => up({ z: v }), { unit: 'm', min: 0 })),
       row('Aim', num(d.aim, (v) => up({ aim: v }), { step: 1, unit: '°' })),
       row('Tilt', num(d.tilt, (v) => up({ tilt: v }), { step: 1, unit: '°', min: -90, max: 90 })),
-      row('Colour', h('input', { type: 'color', value: d.color, onchange: (e) => up({ color: e.target.value }) })),
+      colourRow(setOf(d)),
       h('p', { class: 'hint' }, 'How it sounds — drive, range, pattern, coverage, mount — is on the ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); tab = 'Acoustics'; render(); } }, 'Acoustics'), ' tab (Transducer).'),
       actions,
     ];
@@ -353,7 +369,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     }
     const d = sel?.kind === 'speaker' ? S().speakers.find((x) => x.id === sel.id) : null;
     if (!d) {
-      const pickOne = (kind, label) => (x) => h('button', { class: 'dev', style: `--c:${kind === 'speaker' ? x.color : x.mix ? '#ff3b3b' : '#ddd'}`, onclick: () => store.select({ kind, id: x.id }) }, label(x));
+      const pickOne = (kind, label) => (x) => h('button', { class: 'dev', style: `--c:${kind === 'speaker' ? speakerColour(x, S().settings) : x.mix ? '#ff3b3b' : '#ddd'}`, onclick: () => store.select({ kind, id: x.id }) }, label(x));
       const tree = acousticTree({ room: false, speaker: pickOne('speaker', (x) => x.role || x.name), mic: pickOne('mic', (x) => x.name) });
       return [h('h3', {}, 'Transducer acoustics'), h('p', { class: 'hint' }, 'Pick a speaker to see how it sounds, or a mic for its pickup:'), tree];
     }
@@ -373,7 +389,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Delay', num(d.delayMs, (v) => up({ delayMs: v }), { step: 0.1, unit: 'ms', min: 0 })),
       row('Mount', select(d.mount, Object.entries(MOUNTS).map(([value, m]) => ({ value, label: m.label })), (v) => up({ mount: v }))),
       d.mount === 'free' && room ? h('p', { class: 'hint' }, sbirHint(d, room)) : '',
-      transducerCard(d),
+      transducerCard(d, speakerColour(d, S().settings)),
     ];
   }
 
@@ -816,6 +832,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       offAxis ? row('Centre', h('span', { class: 'stat' }, `${offAxis} off the ${mix?.name || 'mix seat'}`), button('On the listener', () => ['right', 'front', 'up'].forEach((k) => moveArray(k, 0)))) : '',
       // turning carries the placed speakers round the centre, each still aimed at the listener
       row('Rotate', slider(settings.layout.rotate ?? 0, -180, 180, 1, (v) => moveArray('rotate', v, true), (v) => moveArray('rotate', v)), num(settings.layout.rotate ?? 0, (v) => moveArray('rotate', v), { unit: '°', step: 1, min: -180, max: 180 })),
+      colourRow(activeSet(settings)),
       row('Mains · L C R', select(settings.layout.mains ?? 'dmt12', boxes, (v) => set({ layout: { ...settings.layout, mains: v } }))),
       row('Surrounds & tops', select(settings.layout.surround ?? 'dmt8', boxes, (v) => set({ layout: { ...settings.layout, surround: v } }))),
       h(
