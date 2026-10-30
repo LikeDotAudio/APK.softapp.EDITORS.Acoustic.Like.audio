@@ -13,4 +13,4 @@ Is `EDITORS.Acoustic.Like.audio` deployed? Written by `.apk.scripts/smoke.py` fr
 
 Re-run: `python3 .apk.scripts/smoke.py PODS/POD.THIN/Softapps/EDITORS/EDITORS.Acoustic.Like.audio`
 
-<!-- smoke:sig 4d525b9e8d04 since 2026-10-30 12:51 EDT -->
+<!-- smoke:sig 89757f48c4ee since 2026-10-30 12:51 EDT -->
