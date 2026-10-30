@@ -1,6 +1,8 @@
 # EDITORS.Acoustic.Like.audio
 
 > 🔊 **ACOUSTICS.LIKE.AUDIO** (`index.html` title; the repo keeps the name `EDITORS.Acoustic.Like.audio`): room acoustics built on [CAD.Like.audio](../EDITORS.CAD.Like.audio). The CAD supplies the plan. This app adds the room on top of it and around it.
+>
+> 📚 **Wiki:** [Documentation/README.md](Documentation/README.md) — principles, architecture, delivery.
 
 ---
 
