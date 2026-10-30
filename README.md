@@ -1,6 +1,6 @@
 # EDITORS.Acoustic.Like.audio
 
-> 🔊 **ACOUSTIC.LIKE.AUDIO**: room acoustics built on [CAD.Like.audio](../EDITORS.CAD.Like.audio). The CAD supplies the plan. This app adds the room on top of it and around it.
+> 🔊 **ACOUSTICS.LIKE.AUDIO** (`index.html` title; the repo keeps the name `EDITORS.Acoustic.Like.audio`): room acoustics built on [CAD.Like.audio](../EDITORS.CAD.Like.audio). The CAD supplies the plan. This app adds the room on top of it and around it.
 
 ---
 
@@ -57,10 +57,13 @@ The CAD is in an iframe. The CAD's `src/shell/hostBridge/` and `js/cad/cadLink.j
 | app → CAD | `palette {title, items}` | every finish and product (`{id, name, category, color, hatch?, size?, note?}`; `size` [w, h] m = a fixed-size block). Resent on every `ready` |
 | app → CAD | `session` · `open {session}` · `floorplan {file}` | the whole drawing back as `session` · put a saved one on the sheet · open a `.dxf` or an image the user picked as a new drawing under its own name |
 | app → CAD | `move {items}` · `remove {ids}` | set where placed products sit · take them out of the drawing (right-click → Remove on the plan; one undo step in the CAD) |
+| CAD → app | `ready` · `selection` · `session` | the CAD is up (the app resends `palette`, `spaces` and any carried session) · what is selected in the CAD · the reply to `session` |
+| app → CAD | `marks {key, hash, items}` · `place {layer, items}` · `repaint {ids, paletteId}` | draw and keep a set of things under `key` (the slices, the schematic: `js/cad/marks.js`, `js/cad/schematic.js`) · drop items on a layer · give placed blocks another finish |
+| app → CAD | `spaces {items}` · `walls` · `layers {visible}` · `select {edges, blocks}` · `arm {paletteId}` | the model spaces · a wall edit · which layers show · select in the CAD · pick a product for the user to place next |
 
 **Pop out.** `⇱ Pop out` on the plan tile moves the CAD into its own window (handy on a second screen). Then the bridge runs over `window.opener` instead of the iframe. The address gains `&resume`, so the new CAD restores the drawing the old one autosaved. Only one CAD is open at a time. While the CAD is out, the plan tile draws the room's walls itself, and speakers and mics can still be placed and dragged there. `⇲ Dock`, or closing the window, brings the CAD back.
 
-The CAD only publishes; it never reads this app's state. The overlay is saved in the browser per CAD file name. It can be exported as JSON, and positions can be exported in the AcousticRooms metadata shape.
+The CAD never reads this app's state: what the app asks of it is drawn (`marks`, `place`) or answered (`session`), and nothing in the CAD depends on the app being there. The overlay is saved in the browser per CAD file name. It can be exported as JSON, and positions can be exported in the AcousticRooms metadata shape.
 
 ## Hosting
 
@@ -77,20 +80,28 @@ Published by `.github/workflows/deploy.yml` on every push to `main` and nightly:
 ## Layout
 
 ```
-js/acoustics/   physics, no DOM: bands, materials, patterns, devices, room, elevations, patches, images, field, analysis, layouts, symmetry, advisor
-js/compute/     sample grids, the job, the worker, the engine that schedules it
-js/views/       plan overlay, ceiling + elevations, 3-D, colour map, glyphs
-js/ui/          inspector (every parameter), meter bridge
-js/cad/         the bridge client
-tests/          node --test: physics checked against closed forms
+index.html        the page; the plan tile is an iframe of ../EDITORS.CAD.Like.audio/dist/index.html#/drawing?host=acoustic
+js/main.js        wires the store, the CAD link, the views and the compute engine together
+js/acoustics/     physics, no DOM: bands, materials, patterns, devices, room, elevations, patches, images, field,
+                  analysis, layouts, symmetry, advisor, sbir, nulls, isolation, measure, multiSub, rack, windows, …
+js/acoustx/       Acoustic X (classic): the 1997-style windows, their database (data.json) and the references
+js/audio/         ▶ Listen: the echogram as an impulse response, a clap played through it
+js/compute/       sample grids, the job, the field worker (a module Worker), the engine that schedules it
+js/model/         the store: speakers, mics, sets, racks, undo
+js/views/         plan overlay, ceiling + elevations, the Wall page, 3-D, colour map, glyphs, treatments
+js/ui/            inspector (every parameter), meter bridge, rack panel, tour, wizard, licence, pop-out
+js/cad/           the bridge client (cadLink.js) and what the app draws into the CAD (marks.js, schematic.js)
+css/              app.css, acoustx.css
+tests/            node --test: physics checked against closed forms (269 tests)
+Documentation/    acoustics/ — the engine's mathematics, chapter by chapter; acoustic-x/ — Acoustic X and its references
 ```
 
-No build step and no dependencies: plain ES modules, served as they are.
+No build step and no dependencies: plain ES modules, served as they are. The rack panel reads the bench's parts catalogue from `../../../../../OS/BIM/parts.json` relative to `js/ui/` (`POD.THIN/OS/BIM/parts.json` in the tree); where the page is served on its own, that fetch fails and the catalogue is empty, so gear is typed in by hand. A few viewer preferences (reveal speed, graphs on/off, Acoustic X legacy mode) are kept in `localStorage`.
 
 ## Tests
 
 ```
-npm test
+npm test          # node --test tests/*.test.mjs — 269 tests, about 2 s, no install needed
 ```
 
 The tests check the following against closed forms:
@@ -113,3 +124,21 @@ The tests check the following against closed forms:
 - CHORAS (choras-org, GPL-3.0): several methods compared side by side. Ideas only; no code was taken.
 - ITU-R BS.775 / BS.2051: layout reference angles. Dolby Atmos Room Design Tool v6.9.0 release notes: L/C/R line, 5.1.4 rears at 135°.
 - ISO 3382-1 for room parameters, ISO 9613-1 for air absorption, EBU Tech 3276 for listening-room RT.
+
+## Documentation
+
+- [`Documentation/acoustics/`](Documentation/acoustics/README.md) — what the engine computes: every module in `js/acoustics/` and `js/compute/`, its equations, assumptions and limits, and the function that implements each.
+- [`Documentation/acoustic-x/`](Documentation/acoustic-x/README.md) — the Acoustic X windows, in the 1997 manual's chapter order, with the 26 reference summaries the 📖 pop-ups open (`js/acoustx/topics.js`). The published site carries `Documentation/` so the help opens there too.
+
+## Philosophy
+
+The ecosystem's rules for this app are written down in `Documentation/🏛Philosophy/Room Acoustics/` of the APK.audio repo. What the code itself follows:
+
+- **The room is the drawing.** Geometry is the CAD's: walls, rooms, elevations and painted patches arrive on the `geometry` message (`js/cad/cadLink.js`), and the app draws its own results back into the CAD as layers (`js/cad/marks.js`, `js/cad/schematic.js`) rather than keeping a drawing of its own. Symmetry is the CAD's Virtual Mirror; `js/acoustics/symmetry.js` only mirrors devices about the axis the CAD reports.
+- **Physics has no DOM.** Everything in `js/acoustics/` is pure functions over plain data, which is what lets `tests/` import it straight into node and `js/compute/fieldWorker.js` run it off the main thread.
+- **Closed forms, then executed examples.** The tests check the physics against known answers (+6 dB flush, c/4d, Eyring T30, rigid-box modes), and the worked numbers in `Documentation/acoustics/` were produced by running the real functions.
+- **Three methods, each in its range.** Wave, scattering, energy and modal answers are computed side by side (`js/acoustics/field.js`, `images.js`, `analysis.js`); the Schroeder frequency (`room.js` `schroeder`) is printed by the advisor as the border between them.
+- **Fail loud, not plausible.** An unknown palette id becomes a warning, not drywall (`js/acoustics/patches.js`, `materials.js`); an empty parts catalogue leaves the rack to be typed in rather than guessed (`js/ui/rackPanel.js`).
+- **Measurement outranks the model.** A WAV measured at the seat is read beside the model's RT60 (`js/acoustics/measure.js`).
+- **Cite, never certify.** Layouts are checked against ITU-R BS.2051 angles (`js/acoustics/layouts.js`), and certification is left to the Dolby Atmos Room Design Tool.
+- **No build.** Plain ES modules and `node --test`; `package.json` has no dependencies.
