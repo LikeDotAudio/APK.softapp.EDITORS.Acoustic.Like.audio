@@ -2910,7 +2910,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         { class: 'about' },
         h('p', {}, h('b', {}, ACX_LABEL)),
         h('p', {}, 'Modal response, speaker boundary interference, ray tracing and reverberation time, laid out the way the 1997 Windows 95 program (Acoustic-X Release 1.0; reviewed in Sound On Sound, December 1998) laid them out.'),
-        h('p', { class: 'muted' }, "Not Pilchner-Schoustal's software: every number here is computed by ACOUSTIC.LIKE.AUDIO's own acoustics, from the room being designed. The arithmetic is in Documentation/acoustic-x."),
+        h('p', { class: 'muted' }, "Not Pilchner-Schoustal's software: every number here is computed by ACOUSTICS.LIKE.AUDIO's own acoustics, from the room being designed. The arithmetic is in Documentation/acoustic-x."),
         h('div', { class: 'btns' }, h('button', { onclick: () => close('about') }, 'OK')),
       ),
     );

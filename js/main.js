@@ -44,7 +44,7 @@ import { createWizard } from './ui/wizard.js';
 const CEILING_LAYER = 'Ceiling';
 
 /**
- * ACOUSTIC.LIKE.AUDIO
+ * ACOUSTICS.LIKE.AUDIO
  *
  * A softapp built on CAD.Like.audio: the CAD is the plan, live in an iframe,
  * and everything acoustic is laid over and around it — speakers and mics, six

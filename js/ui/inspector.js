@@ -10,7 +10,7 @@ import { DEFAULT_ISOLATION, FLOOR_BUILDS, SETTINGS_BUILDS, WALL_BUILDS, floorF0,
 import { activeSet, arrangedSpeakers, arrayFront, HAND_LAYOUT, isMain, LAYOUTS, layoutCentre, layoutPositions, NO_LAYOUT, setColour, setOf, SPEAKER_SETS, speakerColour } from '../acoustics/layouts.js';
 import { CLEAR_M, growthDetail, growthText, roomGrowth } from '../acoustics/roomFit.js';
 import { LOW_END } from '../acoustics/widthFinder.js';
-import { MATERIALS, PRODUCTS, lookup } from '../acoustics/materials.js';
+import { MATERIALS, PRODUCTS, lookup, pieceHeight } from '../acoustics/materials.js';
 import { MIC_PATTERNS, SPEAKER_PATTERNS } from '../acoustics/patterns.js';
 import { allModes, fromFrame, inFrame, schroeder } from '../acoustics/room.js';
 import { ROOM_LIBRARY, grabBag, planArea } from '../acoustics/roomLibrary.js';
@@ -44,7 +44,7 @@ import { rackPanel } from './rackPanel.js';
  * palette blocks stand for.
  */
 
-const TABS = ['Room', 'Inspect', 'Acoustics', 'Build', 'Treatments', 'Symmetry', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
+const TABS = ['Room', 'Inspect', 'Acoustics', 'Build', 'Treatments', 'Furniture', 'Symmetry', 'Materials', 'Field', 'Layout', 'Subs', 'Advisor', 'File'];
 
 const HOW_TO_TREAT = 'Treatments are placed in the CAD: click a wall’s elevation (or the ceiling) to open its drawing, pick a finish or a product from the Acoustic palette, then drag a region to fill it or click to drop a product. Each lands on that surface and mixes into its α and s.';
 
@@ -951,6 +951,54 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     ];
   }
 
+  /**
+   * Everything placed in the room, a row each: what it is, where it stands —
+   * x, y and its distance from the front and left walls — how it is turned,
+   * its size, and what it is made of, its absorption band by band.
+   */
+  function furniturePane() {
+    const room = engine.out.room;
+    if (!room) return [h('h3', {}, 'Furniture'), h('p', { class: 'hint' }, 'Draw the room first.')];
+    const { selected } = S();
+    const placed = (room.patches ?? []).filter((p) => p.surface === 'floor' && pieceHeight(p) > 0);
+    const rows = placed.map((p) => {
+      const at = p.at ?? centreOf(p.points3d);
+      const f = inFrame(room, at);
+      const prod = PRODUCTS.find((x) => x.id === p.paletteId);
+      return { id: p.id, name: prod?.name ?? p.material.name, at, f, rotation: p.rotation ?? 0, size: prod ? [...prod.size, pieceHeight(p)] : null, mat: p.material };
+    });
+    if (!rows.length) return [h('h3', {}, 'Furniture'), h('p', { class: 'hint' }, 'Nothing placed yet — + Furniture on the toolbar, or a product from the CAD’s palette.')];
+    const csv = () => {
+      const head = ['name', 'x m', 'y m', 'from front m', 'from left m', 'rotation °', 'w m', 'd m', 'h m', 'material', ...BAND_HEADS.map((b) => `α ${b}`)];
+      const line = (r) => [r.name, fmt(r.at.x), fmt(r.at.y), fmt(r.f.fromFront), fmt(r.f.fromLeft), fmt(r.rotation, 1), ...(r.size ? r.size.map((v) => fmt(v)) : ['', '', '']), r.mat.name, ...r.mat.alpha.map((a) => fmt(a))];
+      return [head, ...rows.map(line)].map((l) => l.map((v) => (/[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v)).join(',')).join('\n');
+    };
+    return [
+      h('h3', {}, `Furniture · ${rows.length} placed`),
+      h(
+        'table',
+        { class: 'grid furniture' },
+        h('tr', {}, h('th', { title: 'plan coordinates, metres' }, 'x, y'), h('th', { title: 'from the front wall, from the left wall, metres' }, 'front · left'), h('th', {}, 'turn'), h('th', { title: 'width × depth × height, metres' }, 'size')),
+        ...rows.flatMap((r) => [
+          h('tr', { class: `name${selected?.id === r.id ? ' on' : ''}`, onclick: () => store.select({ kind: 'patch', id: r.id }) }, h('td', { colspan: 4, title: r.name }, swatch(r.mat), ` ${r.name}`)),
+          h(
+            'tr',
+            { class: `at${selected?.id === r.id ? ' on' : ''}`, onclick: () => store.select({ kind: 'patch', id: r.id }) },
+            h('td', { class: 'mono' }, `${fmt(r.at.x)}, ${fmt(r.at.y)}`),
+            h('td', { class: 'mono' }, `${fmt(r.f.fromFront)} · ${fmt(r.f.fromLeft)}`),
+            h('td', { class: 'mono' }, `${fmt(r.rotation, 0)}°`),
+            h('td', { class: 'mono' }, r.size ? r.size.map((v) => fmt(v)).join(' × ') : '—'),
+          ),
+          h('tr', { class: 'sub' }, h('td', { colspan: 4, title: 'absorption coefficient α, 125 Hz – 4 kHz' }, `${r.mat.name} · α ${r.mat.alpha.map((a, i) => `${BAND_HEADS[i]} ${fmt(a)}`).join(' · ')}`)),
+        ]),
+      ),
+      h('div', { class: 'actions' }, button('⬇ CSV', () => download('furniture.csv', csv(), 'text/csv'), { title: 'The list as a spreadsheet: every piece, where it stands, its turn, its size and its absorption by band' })),
+    ];
+  }
+
+  /** The middle of a piece with no anchor of its own: the mean of its outline. */
+  const centreOf = (pts) => ({ x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length });
+
   /** The room's symmetry in one place: which walls match and which side leads, the CAD's mirror, and the pairs placed about it. */
   function symmetryPane() {
     const { settings } = S();
@@ -1274,7 +1322,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
     else store.select({ kind: 'wall', id: key });
   }
 
-  const PANES = { Inspect: inspectPane, Acoustics: acousticsPane, Room: roomPane, Build: buildPane, Treatments: treatmentsPane, Symmetry: symmetryPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Subs: subsPane, Advisor: advisorPane, File: filePane };
+  const PANES = { Inspect: inspectPane, Acoustics: acousticsPane, Room: roomPane, Build: buildPane, Treatments: treatmentsPane, Furniture: furniturePane, Symmetry: symmetryPane, Materials: materialsPane, Field: fieldPane, Layout: layoutPane, Subs: subsPane, Advisor: advisorPane, File: filePane };
 
   return {
     render,

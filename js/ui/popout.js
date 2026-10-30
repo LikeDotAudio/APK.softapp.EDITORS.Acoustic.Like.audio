@@ -47,7 +47,7 @@ export function makePoppable(el, { title, onChange = () => {}, onPopped = () => 
       win = w;
       const css = new URL('css/app.css', location.href).href;
       w.document.open();
-      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title} — ACOUSTIC.LIKE.AUDIO</title><link rel="stylesheet" href="${css}"></head><body class="popout"><div class="popbar"><b>${title}</b><span class="tools"></span><button data-act="full" title="Full screen">⛶</button><button data-act="dock" title="Back into the page">⇲ Dock</button></div><div class="host"></div></body></html>`);
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title} — ACOUSTICS.LIKE.AUDIO</title><link rel="stylesheet" href="${css}"></head><body class="popout"><div class="popbar"><b>${title}</b><span class="tools"></span><button data-act="full" title="Full screen">⛶</button><button data-act="dock" title="Back into the page">⇲ Dock</button></div><div class="host"></div></body></html>`);
       w.document.close();
       const bar = w.document.querySelector('.popbar .tools');
       for (const t of tools(w)) bar.append(w.document.adoptNode(t));

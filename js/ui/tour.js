@@ -310,7 +310,7 @@ export function createTour({ store, engine, onStart, onStop, sweepTo, caption, n
     }
     const doc = win.document;
     doc.open();
-    doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tour — ACOUSTIC.LIKE.AUDIO</title><link rel="stylesheet" href="${new URL('css/app.css', location.href).href}"></head>
+    doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Tour — ACOUSTICS.LIKE.AUDIO</title><link rel="stylesheet" href="${new URL('css/app.css', location.href).href}"></head>
 <body class="popout tour"><div class="popbar"><b>🎞 Tour</b><span class="state"></span><span class="tools"></span><button data-act="stop">■ Stop</button></div>
 <div class="stage" style="flex:1;display:flex;align-items:center;justify-content:center;min-height:0;background:#0b0d12"></div></body></html>`);
     doc.close();

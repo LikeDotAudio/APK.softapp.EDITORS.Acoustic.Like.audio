@@ -186,6 +186,12 @@ table.grid th, table.grid td { border-bottom: 1px solid #333; padding: 2px 4px; 
 table.grid th:first-child, table.grid td:first-child { text-align: left; }
 table.grid tr.ok td:first-child { color: var(--ok); }
 table.grid tr.bad td:first-child { color: var(--bad); }
+/* the Furniture tab: a row a piece, its numbers on one line, its material and absorption under it */
+table.grid.furniture tr.name, table.grid.furniture tr.at { cursor: pointer; }
+table.grid.furniture tr.name td { border-bottom: 0; padding-top: 6px; font-family: system-ui, sans-serif; }
+table.grid.furniture tr.on td { color: var(--accent); }
+table.grid.furniture tr.at td { border-bottom: 0; white-space: nowrap; }
+table.grid.furniture tr.sub td { text-align: left; color: var(--muted); font-size: 10px; padding-bottom: 6px; }
 table.grid tr[onclick], table.grid tr.ok, table.grid tr.bad { cursor: pointer; }
 table.modes tr.axial td:nth-child(3) { color: #ef4444; }
 table.modes tr.tangential td:nth-child(3) { color: #f59e0b; }

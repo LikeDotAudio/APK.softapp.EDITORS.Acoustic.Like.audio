@@ -42,7 +42,7 @@ export function askLicence(then) {
   const form = el(
     'form',
     { className: 'acx-body' },
-    el('div', {}, el('p', { textContent: 'This copy of ACOUSTIC.LIKE.AUDIO must be registered before a file can be opened.' }), el('p', { textContent: 'Enter your licence key:' }), key, el('div', {}, ok, ' ', cancel)),
+    el('div', {}, el('p', { textContent: 'This copy of ACOUSTICS.LIKE.AUDIO must be registered before a file can be opened.' }), el('p', { textContent: 'Enter your licence key:' }), key, el('div', {}, ok, ' ', cancel)),
   );
   form.style.cssText = 'display: block; padding: 10px 12px 12px;';
   form.lastChild.lastChild.style.cssText = 'display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px;';

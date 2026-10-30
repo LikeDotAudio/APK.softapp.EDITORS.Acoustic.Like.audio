@@ -1,6 +1,6 @@
 # Acoustics engine: mathematical documentation
 
-This folder documents what the ACOUSTIC.LIKE.AUDIO engine computes: every
+This folder documents what the ACOUSTICS.LIKE.AUDIO engine computes: every
 module in `js/acoustics/` and `js/compute/`. Each chapter gives the governing
 equations, defines the symbols and units, states the assumptions and limits,
 and names the function that implements each equation as
