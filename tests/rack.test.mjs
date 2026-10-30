@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { furnitureHeight, PRODUCTS } from '../js/acoustics/materials.js';
 import { floorSolids, partsOf, pieceFootprint } from '../js/acoustics/pieces.js';
@@ -61,10 +61,14 @@ test('the rack is drawn from what it holds: an item a panel wide, its U tall and
   assert.equal(floorSolids(piece, rackHeight(rack)).length, parts.length);
 });
 
-test('every rack in the palette is a rack, and a catalogued part comes in with its U and its depth', () => {
+// the BIM parts catalogue is the monorepo's (PODS/POD.THIN/OS/BIM); this repo's own CI checks out alone
+const PARTS = new URL('../../../../OS/BIM/parts.json', import.meta.url);
+
+test('every rack in the palette is a rack, and a catalogued part comes in with its U and its depth', (t) => {
   const racks = PRODUCTS.filter((p) => isRack(p.id));
   assert.ok(racks.length >= 3);
-  const parts = JSON.parse(readFileSync(new URL('../../../../OS/BIM/parts.json', import.meta.url))).parts;
+  if (!existsSync(PARTS)) return t.skip('no OS/BIM/parts.json outside the APK.audio checkout');
+  const parts = JSON.parse(readFileSync(PARTS)).parts;
   const dmm = parts.find((p) => p.id === 'agilent-34401a');
   const it = itemFromPart(dmm, 5);
   assert.equal(it.units, 2);
