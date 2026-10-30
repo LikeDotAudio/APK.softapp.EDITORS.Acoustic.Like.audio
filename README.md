@@ -142,3 +142,7 @@ The ecosystem's rules for this app are written down in `Documentation/🏛Philos
 - **Measurement outranks the model.** A WAV measured at the seat is read beside the model's RT60 (`js/acoustics/measure.js`).
 - **Cite, never certify.** Layouts are checked against ITU-R BS.2051 angles (`js/acoustics/layouts.js`), and certification is left to the Dolby Atmos Room Design Tool.
 - **No build.** Plain ES modules and `node --test`; `package.json` has no dependencies.
+
+<!-- wiki:smoke -->
+**Smoke test** — ✅ PASS 2/2 since 2026-10-30 12:51 EDT — [results](Documentation/%F0%9F%A7%A9Manual%20and%20Artifacts/SMOKE.md)
+<!-- /wiki:smoke -->

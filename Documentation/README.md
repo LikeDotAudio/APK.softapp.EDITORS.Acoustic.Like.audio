@@ -19,3 +19,7 @@ The documentation for `EDITORS.Acoustic.Like.audio`, in the same lanes as the AP
 | [acoustic-x/](acoustic-x/README.md) | Acoustic X (classic) — documentation |
 | [acoustics/](acoustics/README.md) | Acoustics engine: mathematical documentation |
 <!-- /wiki:lanes -->
+
+<!-- wiki:smoke -->
+**Smoke test** — ✅ PASS 2/2 since 2026-10-30 12:51 EDT — [results](%F0%9F%A7%A9Manual%20and%20Artifacts/SMOKE.md)
+<!-- /wiki:smoke -->
