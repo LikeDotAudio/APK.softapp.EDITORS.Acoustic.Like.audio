@@ -128,3 +128,36 @@ test('popping out hands the drawing CAD to CAD; the host never holds the session
   f.fire(f.popupWin, { type: 'ready' });
   assert.ok(!f.sentTo.includes('open'), 'and nothing is relayed to the window');
 });
+
+// Docking back is the same handover the other way: the window keeps the CAD until the iframe has the drawing.
+test('docking back hands the drawing window to iframe; the window closes on the iframe\'s ready', async () => {
+  const f = await fakeLink();
+  const toPopup = [];
+  const post = f.popupWin.postMessage;
+  f.popupWin.postMessage = (m) => (toPopup.push(m), post(m));
+  f.link.popOut();
+  f.fire(f.popupWin, { type: 'ready' });
+  assert.equal(f.link.popped, true);
+  f.link.dockIn();
+  const handover = toPopup.find((m) => m.type === 'handover');
+  assert.ok(handover && typeof handover.token === 'string' && handover.token.length > 0, 'the window is told to hand over');
+  assert.ok(f.iframe.src.endsWith(`&resume&handover=${handover.token}`), 'the iframe reloads with the same token');
+  assert.equal(f.popupWin.closed, false, 'not closed before the iframe has the drawing');
+  assert.equal(f.link.popped, true, 'the window still holds the CAD');
+  f.fire(f.iframe.contentWindow, GEOMETRY);
+  assert.equal(f.popupWin.closed, false, 'nothing from the docking iframe but ready ends it');
+  f.fire(f.iframe.contentWindow, { type: 'ready' });
+  assert.equal(f.popupWin.closed, true, 'closed once the iframe has it');
+  assert.equal(f.link.popped, false);
+  assert.ok(!toPopup.some((m) => m.type === 'session') && !f.toIframe.some((m) => m.type === 'session' || m.type === 'open'), 'no read-back, no relay');
+});
+
+test('a CAD window closed by hand docks from the autosave: there is nobody to hand over', async () => {
+  const f = await fakeLink();
+  f.link.popOut();
+  f.fire(f.popupWin, { type: 'ready' });
+  f.popupWin.closed = true;
+  f.link.dockIn();
+  assert.ok(f.iframe.src.endsWith('&resume') && !f.iframe.src.includes('handover'));
+  assert.equal(f.link.popped, false);
+});

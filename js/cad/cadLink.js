@@ -25,10 +25,14 @@
  * — this page never asks for it or holds it. The window says `ready` once it
  * has the drawing; only then is the iframe blanked — so every drawing set
  * (marks, elevations, blocks) is there when it opens, not one autosave behind.
- * `dockIn()` (or closing that window) closes it and reloads the iframe. Both
- * add `&resume`, so the CAD that starts restores the drawing the other one
- * autosaved — one CAD at a time, never two editing the file. Only messages
- * from whichever window holds the CAD now are heard. Popped, its `view`
+ * `dockIn()` is the same handover the other way: the window is sent
+ * `handover` { token }, the iframe reloads at `&resume&handover=<token>`, and
+ * the window is closed only when the iframe says `ready` — it has the drawing
+ * as it was the moment it asked, not as of the last autosave. Until then the
+ * window still holds the CAD. Closing that window by hand docks too, but
+ * there is nobody left to hand over, so the iframe restores the autosave
+ * (`&resume` alone). One CAD at a time, never two editing the file. Only
+ * messages from whichever window holds the CAD now are heard. Popped, its `view`
  * describes a canvas nowhere near our overlay, so it is not passed on.
  *
  * LIVE, NOT REMEMBERED. Popped, the plan tile draws the walls itself, so it
@@ -79,6 +83,8 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
   let watch = 0;
   // popping out: the window opened but has not yet taken the drawing from the docked CAD
   let opening = null;
+  // docking back: the iframe was reloaded with a handover token but has not yet taken the drawing from the window
+  let docking = false;
   const target = () => (popup && !popup.closed ? popup : iframe.contentWindow);
   const send = (type, body = {}) => target()?.postMessage({ protocol: HOST_PROTOCOL, type, ...body }, window.location.origin);
   let palette = null;
@@ -114,6 +120,11 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
       if (msg.type !== 'ready') return;
       takeOver(opening);
     }
+    if (docking && e.source === iframe.contentWindow) {
+      // the iframe has the drawing from the window (or, with it gone silent, the autosave): it holds the CAD again
+      if (msg.type !== 'ready') return;
+      docked();
+    }
     if (e.source !== target()) return;
     if (popup) {
       heard = now();
@@ -148,19 +159,41 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     onLive?.(false);
     iframe.src = 'about:blank';
     iframe.hidden = true;
-    watch = setInterval(() => (popup?.closed ? dockIn() : heartbeat()), 500);
+    watch = setInterval(() => {
+      if (!popup?.closed) heartbeat();
+      // closed while the iframe is taking the drawing: the iframe is already on its way
+      else if (docking) docked();
+      else dockIn();
+    }, 500);
     onPopped?.(true);
   }
 
-  function dockIn() {
-    if (!popup) return;
+  /** Back in the iframe: the window goes, and the iframe is the CAD from now on. */
+  function docked() {
+    docking = false;
     clearInterval(watch);
-    if (!popup.closed) popup.close();
+    if (popup && !popup.closed) popup.close();
     popup = null;
     live = false;
-    iframe.hidden = false;
-    iframe.src = `${address}&resume`;
+    // its load said hello to the window that still held the CAD: have it say where it stands now
+    send('hello');
     onPopped?.(false);
+  }
+
+  function dockIn() {
+    if (!popup || docking) return;
+    if (popup.closed) {
+      // nobody left to hand the drawing over: the iframe restores the autosave
+      iframe.hidden = false;
+      iframe.src = `${address}&resume`;
+      docked();
+      return;
+    }
+    const token = handoverToken();
+    docking = true;
+    send('handover', { token });
+    iframe.hidden = false;
+    iframe.src = `${address}&resume&handover=${token}`;
   }
   // A popped CAD is ours: it goes when this page does.
   window.addEventListener('pagehide', () => popup?.close());
