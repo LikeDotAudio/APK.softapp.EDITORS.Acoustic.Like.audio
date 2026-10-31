@@ -9,10 +9,17 @@ name: Publish to acoustics.cad.like.audio
 #
 # The host bridge only talks to its own origin, so the CAD cannot come from
 # cad.like.audio: its tracked dist/ is copied into this site as cad/, and the
-# bench's parts catalogue (the APK.audio repo's PODS/POD.THIN/OS/BIM/parts.json)
-# as catalogue/parts.json. Where the page looks for both is one file,
-# js/site.js; the site ships js/site.published.js in its place (a copy, not a
-# pattern rewrite). The nightly run picks up CAD and catalogue changes.
+# bench's parts catalogue as catalogue/parts.json. The catalogue is VENDORED in
+# this repo at vendor/bim/parts.json (the monorepo is private, so this workflow
+# cannot check it out); it is a copy of the APK.audio repo's
+# PODS/POD.THIN/OS/BIM/parts.json, refreshed by hand from a monorepo checkout:
+#   cp ../../../OS/BIM/parts.json vendor/bim/parts.json   (then commit it here)
+# tests/vendor-parts.test.mjs fails `npm test` inside the monorepo whenever the
+# two differ, so whoever edits OS/BIM/parts.json is told to refresh it.
+# Where the page looks for both is one file, js/site.js; the site ships
+# js/site.published.js in its place (a copy, not a pattern rewrite). The nightly
+# run picks up CAD changes; a catalogue change ships only once the vendored copy
+# is refreshed and committed.
 #
 # DNS: acoustics.cad.like.audio must be a CNAME to likedotaudio.github.io
 # BEFORE the domain is set in Settings → Pages, or the github.io address
