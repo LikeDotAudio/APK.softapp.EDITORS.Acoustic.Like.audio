@@ -4,6 +4,7 @@ import { createFaceView } from '../views/faceView.js';
 import { createView3d, stiColour } from '../views/view3d.js';
 import { talkers, talkPaths } from '../acoustics/talk.js';
 import { STI_RATINGS } from '../acoustics/intelligibility.js';
+import { ACCENT } from '../brand.js';
 
 /**
  * THE TOUR, AS A VIDEO
@@ -480,7 +481,7 @@ ${OFFERED.map(([k, t]) => `<label><input type="checkbox" name="view" value="${k}
       ctx.textAlign = 'right';
       ctx.fillText(`${at.chapter + 1} / ${plan.length}`, FRAME.w - 40, FRAME.h - 50);
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#f4902c';
+      ctx.fillStyle = ACCENT;
       ctx.fillRect(0, FRAME.h - 4, (FRAME.w * t) / total, 4);
       state.textContent = `${recorder ? '● recording' : '▶ playing'} · ${c.title} · ${clock(total - t)} left`;
     }, 1000 / 30);

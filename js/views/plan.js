@@ -23,6 +23,7 @@ import { goodFractions, nullLines, snapToDivisions } from './guides.js';
 import { gridCanvas } from './paint.js';
 import { gripAt, gripsOf, othersThan, snapPoint } from './wallGrips.js';
 import { furnitureLayer } from '../cad/marks.js';
+import { ACCENT } from '../brand.js';
 
 /**
  * THE PLAN IS THE CAD
@@ -343,7 +344,7 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
       const s = u(g);
       ctx.beginPath();
       ctx.arc(s.x, s.y, 5, 0, 2 * Math.PI);
-      ctx.fillStyle = g.refs.length > 1 ? '#7dd3fc' : '#f4902c';
+      ctx.fillStyle = g.refs.length > 1 ? '#7dd3fc' : ACCENT;
       ctx.fill();
       ctx.strokeStyle = '#0b1220';
       ctx.lineWidth = 1.5;
@@ -1058,7 +1059,7 @@ function drawWallMarks(ctx, room, state, toScreen) {
     drawLabel(ctx, m.x + w.nIn.x * 16, m.y - w.nIn.y * 16, on ? text : String(n + 1), on ? '#ffffff' : '#7dd3fc', { force: on });
   });
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = '#f4902c';
+  ctx.strokeStyle = ACCENT;
   ctx.lineWidth = 2;
   ctx.setLineDash([5, 4]);
   for (const w of room.walls) {
@@ -1069,7 +1070,7 @@ function drawWallMarks(ctx, room, state, toScreen) {
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
-      drawLabel(ctx, (a.x + b.x) / 2 + w.nIn.x * 14, (a.y + b.y) / 2 - w.nIn.y * 14, `opening ${Math.round(o.width * 1000)} mm`, '#f4902c', { force: true });
+      drawLabel(ctx, (a.x + b.x) / 2 + w.nIn.x * 14, (a.y + b.y) / 2 - w.nIn.y * 14, `opening ${Math.round(o.width * 1000)} mm`, ACCENT, { force: true });
     }
   }
   ctx.restore();

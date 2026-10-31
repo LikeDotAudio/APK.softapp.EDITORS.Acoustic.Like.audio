@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { F_MAX, F_MIN } from '../compute/compute.js';
+import { ACCENT, accentA } from '../brand.js';
 
 /**
  * A SONG DRIVES THE FIELD
@@ -230,7 +231,7 @@ export function createPlayer({ root, store, engine, onPlay = () => {} }) {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
     const [x0, x1] = [xOf(band.lo, w), xOf(band.hi, w)];
-    g.fillStyle = 'rgba(244, 144, 44, .12)';
+    g.fillStyle = accentA(.12);
     g.fillRect(x0, 0, x1 - x0, h);
     if (spectrum && ctx) {
       const bin = ctx.sampleRate / FFT;
@@ -245,7 +246,7 @@ export function createPlayer({ root, store, engine, onPlay = () => {} }) {
       g.lineWidth = 1;
       g.stroke();
     }
-    g.fillStyle = '#f4902c';
+    g.fillStyle = ACCENT;
     g.fillRect(x0 - 1, 0, 2, h);
     g.fillRect(x1 - 1, 0, 2, h);
     g.font = '9px ui-monospace, monospace';
@@ -273,7 +274,7 @@ export function createPlayer({ root, store, engine, onPlay = () => {} }) {
       const mid = h / 2;
       for (let x = 0; x < w; x++) {
         const [lo, hi] = peaks[Math.floor((x / w) * peaks.length)];
-        g.fillStyle = x / w < at ? '#f4902c' : '#64748b';
+        g.fillStyle = x / w < at ? ACCENT : '#64748b';
         g.fillRect(x, mid - hi * mid, 1, Math.max(1, (hi - lo) * mid));
       }
     } else {

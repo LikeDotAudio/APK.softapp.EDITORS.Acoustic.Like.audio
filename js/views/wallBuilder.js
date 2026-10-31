@@ -11,6 +11,7 @@ import { panelOptions, reflectionPanels } from '../acoustics/reflectionPanels.js
 import { acrossWall, faceArea, snapToGuide, wallAbsorption, wallDetails, wallDivisions, wallGuides, wallLineToSheet, wallOutline, wallRegions, wallSpan, wallTransmission, wallWindows } from '../acoustics/wallPlan.js';
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { FACE_COLOURS } from './glyphs.js';
+import { ACCENT } from '../brand.js';
 
 /**
  * THE WALL BUILDER
@@ -341,7 +342,7 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
     }
     for (const w of windows) out.push(`<rect x="${X(w.x0)}" y="${Y(w.y1)}" width="${X(w.x1 - w.x0)}" height="${X(w.y1 - w.y0)}" fill="url(#wbGlass)" stroke="#9cc7e8" stroke-width="${u * 0.1}"/>`);
     out.push('</g>');
-    if (sel) out.push(`<path d="M${sel.pts.map((p) => `${X(p.x)} ${Y(p.y)}`).join('L')}Z" fill="none" stroke="#f4902c" stroke-width="${u * 0.3}" pointer-events="none"/>`);
+    if (sel) out.push(`<path d="M${sel.pts.map((p) => `${X(p.x)} ${Y(p.y)}`).join('L')}Z" fill="none" stroke="${ACCENT}" stroke-width="${u * 0.3}" pointer-events="none"/>`);
     out.push(`<path d="${outlinePath}" fill="none" stroke="#e8e8e8" stroke-width="${u * 0.18}"/>`);
     // the divisions the wall offers, faint, each saying why — not where one is already drawn
     if (showGuides) {
@@ -351,8 +352,8 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
       out.push('</g>');
     }
     // the division lines as drawn, and a dot where each meets the wall's edge
-    for (const l of div.lines) out.push(`<path d="M${X(l.a.x)} ${Y(l.a.y)}L${X(l.b.x)} ${Y(l.b.y)}" stroke="#f4902c" stroke-width="${u * 0.13}"/>`);
-    for (const x of div.xs) out.push(`<circle cx="${X(x)}" cy="0" r="${u * 0.3}" fill="#f4902c"/><circle cx="${X(x)}" cy="${H}" r="${u * 0.3}" fill="#f4902c"/>`);
+    for (const l of div.lines) out.push(`<path d="M${X(l.a.x)} ${Y(l.a.y)}L${X(l.b.x)} ${Y(l.b.y)}" stroke="${ACCENT}" stroke-width="${u * 0.13}"/>`);
+    for (const x of div.xs) out.push(`<circle cx="${X(x)}" cy="0" r="${u * 0.3}" fill="${ACCENT}"/><circle cx="${X(x)}" cy="${H}" r="${u * 0.3}" fill="${ACCENT}"/>`);
     // the brass marker's centre line
     out.push(`<path d="M${W / 2} ${-padT * 0.6}V${H + u * 1.4}" stroke="#b08d57" stroke-dasharray="${u} ${u * 0.4} ${u * 0.2} ${u * 0.4}" stroke-width="${u * 0.1}"/>`);
     out.push(`<circle cx="${W / 2}" cy="${H + u * 2}" r="${u * 0.6}" fill="#1e1e1e" stroke="#b08d57" stroke-width="${u * 0.15}"/><path d="M${W / 2 - u * 0.6} ${H + u * 2}h${u * 1.2}M${W / 2} ${H + u * 1.4}v${u * 1.2}" stroke="#b08d57" stroke-width="${u * 0.12}"/>`);
@@ -366,7 +367,7 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
       const h = short ? fs * 2.6 : fs * 1.5;
       const cx = X((r.x0 + r.x1) / 2);
       const cy = Y((r.y0 + r.y1) / 2);
-      out.push(`<g class="wb-tag" data-act="pick" data-tag="${r.tag}"><rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${fs * 0.3}" fill="#1e1e1e" stroke="${r === sel ? '#f4902c' : look.stroke}" stroke-width="${u * 0.08}"/>`);
+      out.push(`<g class="wb-tag" data-act="pick" data-tag="${r.tag}"><rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${fs * 0.3}" fill="#1e1e1e" stroke="${r === sel ? ACCENT : look.stroke}" stroke-width="${u * 0.08}"/>`);
       out.push(`<text x="${cx - w / 2 + fs * 0.5}" y="${short ? cy - fs * 0.15 : cy + fs * 0.35}" font-size="${fs}" font-weight="700" fill="#f4f4f4">${r.tag}</text>${short ? `<text x="${cx - w / 2 + fs * 0.5}" y="${cy + fs * 0.95}" font-size="${fs * 0.85}" fill="${look.text}">${esc(short)}</text>` : ''}<title>${r.tag} · ${esc(r.name)}</title></g>`);
     }
     // the callouts: a section cut a quarter of the way up each built region, a bubble out past the left edge
@@ -430,7 +431,7 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
         const tb = at(wl.b).t;
         if (t < Math.min(ta, tb) - 1e-6 || t > Math.max(ta, tb) + 1e-6 || Math.abs(tb - ta) < 1e-9) continue;
         const k = (t - ta) / (tb - ta);
-        out.push(`<circle cx="${pad + (wl.a.x + (wl.b.x - wl.a.x) * k - x0) * s}" cy="${pad + (h - (wl.a.y + (wl.b.y - wl.a.y) * k - y0)) * s}" r="4" fill="#f4902c"/>`);
+        out.push(`<circle cx="${pad + (wl.a.x + (wl.b.x - wl.a.x) * k - x0) * s}" cy="${pad + (h - (wl.a.y + (wl.b.y - wl.a.y) * k - y0)) * s}" r="4" fill="${ACCENT}"/>`);
         break;
       }
     }
@@ -545,14 +546,14 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
       out.push(`<rect x="${m - fs * 0.4}" y="${-fs * 0.5}" width="${fs * 0.8}" height="${y0 + D + fs}" fill="#181818"/><path d="${z(m - fs * 0.4)}${z(m + fs * 0.4)}" stroke="#9aa4b2" stroke-width="1.5" fill="none"/>`);
     }
     // division lines through the studs
-    out.push(`<path d="M${frame / 2} ${-fs * 0.6}V${y0 + D + fs * 0.6}M${W - frame / 2} ${-fs * 0.6}V${y0 + D + fs * 0.6}" stroke="#f4902c" stroke-dasharray="8 4" stroke-width="1.2"/>`);
+    out.push(`<path d="M${frame / 2} ${-fs * 0.6}V${y0 + D + fs * 0.6}M${W - frame / 2} ${-fs * 0.6}V${y0 + D + fs * 0.6}" stroke="${ACCENT}" stroke-dasharray="8 4" stroke-width="1.2"/>`);
     const lx = W + pad * 0.8 + fs;
     for (const l of wanted) out.push(`<path d="M${W + 2} ${l.y}L${lx - fs * 0.6} ${l.at}H${lx - 4}" stroke="#9aa4b2" fill="none"/><text x="${lx}" y="${l.at + fs * 0.35}" font-size="${fs * 0.9}" fill="${l.colour}">${esc(l.text)}</text>`);
     // the width, ticked at the division lines, each edge from the centre line
     const dy = y0 + D + fs * 2;
     out.push(`<path d="M0 ${dy}H${W}M0 ${dy - fs * 0.5}V${dy + fs * 0.5}M${W} ${dy - fs * 0.5}V${dy + fs * 0.5}" stroke="#6b7280"/>`);
     out.push(`<text x="${W / 2}" y="${dy - fs * 0.35}" text-anchor="middle" font-size="${fs * 0.9}" fill="#d4d4d4">${Math.round(Wtrue)}</text>`);
-    out.push(`<text x="0" y="${dy + fs * 1.5}" text-anchor="middle" font-size="${fs * 0.9}" fill="#f4902c">${signed(r.x0 - span / 2)}</text><text x="${W}" y="${dy + fs * 1.5}" text-anchor="middle" font-size="${fs * 0.9}" fill="#f4902c">${signed(r.x1 - span / 2)}</text>`);
+    out.push(`<text x="0" y="${dy + fs * 1.5}" text-anchor="middle" font-size="${fs * 0.9}" fill="${ACCENT}">${signed(r.x0 - span / 2)}</text><text x="${W}" y="${dy + fs * 1.5}" text-anchor="middle" font-size="${fs * 0.9}" fill="${ACCENT}">${signed(r.x1 - span / 2)}</text>`);
     out.push(`<text x="${W / 2}" y="${dy + fs * 3}" text-anchor="middle" font-size="${fs * 0.8}" fill="#9aa4b2">stud ${Math.round(frame)} × ${Math.round(D)} at each division line · ROOM ↓</text>`);
     out.push('</svg>');
     return `<div class="wb-dhead"><span class="wb-bubble">${d.n}</span><b>Detail D${d.n} · section through ${esc(d.regions.map((q) => q.tag).join(', '))}</b><span class="wb-small">plan section, ${broken ? 'to scale, broken' : 'to scale'}, mm</span></div>${out.join('')}`;
@@ -597,9 +598,9 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
         const x = 12 + b * 48;
         const hb = (trans.parts[0].tl[b] / max) * 84;
         const hc = (v / max) * 84;
-        return `<rect x="${x}" y="${90 - hb}" width="18" height="${hb}" fill="#64748b"/><rect x="${x + 20}" y="${90 - hc}" width="18" height="${hc}" fill="#f4902c"/><text x="${x + 19}" y="104" text-anchor="middle" font-size="10" fill="#9aa4b2">${BAND_HEADS[b]}</text>`;
+        return `<rect x="${x}" y="${90 - hb}" width="18" height="${hb}" fill="#64748b"/><rect x="${x + 20}" y="${90 - hc}" width="18" height="${hc}" fill="${ACCENT}"/><text x="${x + 19}" y="104" text-anchor="middle" font-size="10" fill="#9aa4b2">${BAND_HEADS[b]}</text>`;
       })
-      .join('')}</svg><p class="wb-small"><span style="color:#64748b">■</span> the build alone · <span style="color:#f4902c">■</span> the wall as it is, glass and all</p>`;
+      .join('')}</svg><p class="wb-small"><span style="color:#64748b">■</span> the build alone · <span style="color:${ACCENT}">■</span> the wall as it is, glass and all</p>`;
     const leak = trans.leak
       ? `<p class="wb-calc">Shared with the house: for ${trans.roomDb[0]} dB in the room, L_house = L_room − TL + 10·log10(S / 10 m²) with S ${trans.area.toFixed(1)} m²:</p>
          <table class="wb-table"><tr><th>Hz</th>${BAND_HEADS.map((b) => `<th class="n">${b}</th>`).join('')}</tr><tr><td>House side, dB</td>${trans.leak.map((v) => `<td class="n">${f0(v)}</td>`).join('')}</tr></table>`

@@ -12,6 +12,7 @@ import { gridCanvas, sampleGrid } from './paint.js';
 import { drawPatch, patchName, rgba, shortName } from './treatments.js';
 import { drawRayOverlay } from './rayOverlay.js';
 import { speakerColour } from '../acoustics/layouts.js';
+import { ACCENT } from '../brand.js';
 
 /**
  * FIVE OF THE SIX DRAWINGS
@@ -188,7 +189,7 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       if (shown > 0 && shown < 1) {
         ctx.save();
         ctx.clip(outline);
-        ctx.fillStyle = '#f4902c';
+        ctx.fillStyle = ACCENT;
         ctx.fillRect(0, yEdge - 1.5, w, 3);
         ctx.restore();
       }

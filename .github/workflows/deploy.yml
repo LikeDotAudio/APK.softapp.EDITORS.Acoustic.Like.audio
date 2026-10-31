@@ -81,6 +81,8 @@ jobs:
         run: |
           mkdir -p _site
           cp -r acoustic/index.html acoustic/css acoustic/js acoustic/LICENSE _site/
+          # the brand tokens the page and js/brand.js read (vendor_contract_web.py copy)
+          mkdir -p _site/vendor && cp -r acoustic/vendor/apk-contracts _site/vendor/
           # the help file Acoustic X opens (Documentation/acoustic-x and /acoustics)
           cp -r acoustic/Documentation _site/
           cp -r cad/dist _site/cad
