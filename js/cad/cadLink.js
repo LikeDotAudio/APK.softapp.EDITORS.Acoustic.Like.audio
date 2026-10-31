@@ -29,6 +29,18 @@
  * from whichever window holds the CAD now are heard. Popped, its `view`
  * describes a canvas nowhere near our overlay, so it is not passed on.
  *
+ * LIVE, NOT REMEMBERED. Popped, the plan tile draws the walls itself, so it
+ * must not draw them from what the CAD said some time ago (rule 1: no second
+ * copy). `live` is true only while the window holding the CAD answers: any
+ * message from it counts, and when it has been quiet for PING_MS it is asked
+ * again (`hello`, which makes it send view, geometry and mirror afresh). Quiet
+ * for DEAD_MS — or not yet heard since it took the drawing — it is not live,
+ * `onLive(false)` fires, and the plan says there is no CAD. Docked, the CAD
+ * draws the walls under us itself, so `live` is simply true.
+ *
+ * The pop-out handover above is a relay, CAD to CAD: the session passes
+ * through in memory and is dropped once the window has it; nothing keeps it.
+ *
  * MARKS, ARM, SESSIONS. `marks(key, hash, items)` hands the CAD a set of
  * things to draw and keep under `key` (cad/marks.js); `arm(paletteId)` picks
  * a product for the user to place next (＋ Desk); `session()` resolves with
@@ -44,7 +56,11 @@ export const HOST_PROTOCOL = 'cad.like.audio/host@1';
 
 export const METRES_PER_UNIT = { in: 0.0254, mm: 0.001, cm: 0.01, m: 1, ft: 0.3048 };
 
-export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPopped, onSelection }) {
+/** Popped: ask a CAD window this quiet whether it is still there; this quiet, it is not. */
+export const PING_MS = 4000;
+export const DEAD_MS = 10000;
+
+export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPopped, onSelection, onLive }, { now = () => Date.now() } = {}) {
   const address = iframe.getAttribute('src');
   let popup = null;
   let watch = 0;
@@ -58,6 +74,25 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
   /** The last model spaces sent (marks.js spacesOf), resent with the palette whenever the CAD comes up again. */
   let spaces = null;
   let sessionWaiters = [];
+  // popped: when the window holding the CAD last said anything, when we last asked it, and whether it counts as there
+  let heard = -Infinity;
+  let asked = -Infinity;
+  let live = false;
+  const setLive = (v) => {
+    if (v === live) return;
+    live = v;
+    onLive?.(v);
+  };
+  /** Popped: ping a quiet CAD window, and call it gone once it has been quiet too long. Run on a timer (and by tests). */
+  function heartbeat() {
+    if (!popup) return;
+    const t = now();
+    if (t - heard >= PING_MS && t - asked >= PING_MS) {
+      asked = t;
+      send('hello');
+    }
+    if (live && t - heard >= DEAD_MS) setLive(false);
+  }
 
   window.addEventListener('message', (e) => {
     if (e.origin !== window.location.origin) return;
@@ -68,7 +103,13 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
       return;
     }
     if (e.source !== target()) return;
+    if (popup) {
+      heard = now();
+      setLive(true);
+    }
     if (msg.type === 'ready') {
+      // a CAD window that just came up: have it say where it stands, so the plan is drawn from it and not from memory
+      if (popup) send('hello');
       if (palette) send('palette', palette);
       if (spaces) send('spaces', { items: spaces });
       if (carry) send('open', { session: carry });
@@ -92,6 +133,7 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     clearInterval(watch);
     if (!popup.closed) popup.close();
     popup = null;
+    live = false;
     iframe.hidden = false;
     iframe.src = `${address}&resume`;
     onPopped?.(false);
@@ -151,6 +193,11 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     get popped() {
       return Boolean(popup);
     },
+    /** Docked: true (the CAD draws under us). Popped: the CAD's window answered within DEAD_MS. */
+    get live() {
+      return !popup || live;
+    },
+    heartbeat,
     /** Move the CAD to a window of its own. False when the browser blocked it. */
     popOut() {
       if (popup) {
@@ -168,10 +215,14 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
         opening = null;
         if (win.closed) return;
         popup = win;
+        heard = -Infinity;
+        asked = -Infinity;
+        live = false;
+        onLive?.(false);
         carry = session;
         iframe.src = 'about:blank';
         iframe.hidden = true;
-        watch = setInterval(() => popup?.closed && dockIn(), 500);
+        watch = setInterval(() => (popup?.closed ? dockIn() : heartbeat()), 500);
         // it said ready while the docked CAD was still answering: hand over now
         if (openingReady) {
           if (palette) send('palette', palette);

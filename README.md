@@ -9,7 +9,7 @@
 ## What it does
 
 - **The plan is the CAD.** CAD.Like.audio runs live in the plan tile, opened as `#/drawing?host=acoustic`. You draw the room there as a closed loop. Everything acoustic is drawn as an overlay on that sheet and follows it as you pan and zoom.
-- **📂 Open ▾: a project, or a floor plan.** *Open project* brings back a saved `.acoustic-session.json`: the CAD drawing, speakers, mics and settings. *Open floor plan* starts a new room layout from a plan. A `.dxf` becomes the drawing, in its own units (mm when it names none). An image goes under a cleared sheet, and you trace the walls over it after clicking two points whose distance you know. Nothing from the last room comes with it: the first room loop on the sheet is furnished and seated as a library room is, and the toolbar's speaker arrangement is placed around the new mix seat. The settings and speaker sets are kept. Both ask for the placebo licence key first, as the 1997 program did.
+- **📂 Open ▾: a project, or a floor plan.** *Open project* brings back a saved `.acoustic-session.json`: speakers, mics and settings, and the name of the CAD drawing they sit on. The drawing itself is the CAD's to save and open; the session never holds a copy of it (an older file that does hands it to the CAD once). *Open floor plan* starts a new room layout from a plan. A `.dxf` becomes the drawing, in its own units (mm when it names none). An image goes under a cleared sheet, and you trace the walls over it after clicking two points whose distance you know. Nothing from the last room comes with it: the first room loop on the sheet is furnished and seated as a library room is, and the toolbar's speaker arrangement is placed around the new mix seat. The settings and speaker sets are kept. Both ask for the placebo licence key first, as the 1997 program did.
 - **The walls are in the CAD too.** Click an elevation tile and the CAD jumps to that wall's drawing: the same file, on its own layer (`Elevation Front`, `Back`, `Left`, `Right`). A wall not drawn yet is seeded with the room's current outline, under the plan. Drag it into a sloped ceiling, a raked floor or a vault. The room becomes the plan extruded and cut by every elevation drawn: the ceiling is the lowest any of them allows there, the floor the highest. Volume, surface areas and RT are integrated over that real shape. Image sources and modes stand in with the mean floor and ceiling height. Click the ceiling tile (or ⌂ Plan) to jump back.
 - **Six drawings or a 3-D room.** The plan is extruded to a ceiling height, with a front direction you choose. That gives the plan (a slice at ear height) plus the reflected ceiling and the front, back, left and right elevations. The 3-D view is a cut-away. Every surface is painted with its sound field.
 - **Sources and receivers.**
@@ -57,7 +57,7 @@ The CAD is in an iframe. The CAD's `src/shell/hostBridge/` and `js/cad/cadLink.j
 | app → CAD | `hello` · `fit` · `mirror {x, enabled}` | resend · zoom to drawing · place the mirror axis |
 | app → CAD | `sheet {layer, color?, seed?}` | jump to the drawing on that layer and make it current; draw `seed` there first if the layer is empty |
 | app → CAD | `palette {title, items}` | every finish and product (`{id, name, category, color, hatch?, size?, note?}`; `size` [w, h] m = a fixed-size block). Resent on every `ready` |
-| app → CAD | `session` · `open {session}` · `floorplan {file}` | the whole drawing back as `session` · put a saved one on the sheet · open a `.dxf` or an image the user picked as a new drawing under its own name |
+| app → CAD | `session` · `open {session}` · `floorplan {file}` | the whole drawing back as `session`, only to relay it to a popped-out CAD window · put a drawing on the sheet (that relay, or an old session@1 file) · open a `.dxf` or an image the user picked as a new drawing under its own name |
 | app → CAD | `move {items}` · `remove {ids}` | set where placed products sit · take them out of the drawing (right-click → Remove on the plan; one undo step in the CAD) |
 | CAD → app | `ready` · `selection` · `session` | the CAD is up (the app resends `palette`, `spaces` and any carried session) · what is selected in the CAD · the reply to `session` |
 | app → CAD | `marks {key, hash, items}` · `place {layer, items}` · `repaint {ids, paletteId}` | draw and keep a set of things under `key` (the slices, the schematic: `js/cad/marks.js`, `js/cad/schematic.js`) · drop items on a layer · give placed blocks another finish |
@@ -94,7 +94,7 @@ js/views/         plan overlay, ceiling + elevations, the Wall page, 3-D, colour
 js/ui/            inspector (every parameter), meter bridge, rack panel, tour, wizard, licence, pop-out
 js/cad/           the bridge client (cadLink.js) and what the app draws into the CAD (marks.js, schematic.js)
 css/              app.css, acoustx.css
-tests/            node --test: physics checked against closed forms (269 tests)
+tests/            node --test: physics checked against closed forms (275 tests)
 Documentation/    acoustics/ — the engine's mathematics, chapter by chapter; acoustic-x/ — Acoustic X and its references
 ```
 
@@ -103,7 +103,7 @@ No build step and no dependencies: plain ES modules, served as they are. The rac
 ## Tests
 
 ```
-npm test          # node --test tests/*.test.mjs — 269 tests, about 2 s, no install needed
+npm test          # node --test tests/*.test.mjs — 275 tests, about 2 s, no install needed
 ```
 
 The tests check the following against closed forms:

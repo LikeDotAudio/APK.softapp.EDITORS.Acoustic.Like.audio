@@ -42,8 +42,9 @@ import { furnitureLayer } from '../cad/marks.js';
  * placing mode a capture sheet covers the plan for the one click.
  *
  * With the CAD popped out into its own window there is no sheet under us,
- * so the plan draws its own: the room's walls, fitted to the tile, with the
- * same overlay on top — speakers and mics still go down and move here. It
+ * so the plan draws its own: the room's walls, as the CAD window is saying
+ * them now (cadLink `live`; 'No CAD' when it is not answering — never walls
+ * from memory), fitted to the tile, with the same overlay on top — speakers and mics still go down and move here. It
  * zooms and pans as the elevations do: the wheel about the pointer, a drag
  * on the empty plan pans, a double-click fits the room again.
  */
@@ -795,6 +796,14 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     const v = view();
     capture.classList.toggle('on', state.mode !== 'cad');
     capture.dataset.mode = state.mode;
+    // popped, the walls are asked of the CAD live: a CAD window that is not answering gets no plan from memory
+    if (state.cad.popped && cad?.link && !cad.link.live) {
+      hits.hidden = true;
+      ctx.fillStyle = '#888';
+      ctx.font = '12px system-ui';
+      ctx.fillText('No CAD — its window is not answering. The plan comes back when it does (or ⇲ Dock CAD).', 16, 24);
+      return;
+    }
     if (!v || !out.room) {
       ctx.fillStyle = '#888';
       ctx.font = '12px system-ui';

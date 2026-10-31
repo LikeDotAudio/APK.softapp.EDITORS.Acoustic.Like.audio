@@ -29,7 +29,7 @@ store (devices, settings) ──────────────────
 CAD ◀── marks {key, hash, items} · place · palette · sheet · spaces ◀── marks.js / schematic.js (the slices, the schematic)
 ```
 
-The app never edits the drawing's geometry directly: what it adds to the CAD goes as `marks` (kept under a key, redrawn when their hash changes) or `place`. Save project asks the CAD for `session` and writes it with the overlay into one `.acoustic-session.json` (`saveSession`, `openSession` in `main.js`).
+The app never edits the drawing's geometry directly: what it adds to the CAD goes as `marks` (kept under a key, redrawn when their hash changes) or `place`. Save project writes the overlay and the CAD drawing's file name, never its geometry, into one `.acoustic-session.json` (`session@2`, `js/model/session.js`; `saveSession`, `openSession` in `main.js`). An old `session@1` file's drawing is handed to the CAD once and not kept. Popped out, the plan tile draws walls only while the CAD window answers (`cadLink` `live`, a `hello` ping after 4 s quiet, gone after 10 s) and says "No CAD" otherwise.
 
 ## Directories
 
@@ -40,7 +40,7 @@ The app never edits the drawing's geometry directly: what it adds to the CAD goe
 | `js/audio/` | ▶ Listen: the echogram as an impulse response, a clap through it |
 | `js/cad/` | the bridge client and what is drawn into the CAD |
 | `css/` | `app.css`, `acoustx.css` |
-| `tests/` | `node --test`, 269 tests against closed forms |
+| `tests/` | `node --test`, 275 tests against closed forms |
 | `Documentation/acoustics/`, `acoustic-x/` | books of their own; the app's help opens them, so they stay where they are |
 
 ## Running and testing

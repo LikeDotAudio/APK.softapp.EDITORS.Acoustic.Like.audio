@@ -40,6 +40,7 @@ import { makeFold } from './ui/fold.js';
 import { createPlayer } from './ui/player.js';
 import { createMonitor } from './ui/monitor.js';
 import { createWizard } from './ui/wizard.js';
+import { readSession, sessionDoc } from './model/session.js';
 
 const CEILING_LAYER = 'Ceiling';
 
@@ -276,6 +277,8 @@ cad.link = connectCad(iframe, {
     plan.render();
   },
   onGeometry: (msg) => {
+    // the same drawing said again (the popped CAD answering cadLink's ping): nothing to recompute
+    if (msg.fileName === store.state.fileName && JSON.stringify(msg) === JSON.stringify(store.state.cad.geometry)) return;
     const first = !store.state.cad.geometry || msg.fileName !== store.state.fileName;
     store.setCad({ geometry: msg, connected: true }, 'geometry');
     if (first && msg.fileName !== store.state.fileName) store.load(msg.fileName);
@@ -295,6 +298,8 @@ cad.link = connectCad(iframe, {
     syncToolbar();
     plan.render();
   },
+  // popped: the CAD window answering, or gone quiet — the plan draws its walls, or says there is no CAD
+  onLive: () => plan.render(),
 });
 
 // The finishes and products the CAD can paint onto the room; cadLink sends them again on every `ready`.
@@ -1139,41 +1144,34 @@ const tour = createTour({
 sweepBtn.addEventListener('click', () => (tour.running ? tour.stop() : sweep ? stopSweep() : (player.pause(), startSweep())));
 tourBtn.addEventListener('click', () => (tour.running ? tour.stop() : tour.start()));
 
-// ------------------------------------------------------------------ sessions: the CAD drawing and this overlay, in one file
-const SESSION_FORMAT = 'acoustic.like.audio/session@1';
-
-async function saveSession() {
-  status.textContent = '💾 asking the CAD for its drawing…';
-  const drawing = cad.link ? await cad.link.session() : null;
-  const doc = { format: SESSION_FORMAT, savedAt: new Date().toISOString(), overlay: store.exportDoc(), cad: drawing };
-  const name = (store.state.fileName || drawing?.currentFileName || 'room').replace(/\.[^.]+$/, '');
+// ------------------------------------------------------------------ sessions: this overlay and the name of the CAD drawing it sits on (model/session.js)
+function saveSession() {
+  const drawingName = store.state.cad.geometry?.fileName ?? store.state.fileName ?? null;
+  const doc = sessionDoc(store.exportDoc(), drawingName);
+  const name = (drawingName || 'room').replace(/\.[^.]+$/, '');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' }));
   a.download = `${name}.acoustic-session.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  status.textContent = drawing ? `💾 saved ${name} — drawing, ${store.state.speakers.length} speakers, ${store.state.mics.length} mics` : '💾 saved the overlay — the CAD did not answer, so the drawing is not in the file';
+  status.textContent = `💾 saved ${name} — ${store.state.speakers.length} speakers, ${store.state.mics.length} mics; the drawing stays the CAD's to save`;
 }
 
 async function openSession(file) {
-  let doc;
+  let session;
   try {
-    doc = JSON.parse(await file.text());
-  } catch {
-    alert('That file is not JSON.');
+    session = readSession(JSON.parse(await file.text()));
+  } catch (e) {
+    alert(e instanceof SyntaxError ? 'That file is not JSON.' : e.message);
     return;
   }
-  // an overlay file on its own (File → Export overlay) opens too
-  if (doc?.format === 'acoustic.like.audio@1') doc = { format: SESSION_FORMAT, overlay: doc, cad: null };
-  if (doc?.format !== SESSION_FORMAT) {
-    alert('Not an acoustic.like.audio session file.');
-    return;
-  }
-  const fileName = doc.cad?.currentFileName ?? doc.overlay?.fileName ?? null;
+  const { fileName, overlay, handOver } = session;
   pendingPlan = null;
-  store.adopt(fileName, doc.overlay);
-  if (doc.cad && cad.link) cad.link.open(doc.cad);
-  status.textContent = `📂 opened ${fileName ?? 'session'}`;
+  store.adopt(fileName, overlay);
+  // an old session@1 file carried the drawing: the CAD takes it, nothing here keeps it
+  if (handOver && cad.link) cad.link.open(handOver);
+  const onSheet = store.state.cad.geometry?.fileName ?? null;
+  status.textContent = handOver || !fileName || fileName === onSheet ? `📂 opened ${fileName ?? 'session'}` : `📂 opened the acoustics of ${fileName} — open that drawing in the CAD to see them on it`;
 }
 
 /**
