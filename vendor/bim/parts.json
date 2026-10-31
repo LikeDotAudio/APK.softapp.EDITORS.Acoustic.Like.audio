@@ -1,0 +1,1131 @@
+{
+  "_comment": [
+    "THE PARTS CATALOGUE — what a device IS, as a matter of the metal.",
+    "",
+    "A scan says a 54641D answered on TCPIP::44.44.44.222::gpib7,6::INSTR. It",
+    "does not say the instrument has four BNCs, a sixteen-way logic pod and an",
+    "EXT TRIG on the front of it, because nothing on the wire carries that. So",
+    "the panel is DECLARED here, once per model, and every bench that discovers",
+    "that model inherits it.",
+    "",
+    "NOTHING IN THIS FILE IS A MEASUREMENT. Each part names the manual it was",
+    "read out of in `source`, and a declared terminal is never given an MQTT",
+    "topic — a connector is not a capture point, and drawing it as one would",
+    "put a probe circle on a socket no probe is on.",
+    "",
+    "THE JOIN IS manufacturer + model, NOT THE SERIAL. Two 33220As on one bench",
+    "are two instances of one part. Where a manufacturer string varies between",
+    "scans ('Agilent', 'AGILENT TECHNOLOGIES', 'Keysight'), `manufacturer_aka`",
+    "lists what has actually been seen rather than normalising the scan.",
+    "",
+    "SIDES are input, output and connection — the same three the simulation",
+    "model draws down the left edge, down the right, and along the bottom.",
+    "DOMAINS are the eight the internals view stacks: audio, video, midi,",
+    "signal, network, control, clock, power.",
+    "",
+    "`build_bim_parts.py` reads this and writes, per part, two files into",
+    "library/: a `.bim.json` frame the Simulation window imports as a library",
+    "part, and a `.ifc` — IFC4, ISO 16739 — which is the interchange copy any",
+    "other BIM tool can open. Neither is edited by hand."
+  ],
+  "parts": [
+    {
+      "id": "agilent-54641d",
+      "model": "54641D",
+      "manufacturer": "Agilent Technologies",
+      "manufacturer_aka": [
+        "AGILENT TECHNOLOGIES",
+        "Keysight"
+      ],
+      "class": "Oscilloscope",
+      "symbol": "📟",
+      "name": "Agilent 54641D",
+      "what": "Mixed-signal oscilloscope — 2 analog + 16 digital channels, 350 MHz",
+      "rack_units": 7,
+      "depth_mm": 318,
+      "depth_source": "datasheet outline — the body front to back, without handle, feet or cables",
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "54641D user's guide, front and rear panel — declared, not measured",
+      "ports": [
+        {
+          "side": "input",
+          "terminal": "CH",
+          "domain": "signal",
+          "count": 2,
+          "connector": "BNC",
+          "signal": "analog channel, 1 MΩ / 50 Ω"
+        },
+        {
+          "side": "input",
+          "terminal": "D",
+          "domain": "signal",
+          "count": 16,
+          "connector": "logic pod ribbon",
+          "signal": "digital channel on the mixed-signal pod"
+        },
+        {
+          "side": "input",
+          "terminal": "EXT TRIG",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external trigger"
+        },
+        {
+          "side": "output",
+          "terminal": "PROBE COMP",
+          "domain": "signal",
+          "count": 1,
+          "connector": "test point",
+          "signal": "probe compensation square wave"
+        },
+        {
+          "side": "connection",
+          "terminal": "LAN",
+          "domain": "network",
+          "count": 1,
+          "connector": "RJ45",
+          "signal": "VXI-11 / SCPI over LAN"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB, the bus this bench reaches it on"
+        },
+        {
+          "side": "connection",
+          "terminal": "USB",
+          "domain": "control",
+          "count": 1,
+          "connector": "USB-B",
+          "signal": "printer and storage port"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2024/06/image-8.png",
+      "manual_url": "https://drive.google.com/open?id=0B0yR0b5T78SKYzZXWU1CSlNTbG8",
+      "programming_guide_url": "https://drive.google.com/open?id=0B0yR0b5T78SKdXZqc1YwMHhiU2c",
+      "service_manual_url": "https://drive.google.com/open?id=0B0yR0b5T78SKVC16QUc0eGFaVUE",
+      "shop_url": "https://like.audio/20240616/hp-agilent-54641d-mixed-signal-oscilliscope/"
+    },
+    {
+      "id": "rigol-ds1104z",
+      "model": "DS1104Z",
+      "manufacturer": "Rigol",
+      "manufacturer_aka": [
+        "RIGOL TECHNOLOGIES"
+      ],
+      "class": "Oscilloscope",
+      "symbol": "📟",
+      "name": "Rigol DS1104Z",
+      "what": "Digital storage oscilloscope — 4 analog channels, 100 MHz",
+      "rack_units": 4,
+      "depth_mm": 122,
+      "depth_source": "datasheet outline — the body front to back, without handle, feet or cables",
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "DS1000Z series user guide, front and rear panel — declared, not measured",
+      "ports": [
+        {
+          "side": "input",
+          "terminal": "CH",
+          "domain": "signal",
+          "count": 4,
+          "connector": "BNC",
+          "signal": "analog channel, 1 MΩ"
+        },
+        {
+          "side": "input",
+          "terminal": "EXT TRIG",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external trigger"
+        },
+        {
+          "side": "output",
+          "terminal": "AUX OUT",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "trigger out or pass/fail, whichever the menu selects"
+        },
+        {
+          "side": "connection",
+          "terminal": "LAN",
+          "domain": "network",
+          "count": 1,
+          "connector": "RJ45",
+          "signal": "SCPI over LAN"
+        },
+        {
+          "side": "connection",
+          "terminal": "USB DEVICE",
+          "domain": "control",
+          "count": 1,
+          "connector": "USB-B",
+          "signal": "USBTMC — the bus this bench reaches it on"
+        },
+        {
+          "side": "connection",
+          "terminal": "USB HOST",
+          "domain": "control",
+          "count": 1,
+          "connector": "USB-A",
+          "signal": "storage and printer"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2015/11/Screen-Shot-2015-11-06-at-8.09.34-PM.png",
+      "manual_url": "https://www.rigolna.com/products/digital-oscilloscopes/1000z/",
+      "programming_guide_url": "https://beyondmeasure.rigoltech.com/acton/attachment/1579/f-03ee/1/-/-/-/-/DS1000Z_ProgrammingGuide_EN.pdf",
+      "shop_url": "https://like.audio/category/shop/test-equipment/"
+    },
+    {
+      "id": "agilent-34401a",
+      "model": "34401A",
+      "manufacturer": "Agilent Technologies",
+      "manufacturer_aka": [
+        "AGILENT TECHNOLOGIES",
+        "HEWLETT-PACKARD",
+        "Keysight"
+      ],
+      "class": "DMM",
+      "symbol": "🔢",
+      "name": "Agilent 34401A",
+      "what": "6½-digit digital multimeter",
+      "rack_units": 2,
+      "depth_mm": 348,
+      "depth_source": "datasheet outline — the body front to back, without handle, feet or cables",
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "VOLTMETER"
+      },
+      "source": "34401A user's guide, front and rear terminals — declared, not measured",
+      "ports": [
+        {
+          "side": "input",
+          "terminal": "FRONT HI",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "volts / ohms high"
+        },
+        {
+          "side": "input",
+          "terminal": "FRONT LO",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "volts / ohms low"
+        },
+        {
+          "side": "input",
+          "terminal": "FRONT SENSE HI",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "4-wire ohms sense high"
+        },
+        {
+          "side": "input",
+          "terminal": "FRONT SENSE LO",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "4-wire ohms sense low"
+        },
+        {
+          "side": "input",
+          "terminal": "FRONT I",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "current input, fused"
+        },
+        {
+          "side": "input",
+          "terminal": "REAR HI",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "the same measurement, taken at the back — the front/rear switch chooses"
+        },
+        {
+          "side": "input",
+          "terminal": "REAR LO",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "rear low"
+        },
+        {
+          "side": "input",
+          "terminal": "REAR SENSE HI",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "rear 4-wire sense high"
+        },
+        {
+          "side": "input",
+          "terminal": "REAR SENSE LO",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "rear 4-wire sense low"
+        },
+        {
+          "side": "input",
+          "terminal": "REAR I",
+          "domain": "signal",
+          "count": 1,
+          "connector": "banana",
+          "signal": "rear current input"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB"
+        },
+        {
+          "side": "connection",
+          "terminal": "RS-232",
+          "domain": "control",
+          "count": 1,
+          "connector": "DB-9",
+          "signal": "serial SCPI"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2024/06/image-7.png",
+      "manual_url": "https://drive.google.com/open?id=0B0yR0b5T78SKUnVjdktfdFUtalU",
+      "programming_guide_url": "https://drive.google.com/open?id=0B0yR0b5T78SKQk5qTnRKclpyNk0",
+      "quick_reference_url": "https://drive.google.com/open?id=1uRQXP0ge2owrlDHshaowlLzevDIgQtaA",
+      "shop_url": "https://like.audio/20240616/hp-agilent-34401a/"
+    },
+    {
+      "id": "hp-8903b",
+      "model": "8903B",
+      "manufacturer": "Hewlett-Packard",
+      "manufacturer_aka": [
+        "HEWLETT-PACKARD",
+        "HP",
+        "Agilent Technologies"
+      ],
+      "class": "Distortion",
+      "symbol": "🎚️",
+      "name": "HP 8903B",
+      "what": "Audio analyzer — distortion, level and frequency, with its own low-distortion source",
+      "rack_units": 4,
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "8903B operation manual, front and rear panel — declared, not measured",
+      "ports": [
+        {
+          "side": "input",
+          "terminal": "INPUT HI",
+          "domain": "audio",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "analysed audio, high side"
+        },
+        {
+          "side": "input",
+          "terminal": "INPUT LO",
+          "domain": "audio",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "analysed audio, low side — floating or grounded"
+        },
+        {
+          "side": "output",
+          "terminal": "SOURCE OUT",
+          "domain": "audio",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "low-distortion generator output"
+        },
+        {
+          "side": "output",
+          "terminal": "MONITOR OUT",
+          "domain": "audio",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "what the analyser is listening to, post filter"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2024/06/PXL_20240613_134347816-scaled.jpg",
+      "manual_url": "https://www.keysight.com/us/en/assets/9018-05187/service-manuals/9018-05187.pdf",
+      "programming_guide_url": "https://www.keysight.com/us/en/assets/9018-05187/service-manuals/9018-05187.pdf",
+      "shop_url": "https://like.audio/20240612/gpib-shop-tools/"
+    },
+    {
+      "id": "agilent-33210a",
+      "model": "33210A",
+      "manufacturer": "Agilent Technologies",
+      "manufacturer_aka": [
+        "AGILENT TECHNOLOGIES",
+        "Keysight"
+      ],
+      "class": "Generator",
+      "symbol": "〰️",
+      "name": "Agilent 33210A",
+      "what": "Function / arbitrary waveform generator, 10 MHz",
+      "rack_units": 2,
+      "depth_mm": 303,
+      "depth_source": "datasheet outline — the body front to back, without handle, feet or cables",
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "33210A user's guide, front and rear panel — declared, not measured",
+      "ports": [
+        {
+          "side": "output",
+          "terminal": "OUTPUT",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "the generated waveform, 50 Ω"
+        },
+        {
+          "side": "output",
+          "terminal": "SYNC",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "TTL sync pulse at the waveform rate"
+        },
+        {
+          "side": "input",
+          "terminal": "EXT TRIG",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external trigger / burst gate"
+        },
+        {
+          "side": "input",
+          "terminal": "EXT MOD IN",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external modulation"
+        },
+        {
+          "side": "input",
+          "terminal": "10 MHz IN",
+          "domain": "clock",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external timebase reference"
+        },
+        {
+          "side": "output",
+          "terminal": "10 MHz OUT",
+          "domain": "clock",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "internal timebase, out to whatever follows it"
+        },
+        {
+          "side": "connection",
+          "terminal": "LAN",
+          "domain": "network",
+          "count": 1,
+          "connector": "RJ45",
+          "signal": "SCPI over LAN"
+        },
+        {
+          "side": "connection",
+          "terminal": "USB",
+          "domain": "control",
+          "count": 1,
+          "connector": "USB-B",
+          "signal": "USBTMC"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2024/06/image-9.png",
+      "manual_url": "https://drive.google.com/open?id=1gVR7X0tkRB6mx6op3zvSaPoJCOIr8gqn",
+      "programming_guide_url": "https://drive.google.com/open?id=0B0yR0b5T78SKb1E1WTZLbEM4VkE",
+      "shop_url": "https://like.audio/20240616/agilent-keysight-32220-function-generator/"
+    },
+    {
+      "id": "agilent-33220a",
+      "model": "33220A",
+      "manufacturer": "Agilent Technologies",
+      "manufacturer_aka": [
+        "AGILENT TECHNOLOGIES",
+        "Keysight"
+      ],
+      "class": "Generator",
+      "symbol": "〰️",
+      "name": "Agilent 33220A",
+      "what": "Function / arbitrary waveform generator, 20 MHz",
+      "rack_units": 2,
+      "depth_mm": 303,
+      "depth_source": "datasheet outline — the body front to back, without handle, feet or cables",
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "33220A user's guide, front and rear panel — declared, not measured",
+      "ports": [
+        {
+          "side": "output",
+          "terminal": "OUTPUT",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "the generated waveform, 50 Ω"
+        },
+        {
+          "side": "output",
+          "terminal": "SYNC",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "TTL sync pulse at the waveform rate"
+        },
+        {
+          "side": "input",
+          "terminal": "EXT TRIG",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external trigger / burst gate"
+        },
+        {
+          "side": "input",
+          "terminal": "EXT MOD IN",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external modulation"
+        },
+        {
+          "side": "input",
+          "terminal": "10 MHz IN",
+          "domain": "clock",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external timebase reference"
+        },
+        {
+          "side": "output",
+          "terminal": "10 MHz OUT",
+          "domain": "clock",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "internal timebase, out to whatever follows it"
+        },
+        {
+          "side": "connection",
+          "terminal": "LAN",
+          "domain": "network",
+          "count": 1,
+          "connector": "RJ45",
+          "signal": "SCPI over LAN"
+        },
+        {
+          "side": "connection",
+          "terminal": "USB",
+          "domain": "control",
+          "count": 1,
+          "connector": "USB-B",
+          "signal": "USBTMC"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2024/06/image-9.png",
+      "manual_url": "https://drive.google.com/open?id=1gVR7X0tkRB6mx6op3zvSaPoJCOIr8gqn",
+      "programming_guide_url": "https://drive.google.com/open?id=0B0yR0b5T78SKb1E1WTZLbEM4VkE",
+      "shop_url": "https://like.audio/20240616/agilent-keysight-32220-function-generator/"
+    },
+    {
+      "id": "hp-4263a",
+      "model": "4263A",
+      "manufacturer": "Hewlett-Packard",
+      "manufacturer_aka": [
+        "HEWLETT-PACKARD",
+        "HP",
+        "Agilent Technologies"
+      ],
+      "class": "LCR",
+      "symbol": "🌀",
+      "name": "HP 4263A",
+      "what": "LCR meter — four-terminal-pair bridge",
+      "rack_units": 3,
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "4263A/B operation manual, UNKNOWN terminals and rear panel — declared, not measured",
+      "ports": [
+        {
+          "side": "input",
+          "terminal": "Hcur",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "high current — the drive leg of the four-terminal pair"
+        },
+        {
+          "side": "input",
+          "terminal": "Hpot",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "high potential — the sense leg"
+        },
+        {
+          "side": "input",
+          "terminal": "Lpot",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "low potential"
+        },
+        {
+          "side": "input",
+          "terminal": "Lcur",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "low current"
+        },
+        {
+          "side": "input",
+          "terminal": "GUARD",
+          "domain": "signal",
+          "count": 1,
+          "connector": "binding post",
+          "signal": "guard / chassis common"
+        },
+        {
+          "side": "input",
+          "terminal": "DC BIAS IN",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external bias, where the option is fitted"
+        },
+        {
+          "side": "connection",
+          "terminal": "HANDLER",
+          "domain": "control",
+          "count": 1,
+          "connector": "36-way Amphenol",
+          "signal": "handler interface — bin sort and trigger"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2026/04/P3nUy0Q-scaled.jpeg",
+      "manual_url": "https://www.keysight.com/us/en/assets/9018-01314/user-manuals/9018-01314.pdf",
+      "programming_guide_url": "https://www.keysight.com/us/en/assets/9018-01314/user-manuals/9018-01314.pdf",
+      "shop_url": "https://like.audio/20260411/hp-4263a-lcr-meter/"
+    },
+    {
+      "id": "hp-4263b",
+      "model": "4263B",
+      "manufacturer": "Hewlett-Packard",
+      "manufacturer_aka": [
+        "HEWLETT-PACKARD",
+        "HP",
+        "Agilent Technologies"
+      ],
+      "class": "LCR",
+      "symbol": "🌀",
+      "name": "HP 4263B",
+      "what": "LCR meter — four-terminal-pair bridge, the 4263A's successor",
+      "rack_units": 3,
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "4263A/B operation manual, UNKNOWN terminals and rear panel — declared, not measured",
+      "ports": [
+        {
+          "side": "input",
+          "terminal": "Hcur",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "high current — the drive leg of the four-terminal pair"
+        },
+        {
+          "side": "input",
+          "terminal": "Hpot",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "high potential — the sense leg"
+        },
+        {
+          "side": "input",
+          "terminal": "Lpot",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "low potential"
+        },
+        {
+          "side": "input",
+          "terminal": "Lcur",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "low current"
+        },
+        {
+          "side": "input",
+          "terminal": "GUARD",
+          "domain": "signal",
+          "count": 1,
+          "connector": "binding post",
+          "signal": "guard / chassis common"
+        },
+        {
+          "side": "input",
+          "terminal": "DC BIAS IN",
+          "domain": "signal",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external bias, where the option is fitted"
+        },
+        {
+          "side": "connection",
+          "terminal": "HANDLER",
+          "domain": "control",
+          "count": 1,
+          "connector": "36-way Amphenol",
+          "signal": "handler interface — bin sort and trigger"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2026/04/P3nUy0Q-scaled.jpeg",
+      "manual_url": "https://www.keysight.com/us/en/assets/9018-01314/user-manuals/9018-01314.pdf",
+      "programming_guide_url": "https://www.keysight.com/us/en/assets/9018-01314/user-manuals/9018-01314.pdf",
+      "shop_url": "https://like.audio/20260411/hp-4263a-lcr-meter/"
+    },
+    {
+      "id": "hp-6060b",
+      "model": "6060B",
+      "manufacturer": "Hewlett-Packard",
+      "manufacturer_aka": [
+        "HEWLETT-PACKARD",
+        "HP",
+        "Agilent Technologies"
+      ],
+      "class": "Load",
+      "symbol": "🪫",
+      "name": "HP 6060B",
+      "what": "Electronic load — 300 W, 3 to 60 V",
+      "rack_units": 3,
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "6060B operating manual, rear terminals — declared, not measured",
+      "ports": [
+        {
+          "side": "input",
+          "terminal": "LOAD IN +",
+          "domain": "power",
+          "count": 1,
+          "connector": "binding post",
+          "signal": "what the load draws from the device under test"
+        },
+        {
+          "side": "input",
+          "terminal": "LOAD IN -",
+          "domain": "power",
+          "count": 1,
+          "connector": "binding post",
+          "signal": "the return leg"
+        },
+        {
+          "side": "input",
+          "terminal": "SENSE +",
+          "domain": "power",
+          "count": 1,
+          "connector": "terminal strip",
+          "signal": "remote sense, taken at the load rather than at the post"
+        },
+        {
+          "side": "input",
+          "terminal": "SENSE -",
+          "domain": "power",
+          "count": 1,
+          "connector": "terminal strip",
+          "signal": "remote sense return"
+        },
+        {
+          "side": "input",
+          "terminal": "ANALOG PROG IN",
+          "domain": "signal",
+          "count": 1,
+          "connector": "terminal strip",
+          "signal": "analogue programming — external control of the draw"
+        },
+        {
+          "side": "connection",
+          "terminal": "TTL TRIG",
+          "domain": "control",
+          "count": 1,
+          "connector": "terminal strip",
+          "signal": "trigger and status lines"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the instrument draws from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2024/06/image-5.png",
+      "manual_url": "https://drive.google.com/open?id=0B0yR0b5T78SKei1TOGhjYjZDVHc",
+      "programming_guide_url": "https://drive.google.com/open?id=0B0yR0b5T78SKakdVTnlQcWNvbDQ",
+      "service_manual_url": "https://drive.google.com/open?id=0B0yR0b5T78SKOWpSbm9GdDNoRk0",
+      "shop_url": "https://like.audio/20240616/hp-6060b-programmable-dc-load/"
+    },
+    {
+      "id": "agilent-66102a",
+      "model": "66102A",
+      "manufacturer": "Agilent Technologies",
+      "manufacturer_aka": [
+        "AGILENT TECHNOLOGIES",
+        "HEWLETT-PACKARD",
+        "Keysight"
+      ],
+      "class": "Power",
+      "symbol": "🔌",
+      "name": "Agilent 66102A",
+      "what": "DC power module for the 66000A modular power system",
+      "rack_units": 3,
+      "ifc": {
+        "entity": "IfcElectricGenerator",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "66000A modular power system manual, module rear terminals — declared, not measured",
+      "ports": [
+        {
+          "side": "output",
+          "terminal": "DC OUT +",
+          "domain": "power",
+          "count": 1,
+          "connector": "binding post",
+          "signal": "the rail the supply delivers"
+        },
+        {
+          "side": "output",
+          "terminal": "DC OUT -",
+          "domain": "power",
+          "count": 1,
+          "connector": "binding post",
+          "signal": "the return leg"
+        },
+        {
+          "side": "input",
+          "terminal": "SENSE +",
+          "domain": "power",
+          "count": 1,
+          "connector": "terminal strip",
+          "signal": "remote sense — what the supply reads back from the load"
+        },
+        {
+          "side": "input",
+          "terminal": "SENSE -",
+          "domain": "power",
+          "count": 1,
+          "connector": "terminal strip",
+          "signal": "remote sense return"
+        },
+        {
+          "side": "connection",
+          "terminal": "MPS BUS",
+          "domain": "control",
+          "count": 1,
+          "connector": "mainframe backplane",
+          "signal": "the modular power system bus the mainframe addresses it on"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "mainframe backplane",
+          "signal": "AC drawn through the mainframe"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2024/06/image-11.png",
+      "manual_url": "https://drive.google.com/open?id=0B0yR0b5T78SKSHZOc252Ml82cXM",
+      "programming_guide_url": "https://drive.google.com/open?id=0B0yR0b5T78SKQm5oTEFlZFpwNU0",
+      "service_manual_url": "https://drive.google.com/open?id=0B0yR0b5T78SKY0tyeEx2dDdLSU0",
+      "shop_url": "https://like.audio/20240616/hp-agilent-66000a-modular-power-supply/"
+    },
+    {
+      "id": "rigol-n9340b",
+      "model": "N9340B",
+      "manufacturer": "Rigol",
+      "manufacturer_aka": [
+        "RIGOL TECHNOLOGIES",
+        "Agilent Technologies",
+        "Keysight"
+      ],
+      "class": "Spectrum",
+      "symbol": "📶",
+      "name": "N9340B",
+      "what": "Handheld spectrum analyzer, 100 kHz to 3 GHz",
+      "rack_units": 0,
+      "ifc": {
+        "entity": "IfcFlowInstrument",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "N9340B user's guide, front and side panel — declared, not measured",
+      "ports": [
+        {
+          "side": "input",
+          "terminal": "RF IN",
+          "domain": "signal",
+          "count": 1,
+          "connector": "N-type female",
+          "signal": "the spectrum under analysis, 50 Ω"
+        },
+        {
+          "side": "output",
+          "terminal": "TG OUT",
+          "domain": "signal",
+          "count": 1,
+          "connector": "N-type female",
+          "signal": "tracking generator, where the option is fitted"
+        },
+        {
+          "side": "input",
+          "terminal": "EXT REF IN",
+          "domain": "clock",
+          "count": 1,
+          "connector": "BNC",
+          "signal": "external 10 MHz reference"
+        },
+        {
+          "side": "output",
+          "terminal": "VGA OUT",
+          "domain": "video",
+          "count": 1,
+          "connector": "DE-15",
+          "signal": "the screen, out to a monitor"
+        },
+        {
+          "side": "connection",
+          "terminal": "LAN",
+          "domain": "network",
+          "count": 1,
+          "connector": "RJ45",
+          "signal": "SCPI over LAN"
+        },
+        {
+          "side": "connection",
+          "terminal": "USB DEVICE",
+          "domain": "control",
+          "count": 1,
+          "connector": "USB-B",
+          "signal": "USBTMC"
+        },
+        {
+          "side": "connection",
+          "terminal": "USB HOST",
+          "domain": "control",
+          "count": 1,
+          "connector": "USB-A",
+          "signal": "storage"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "DC barrel from PSU",
+          "signal": "external supply, or the battery it charges"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2025/06/cd6e1f5f-b5a5-4a6a-bbc5-dc9ccee7a06c.png",
+      "manual_url": "https://www.keysight.com/us/en/assets/9018-02058/user-manuals/9018-02058.pdf",
+      "programming_guide_url": "https://www.keysight.com/us/en/assets/9018-02059/programming-guides/9018-02059.pdf",
+      "shop_url": "https://like.audio/20250623/python-spectrum-analyzer/"
+    },
+    {
+      "id": "agilent-3235",
+      "model": "3235",
+      "manufacturer": "Agilent Technologies",
+      "manufacturer_aka": [
+        "AGILENT TECHNOLOGIES",
+        "HEWLETT-PACKARD",
+        "Keysight"
+      ],
+      "class": "Chassis",
+      "symbol": "🗄️",
+      "name": "Agilent 3235 / 3235A",
+      "what": "Modular instrument chassis — what it has on the front is whichever cards are in it",
+      "rack_units": 5,
+      "ifc": {
+        "entity": "IfcElementAssembly",
+        "predefined_type": "USERDEFINED"
+      },
+      "source": "3235 mainframe manual — declared, not measured. The slot count and the card panels are NOT stated here: what a slot exposes is the card's, and no card has been declared yet.",
+      "ports": [
+        {
+          "side": "connection",
+          "terminal": "VXI BACKPLANE",
+          "domain": "control",
+          "count": 1,
+          "connector": "VXIbus P1/P2",
+          "signal": "the backplane every installed card hangs off"
+        },
+        {
+          "side": "connection",
+          "terminal": "GPIB",
+          "domain": "control",
+          "count": 1,
+          "connector": "IEEE-488",
+          "signal": "HP-IB into the mainframe"
+        },
+        {
+          "side": "input",
+          "terminal": "MAINS IN",
+          "domain": "power",
+          "count": 1,
+          "connector": "IEC C13",
+          "signal": "what the chassis and every card in it draw from the wall"
+        }
+      ],
+      "image": "https://like.audio/wp-content/uploads/2024/06/Pasted-3.png",
+      "manual_url": "https://drive.google.com/open?id=0B0yR0b5T78SKc19MV01xdDRtLWM",
+      "programming_guide_url": "https://drive.google.com/open?id=0B0yR0b5T78SKSm5XcDJCTVdNMGc",
+      "quick_reference_url": "https://drive.google.com/open?id=0B0yR0b5T78SKZTNHV2ZwM09BbHc",
+      "shop_url": "https://like.audio/20240616/hp-3235-switch-test-unit/"
+    }
+  ]
+}

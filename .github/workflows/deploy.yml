@@ -68,15 +68,6 @@ jobs:
           CAD_CONTRACT_DIR: ${{ github.workspace }}/cad/contract
         run: npm test
 
-      - name: 🚚 Get the parts catalogue
-        uses: actions/checkout@v4
-        with:
-          repository: LikeDotAudio/APK.audio
-          path: apk
-          sparse-checkout: PODS/POD.THIN/OS/BIM/parts.json
-          sparse-checkout-cone-mode: false
-          submodules: false
-
       - name: 🧩 Lay out the site
         run: |
           mkdir -p _site
@@ -87,7 +78,7 @@ jobs:
           cp -r acoustic/Documentation _site/
           cp -r cad/dist _site/cad
           mkdir -p _site/catalogue
-          cp apk/PODS/POD.THIN/OS/BIM/parts.json _site/catalogue/parts.json
+          cp acoustic/vendor/bim/parts.json _site/catalogue/parts.json   # vendored: the monorepo is private (tests/vendor-parts.test.mjs keeps it equal)
           # the one config point: where the CAD and the catalogue are on this site
           cp acoustic/js/site.published.js _site/js/site.js
 
