@@ -252,6 +252,11 @@
     },
     {
       "protocol": "cad.like.audio/host@1",
+      "type": "handover",
+      "token": "k3x9q2"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
       "type": "open",
       "session": {
         "version": 1,

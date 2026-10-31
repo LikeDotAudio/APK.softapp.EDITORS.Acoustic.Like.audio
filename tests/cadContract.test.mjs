@@ -32,14 +32,18 @@ async function fakeLink(callbacks = {}) {
   const listeners = [];
   const posted = [];
   const iframeWin = { postMessage: (m, origin) => posted.push({ m, origin }) };
-  globalThis.window = { location: { origin: 'http://x' }, addEventListener: (type, fn) => type === 'message' && listeners.push(fn), open: () => null };
+  const opened = [];
+  const popupWin = { closed: false, postMessage() {}, focus() {}, close() {} };
+  globalThis.window = { location: { origin: 'http://x' }, addEventListener: (type, fn) => type === 'message' && listeners.push(fn), open: (url) => (opened.push(url), popupWin) };
   globalThis.location = { href: 'http://x/app/' };
   globalThis.setTimeout = () => 0;
+  globalThis.setInterval = () => 0;
+  globalThis.clearInterval = () => {};
   const iframe = { getAttribute: () => 'cad/index.html#/drawing?host=acoustic', addEventListener() {}, contentWindow: iframeWin, hidden: false, src: '' };
   const { connectCad, HOST_PROTOCOL } = await import('../js/cad/cadLink.js');
   const link = connectCad(iframe, callbacks);
   const fire = (data, source = iframeWin) => listeners.forEach((fn) => fn({ origin: 'http://x', source, data }));
-  return { link, posted, fire, HOST_PROTOCOL };
+  return { link, posted, fire, opened, HOST_PROTOCOL };
 }
 
 test('cadLink speaks the protocol the schema names', async () => {
@@ -69,6 +73,7 @@ test('every message cadLink sends is a valid toCad message', async () => {
   void f.link.session();
   f.link.open(s('open').session);
   f.link.floorPlan({});
+  f.link.popOut(); // the docked CAD is told to hand the drawing over: `handover` { token }
   const sent = new Set();
   for (const { m, origin } of f.posted) {
     assert.equal(origin, 'http://x', 'same origin only');

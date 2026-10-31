@@ -751,6 +751,27 @@
         }
       }
     },
+    "toCad.handover": {
+      "description": "The host is opening this editor in a window of its own at #/drawing?host=…&resume&handover=<token>: offer the drawing to that window CAD to CAD (BroadcastChannel 'cad.like.audio/handover', hostHandover.ts), so the host never carries the session. The window says toHost.ready once it has it.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "token"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "handover"
+        },
+        "token": {
+          "type": "string",
+          "description": "1–64 of A–Z a–z 0–9 _ - (the CAD ignores any other); it pairs one docked CAD with one window."
+        }
+      }
+    },
     "toCad.open": {
       "description": "Put a session on the sheet, replacing what is there (one undo step).",
       "type": "object",

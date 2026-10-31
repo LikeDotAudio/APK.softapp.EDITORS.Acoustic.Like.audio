@@ -62,36 +62,46 @@ async function fakeLink() {
       this.closed = true;
     },
   };
-  const iframeWin = { postMessage: (m) => (m.type === 'session' ? queueMicrotask(() => fire(iframeWin, { type: 'session', session: { docSnapshot: { edges: [] } } })) : null) };
+  const toIframe = [];
+  const iframeWin = { postMessage: (m) => toIframe.push(m) };
   const { HOST_PROTOCOL } = await import('../js/cad/cadLink.js');
   const fire = (source, body) => listeners.forEach((fn) => fn({ origin: 'http://x', source, data: { protocol: HOST_PROTOCOL, ...body } }));
   globalThis.window = {
     location: { origin: 'http://x' },
     addEventListener: (type, fn) => type === 'message' && listeners.push(fn),
-    open: () => popupWin,
+    open: (url) => ((opened = url), popupWin),
   };
+  let opened = null;
   globalThis.location = { href: 'http://x/app/' };
   const timers = [];
   globalThis.setInterval = (fn) => timers.push(fn);
   globalThis.clearInterval = () => {};
-  globalThis.setTimeout = () => 0; // session()'s give-up timer: the fake CAD answers at once
+  globalThis.setTimeout = () => 0;
   const iframe = { getAttribute: () => 'cad/#/drawing?host=acoustic', addEventListener() {}, contentWindow: iframeWin, hidden: false, src: '' };
   const { connectCad, PING_MS, DEAD_MS } = await import('../js/cad/cadLink.js');
   let t = 1000;
   const lives = [];
   const link = connectCad(iframe, { onLive: (v) => lives.push(v) }, { now: () => t });
-  return { link, popupWin, fire, sentTo, lives, tick: (ms) => (t += ms), PING_MS, DEAD_MS };
+  return { link, popupWin, iframe, fire, sentTo, toIframe, opened: () => opened, lives, tick: (ms) => (t += ms), PING_MS, DEAD_MS };
 }
 
 test('popped, the plan is live only while the CAD window answers', async () => {
   const f = await fakeLink();
   assert.equal(f.link.live, true, 'docked: the CAD draws under us');
   assert.equal(f.link.popOut(), true);
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.equal(f.link.popped, false, 'the window has not taken the drawing yet: the docked CAD still holds it');
+  f.fire(f.popupWin, GEOMETRY);
+  assert.equal(f.link.live, true, 'nothing from the opening window but ready is heard');
+  f.fire(f.popupWin, { type: 'ready' });
   assert.equal(f.link.popped, true);
-  assert.equal(f.link.live, false, 'not heard since it took the drawing: no walls from memory');
+  assert.equal(f.iframe.src, 'about:blank', 'blanked only once the window has the drawing');
+  assert.ok(f.sentTo.includes('hello'), 'a window that came up is asked where it stands');
+  assert.equal(f.link.live, true);
+  f.tick(f.PING_MS);
   f.link.heartbeat();
-  assert.ok(f.sentTo.includes('hello'), 'a quiet window is asked');
+  f.tick(f.DEAD_MS);
+  f.link.heartbeat();
+  assert.equal(f.link.live, false, 'not heard since it took the drawing: no walls from memory');
   f.fire(f.popupWin, GEOMETRY);
   assert.equal(f.link.live, true);
   f.tick(f.PING_MS);
@@ -102,7 +112,19 @@ test('popped, the plan is live only while the CAD window answers', async () => {
   f.tick(f.DEAD_MS);
   f.link.heartbeat();
   assert.equal(f.link.live, false, 'quiet too long: no CAD');
-  assert.deepEqual(f.lives, [false, true, false]);
+  assert.deepEqual(f.lives, [false, true, false, true, false]);
   f.fire(f.popupWin, { type: 'view' });
   assert.equal(f.link.live, true, 'it answers again: the plan comes back');
+});
+
+// The pop-out is CAD to CAD: this page sends the docked CAD a token and never asks for or carries the drawing.
+test('popping out hands the drawing CAD to CAD; the host never holds the session', async () => {
+  const f = await fakeLink();
+  f.link.popOut();
+  const handover = f.toIframe.find((m) => m.type === 'handover');
+  assert.ok(handover && typeof handover.token === 'string' && handover.token.length > 0, 'the docked CAD is told to hand over');
+  assert.ok(f.opened().includes(`&resume&handover=${handover.token}`), 'the window is opened with the same token');
+  assert.ok(!f.toIframe.some((m) => m.type === 'session'), 'no read-back of the session');
+  f.fire(f.popupWin, { type: 'ready' });
+  assert.ok(!f.sentTo.includes('open'), 'and nothing is relayed to the window');
 });

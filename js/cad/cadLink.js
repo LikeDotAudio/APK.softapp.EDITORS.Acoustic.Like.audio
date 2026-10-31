@@ -19,10 +19,12 @@
  * sent again whenever the CAD says `ready`, so a reloaded iframe has it too.
  *
  * POP OUT. The CAD can leave the iframe for a window of its own and come
- * back: `popOut()` opens the same address in a window, takes the whole
- * session from the docked CAD, then blanks the iframe and hands that session
- * to the window the moment it says `ready` — so every drawing set (marks,
- * elevations, blocks) is there when it opens, not one autosave behind.
+ * back: `popOut()` opens the same address in a window with `&handover=<token>`
+ * and sends the docked CAD `handover` { token }. The two CADs pass the
+ * drawing between themselves (the CAD's hostHandover.ts, a BroadcastChannel)
+ * — this page never asks for it or holds it. The window says `ready` once it
+ * has the drawing; only then is the iframe blanked — so every drawing set
+ * (marks, elevations, blocks) is there when it opens, not one autosave behind.
  * `dockIn()` (or closing that window) closes it and reloads the iframe. Both
  * add `&resume`, so the CAD that starts restores the drawing the other one
  * autosaved — one CAD at a time, never two editing the file. Only messages
@@ -38,8 +40,8 @@
  * `onLive(false)` fires, and the plan says there is no CAD. Docked, the CAD
  * draws the walls under us itself, so `live` is simply true.
  *
- * The pop-out handover above is a relay, CAD to CAD: the session passes
- * through in memory and is dropped once the window has it; nothing keeps it.
+ * The pop-out handover above is CAD to CAD: the session never passes through
+ * here. (`session()` below is only for the session file the user saves.)
  *
  * MARKS, ARM, SESSIONS. `marks(key, hash, items)` hands the CAD a set of
  * things to draw and keep under `key` (cad/marks.js); `arm(paletteId)` picks
@@ -65,14 +67,18 @@ export const METRES_PER_UNIT = { in: 0.0254, mm: 0.001, cm: 0.01, m: 1, ft: 0.30
 export const PING_MS = 4000;
 export const DEAD_MS = 10000;
 
+/** A fresh token pairing the docked CAD with the window it hands the drawing to. */
+function handoverToken() {
+  const c = globalThis.crypto;
+  return c?.randomUUID ? c.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPopped, onSelection, onLive }, { now = () => Date.now() } = {}) {
   const address = iframe.getAttribute('src');
   let popup = null;
   let watch = 0;
-  // popping out: the window opened but the docked CAD still holds the drawing, and what it said meanwhile
+  // popping out: the window opened but has not yet taken the drawing from the docked CAD
   let opening = null;
-  let openingReady = false;
-  let carry = null;
   const target = () => (popup && !popup.closed ? popup : iframe.contentWindow);
   const send = (type, body = {}) => target()?.postMessage({ protocol: HOST_PROTOCOL, type, ...body }, window.location.origin);
   let palette = null;
@@ -104,8 +110,9 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
     const msg = e.data;
     if (!msg || msg.protocol !== HOST_PROTOCOL) return;
     if (opening && e.source === opening) {
-      if (msg.type === 'ready') openingReady = true;
-      return;
+      // it has the drawing (or, with no docked CAD answering, its autosave): it holds the CAD now
+      if (msg.type !== 'ready') return;
+      takeOver(opening);
     }
     if (e.source !== target()) return;
     if (popup) {
@@ -117,8 +124,6 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
       if (popup) send('hello');
       if (palette) send('palette', palette);
       if (spaces) send('spaces', { items: spaces });
-      if (carry) send('open', { session: carry });
-      carry = null;
       onReady?.();
     }
     else if (msg.type === 'view') { if (!popup) onView?.(msg); }
@@ -132,9 +137,23 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
   });
   iframe.addEventListener('load', () => send('hello'));
 
+  /** The popped window took the drawing: it holds the CAD from now on, and the iframe goes blank. */
+  function takeOver(win) {
+    opening = null;
+    clearInterval(watch);
+    popup = win;
+    heard = -Infinity;
+    asked = -Infinity;
+    live = false;
+    onLive?.(false);
+    iframe.src = 'about:blank';
+    iframe.hidden = true;
+    watch = setInterval(() => (popup?.closed ? dockIn() : heartbeat()), 500);
+    onPopped?.(true);
+  }
+
   function dockIn() {
     if (!popup) return;
-    carry = null;
     clearInterval(watch);
     if (!popup.closed) popup.close();
     popup = null;
@@ -209,34 +228,22 @@ export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPo
         popup.focus();
         return true;
       }
-      const url = new URL(`${address}&resume`, location.href).href;
       if (opening) return true;
-      // opened inside the click, or the browser calls it a pop-up; the drawing follows once the docked CAD hands it over
+      const token = handoverToken();
+      const url = new URL(`${address}&resume&handover=${token}`, location.href).href;
+      // opened inside the click, or the browser calls it a pop-up; the docked CAD hands it the drawing itself
       const win = window.open(url, 'acoustic-cad', 'popup,width=1280,height=860');
       if (!win) return false;
       opening = win;
-      openingReady = false;
-      this.session().then((session) => {
-        opening = null;
-        if (win.closed) return;
-        popup = win;
-        heard = -Infinity;
-        asked = -Infinity;
-        live = false;
-        onLive?.(false);
-        carry = session;
-        iframe.src = 'about:blank';
-        iframe.hidden = true;
-        watch = setInterval(() => (popup?.closed ? dockIn() : heartbeat()), 500);
-        // it said ready while the docked CAD was still answering: hand over now
-        if (openingReady) {
-          if (palette) send('palette', palette);
-          if (spaces) send('spaces', { items: spaces });
-          if (carry) send('open', { session: carry });
-          carry = null;
+      send('handover', { token });
+      // closed before it took the drawing: the docked CAD simply stays
+      clearInterval(watch);
+      watch = setInterval(() => {
+        if (opening === win && win.closed) {
+          opening = null;
+          clearInterval(watch);
         }
-        onPopped?.(true);
-      });
+      }, 500);
       return true;
     },
     dockIn,
