@@ -17,6 +17,11 @@ The nightly run is how a CAD change reaches the github.io and acoustics.like.aud
 
 **Not automated:** nothing runs the published page in a browser (the frame smoke reads the files, it does not execute the CAD); the WEB.Frontend-Assets rebuild is by hand.
 
+## Delivered 2026-10-31: portable file names (no `:` `|` or case twins)
+
+- The monorepo now checks out on Windows and macOS: no tracked name holds `<>:"|?*`, a trailing dot or space, a device name or a case-only twin. Colon folders became dot folders (the POD.x convention).
+- `vendor/apk-contracts/` re-synced: the bundled topic grammar names its producer `PLUGIN.CHROMECAST/SRC/Discovery.ChromeCast/src/lib.rs`. No behaviour change.
+
 ## Delivered from the 2026-10-30 audit
 
 - **Contract test against the CAD's published host@1** — `tests/cadContract.test.mjs`: `HOST_PROTOCOL` equals the schema's, every message `cadLink.js` sends (all its methods, driven over a fake window) validates as `toCad.<type>` with `vendor/cad.like.audio/contract/validate.mjs`, every `toHost` sample reaches its callback, a foreign protocol is not heard, and the vendored copy is byte-compared with the CAD's `contract/` (sibling checkout, or `CAD_CONTRACT_DIR` — the deploy workflow now gets the CAD before `npm test` and sets it). `tests/session.test.mjs` fakes the CAD with the published geometry sample instead of a hand-made message. Verified: `npm test` 281/281.
