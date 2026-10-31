@@ -89,7 +89,7 @@ scripts/          smoke-frame.mjs — the framed CAD is there and speaks host@1
 Documentation/    acoustics/ — the engine's mathematics, chapter by chapter; acoustic-x/ — Acoustic X and its references
 ```
 
-No build step and no dependencies: plain ES modules, served as they are. The rack panel reads the bench's parts catalogue from where `js/site.js` says, relative to the page (`../../../OS/BIM/parts.json`, i.e. `POD.THIN/OS/BIM/parts.json` in the tree; `catalogue/parts.json` on the published site); where there is none, that fetch fails and the catalogue is empty, so gear is typed in by hand. A few viewer preferences (reveal speed, graphs on/off, Acoustic X legacy mode) are kept in `localStorage`.
+No build step and no dependencies: plain ES modules, served as they are. The rack panel reads the bench's parts catalogue from where `js/site.js` says, (`/api/bim/parts` — WEB.OsApi's route over the OS's `BIM/parts.json` — on APK:OS; `catalogue/parts.json` on the published site); where there is none, that fetch fails and the catalogue is empty, so gear is typed in by hand. A few viewer preferences (reveal speed, graphs on/off, Acoustic X legacy mode) are kept in `localStorage`.
 
 ## Tests
 

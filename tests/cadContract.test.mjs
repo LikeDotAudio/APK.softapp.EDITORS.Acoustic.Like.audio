@@ -118,8 +118,8 @@ test('the published site config names the CAD and the catalogue beside the page'
   assert.ok(!/\.\.\//.test(published.cad + published.catalogue), 'the published site never climbs out of itself');
 });
 
-test('the bench config asks the gateway for the catalogue, never a path into the OS repo', async () => {
+test('the bench config asks the OsApi route for the catalogue, never a path into the OS repo', async () => {
   const tree = (await import('../js/site.js')).SITE;
   assert.ok(!/\.\.\//.test(tree.catalogue), 'no relative climb out of this repository (WS-04)');
-  assert.equal(tree.catalogue, '/APK:OS/BIM/parts.json');
+  assert.equal(tree.catalogue, '/api/bim/parts'); // WEB.OsApi routes_shell.py get_bim_parts
 });

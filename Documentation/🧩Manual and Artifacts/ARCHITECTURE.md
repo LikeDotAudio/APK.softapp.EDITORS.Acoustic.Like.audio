@@ -6,7 +6,7 @@ What every control does is in the repo [README](../../README.md#what-it-does); t
 
 ## Entry point
 
-`index.html` loads `js/main.js` as a module. The plan tile is an iframe of the CAD at the address `js/site.js` names (`../EDITORS.CAD.Like.audio/dist/index.html` in the tree; the deploy copies `js/site.published.js` over it, `cad/index.html`), opened at `#/drawing?host=acoustic`. `js/site.js` also names the parts catalogue the rack panel fetches, relative to the page. `main.js` wires:
+`index.html` loads `js/main.js` as a module. The plan tile is an iframe of the CAD at the address `js/site.js` names (`../EDITORS.CAD.Like.audio/dist/index.html` in the tree; the deploy copies `js/site.published.js` over it, `cad/index.html`), opened at `#/drawing?host=acoustic`. `js/site.js` also names the parts catalogue the rack panel fetches: WEB.OsApi's `GET /api/bim/parts` on APK:OS, `catalogue/parts.json` on the published site. `main.js` wires:
 
 | Piece | File | Role |
 |---|---|---|
