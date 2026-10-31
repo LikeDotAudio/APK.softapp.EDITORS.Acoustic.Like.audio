@@ -6,12 +6,12 @@ What every control does is in the repo [README](../../README.md#what-it-does); t
 
 ## Entry point
 
-`index.html` loads `js/main.js` as a module. The plan tile is an iframe of the CAD — `../EDITORS.CAD.Like.audio/dist/index.html#/drawing?host=acoustic` in the tree, `cad/index.html` on the published site. `main.js` wires:
+`index.html` loads `js/main.js` as a module. The plan tile is an iframe of the CAD at the address `js/site.js` names (`../EDITORS.CAD.Like.audio/dist/index.html` in the tree; the deploy copies `js/site.published.js` over it, `cad/index.html`), opened at `#/drawing?host=acoustic`. `js/site.js` also names the parts catalogue the rack panel fetches, relative to the page. `main.js` wires:
 
 | Piece | File | Role |
 |---|---|---|
 | the store | `js/model/store.js` (`createStore`) | speakers, mics, sets, racks, furniture, settings; undo/redo; saved to `localStorage` per CAD file name |
-| the CAD link | `js/cad/cadLink.js` (`connectCad`) | same-origin `postMessage`, protocol `cad.like.audio/host@1`, to the iframe — or to `window.opener` when the CAD is popped out |
+| the CAD link | `js/cad/cadLink.js` (`connectCad`) | same-origin `postMessage`, protocol `cad.like.audio/host@1` (schema and samples vendored from the CAD in `vendor/cad.like.audio/contract/`, held by `tests/cadContract.test.mjs`), to the iframe — or to `window.opener` when the CAD is popped out |
 | the engine | `js/compute/engine.js` (`createEngine`) | builds the room, schedules the field on a module Worker (`fieldWorker.js`), refines in passes |
 | the views | `js/views/` | plan overlay, ceiling and elevations, the Wall page, 3-D cut-away, colour maps |
 | the UI | `js/ui/` | inspector, meter bridge, rack panel, tour, wizard, licence, pop-out |
@@ -40,9 +40,11 @@ The app never edits the drawing's geometry directly: what it adds to the CAD goe
 | `js/audio/` | ▶ Listen: the echogram as an impulse response, a clap through it |
 | `js/cad/` | the bridge client and what is drawn into the CAD |
 | `css/` | `app.css`, `acoustx.css` |
-| `tests/` | `node --test`, 275 tests against closed forms |
+| `tests/` | `node --test`, 281 tests against closed forms and the CAD contract |
+| `vendor/cad.like.audio/contract/` | the CAD's published `host@1` schema, samples and `validate.mjs`, unchanged |
+| `scripts/smoke-frame.mjs` | the framed CAD is there and speaks host@1 (`npm run smoke:frame`) |
 | `Documentation/acoustics/`, `acoustic-x/` | books of their own; the app's help opens them, so they stay where they are |
 
 ## Running and testing
 
-Serve the folder beside `EDITORS.CAD.Like.audio/` (the iframe path climbs one level) — the APK.audio desktop does this, as does any static server at `PODS/POD.THIN/Softapps/EDITORS/`. `npm test` runs the suite with no install (269 passed, about 2 s, 2026-10-30).
+Serve the folder beside `EDITORS.CAD.Like.audio/` (as `js/site.js` says) — the APK.audio desktop does this, as does any static server at `PODS/POD.THIN/Softapps/EDITORS/`. `npm test` runs the suite with no install (281 passed, 2026-10-30).

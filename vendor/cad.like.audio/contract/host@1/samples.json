@@ -1,0 +1,485 @@
+{
+  "$comment": "One sample of every cad.like.audio/host@1 message, in both directions. Drawing units are mm (CAD drawings in mm). Both sides test against these: EDITORS.CAD.Like.audio (hostContract.test.ts) and every host that vendors this directory. floorplan.file is a File on the wire; JSON can only stand in an empty object.",
+  "toCad": [
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "hello"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "fit"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "mirror",
+      "x": 3000,
+      "enabled": true
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "sheet",
+      "layer": "Elevation Front",
+      "color": "#7dd3fc",
+      "seed": [
+        [
+          0,
+          6000
+        ],
+        [
+          6000,
+          6000
+        ],
+        [
+          6000,
+          8700
+        ],
+        [
+          0,
+          8700
+        ]
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "palette",
+      "title": "Acoustic finishes",
+      "items": [
+        {
+          "id": "carpet-heavy",
+          "name": "Heavy carpet",
+          "category": "Floor",
+          "color": "#7a5230",
+          "hatch": "ANSI31",
+          "alpha": [
+            0.02,
+            0.06,
+            0.14,
+            0.37,
+            0.6,
+            0.65
+          ]
+        },
+        {
+          "id": "panel-1200x600",
+          "name": "Absorber panel 1200 × 600",
+          "category": "Absorber",
+          "color": "#336699",
+          "size": [
+            1.2,
+            0.6
+          ],
+          "depth": 0.1,
+          "note": "100 mm mineral wool"
+        }
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "arm",
+      "paletteId": "panel-1200x600"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "place",
+      "layer": "Furniture",
+      "items": [
+        {
+          "paletteId": "panel-1200x600",
+          "at": [
+            1500,
+            2250
+          ],
+          "rotation": 90
+        }
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "layer",
+      "name": "Ceiling",
+      "color": "#e5e7eb",
+      "finish": "carpet-heavy"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "move",
+      "items": [
+        {
+          "id": "block:12",
+          "at": [
+            3000,
+            1800
+          ],
+          "rotation": 0
+        }
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "remove",
+      "ids": [
+        "block:12"
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "repaint",
+      "ids": [
+        "fill:3",
+        "fill:4"
+      ],
+      "paletteId": "carpet-heavy"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "spaces",
+      "items": [
+        {
+          "id": "plan",
+          "name": "Plan",
+          "subtitle": "1:50",
+          "bounds": [
+            0,
+            0,
+            6000,
+            4500
+          ]
+        }
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "walls",
+      "op": "vertex",
+      "edgeId": 2,
+      "end": "b",
+      "to": [
+        6200,
+        4500
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "layers",
+      "visible": {
+        "Blow-up": false,
+        "Speaker layout": true
+      }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "select",
+      "edges": [
+        1,
+        2
+      ],
+      "blocks": [
+        "block:7"
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "marks",
+      "key": "auto-panels",
+      "hash": "a1b2c3",
+      "items": [
+        {
+          "kind": "fill",
+          "layer": "Treatment",
+          "points": [
+            [
+              0,
+              1000
+            ],
+            [
+              0,
+              2200
+            ],
+            [
+              100,
+              2200
+            ],
+            [
+              100,
+              1000
+            ]
+          ],
+          "paletteId": "panel-1200x600"
+        },
+        {
+          "kind": "text",
+          "layer": "Labels",
+          "at": [
+            3000,
+            -300
+          ],
+          "text": "Front wall",
+          "height": 150,
+          "align": "center"
+        },
+        {
+          "kind": "drawing",
+          "layer": "Speakers",
+          "name": "L",
+          "at": [
+            1800,
+            600
+          ],
+          "lines": [
+            [
+              -150,
+              -150,
+              150,
+              -150
+            ],
+            [
+              150,
+              -150,
+              150,
+              150,
+              "Speakers"
+            ]
+          ],
+          "attributes": {
+            "speaker": "L"
+          }
+        }
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "session"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "open",
+      "session": {
+        "version": 1,
+        "timestamp": 1761800000000,
+        "currentFileName": "Studio A.cad",
+        "units": "mm",
+        "docSnapshot": {
+          "edges": []
+        },
+        "layers": [],
+        "activeLayerId": "0"
+      }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "floorplan",
+      "file": {}
+    }
+  ],
+  "toHost": [
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "ready"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "view",
+      "zoom": 0.12,
+      "panX": 40,
+      "panY": -12,
+      "rect": {
+        "left": 0,
+        "top": 32,
+        "width": 1280,
+        "height": 800
+      },
+      "units": "mm"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "geometry",
+      "fileName": "Studio A.cad",
+      "units": "mm",
+      "walls": [
+        {
+          "edgeId": 1,
+          "a": [
+            0,
+            0
+          ],
+          "b": [
+            6000,
+            0
+          ],
+          "layerId": "0"
+        },
+        {
+          "edgeId": 2,
+          "a": [
+            6000,
+            0
+          ],
+          "b": [
+            6000,
+            4500
+          ],
+          "layerId": "0"
+        },
+        {
+          "edgeId": 3,
+          "a": [
+            6000,
+            4500
+          ],
+          "b": [
+            0,
+            4500
+          ],
+          "layerId": "0"
+        },
+        {
+          "edgeId": 4,
+          "a": [
+            0,
+            4500
+          ],
+          "b": [
+            0,
+            0
+          ],
+          "layerId": "0"
+        }
+      ],
+      "rooms": [
+        {
+          "id": 1,
+          "layerId": "0",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              6000,
+              0
+            ],
+            [
+              6000,
+              4500
+            ],
+            [
+              0,
+              4500
+            ]
+          ],
+          "kind": "loop"
+        }
+      ],
+      "layers": [
+        {
+          "id": "0",
+          "name": "0",
+          "color": "#ffffff"
+        },
+        {
+          "id": "Ceiling",
+          "name": "Ceiling",
+          "color": "#e5e7eb",
+          "finish": "carpet-heavy"
+        }
+      ],
+      "patches": [
+        {
+          "id": "fill:3",
+          "paletteId": "carpet-heavy",
+          "layerId": "0",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              6000,
+              0
+            ],
+            [
+              6000,
+              4500
+            ],
+            [
+              0,
+              4500
+            ]
+          ]
+        },
+        {
+          "id": "block:12",
+          "paletteId": "panel-1200x600",
+          "layerId": "Furniture",
+          "points": [
+            [
+              2400,
+              1500
+            ],
+            [
+              3600,
+              1500
+            ],
+            [
+              3600,
+              2100
+            ],
+            [
+              2400,
+              2100
+            ]
+          ],
+          "at": [
+            3000,
+            1800
+          ],
+          "rotation": 0
+        }
+      ],
+      "marks": {
+        "auto-panels": "a1b2c3"
+      }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "mirror",
+      "enabled": true,
+      "x": 3000,
+      "axes": [
+        3000
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "selection",
+      "edges": [
+        1,
+        2
+      ],
+      "blocks": [
+        {
+          "id": "block:12",
+          "paletteId": "panel-1200x600",
+          "attributes": {
+            "paletteId": "panel-1200x600"
+          }
+        }
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "session",
+      "session": {
+        "version": 1,
+        "timestamp": 1761800000000,
+        "currentFileName": "Studio A.cad",
+        "units": "mm",
+        "docSnapshot": {
+          "edges": []
+        },
+        "layers": [],
+        "activeLayerId": "0"
+      }
+    }
+  ]
+}

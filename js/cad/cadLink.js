@@ -48,8 +48,13 @@
  * the session file (File tab) is made of. `floorPlan(file)` hands it a .dxf
  * or an image to open as a new drawing.
  *
- * The protocol string is the contract; it lives in
- * EDITORS.CAD.Like.audio/src/shell/hostBridge/hostBridge.ts.
+ * THE CONTRACT is published by the CAD as `contract/host@1/` — a JSON Schema
+ * with one sample of every message, both ways — and vendored here unchanged
+ * as `vendor/cad.like.audio/contract/`. This file is held to it by
+ * tests/cadContract.test.mjs: `HOST_PROTOCOL` is the schema's, every message
+ * this sends validates as `toCad.<type>`, and every `toHost` sample reaches
+ * its callback. The same test fails when the vendored copy drifts from the
+ * CAD's own (a monorepo checkout, or CI after "Get the CAD").
  */
 
 export const HOST_PROTOCOL = 'cad.like.audio/host@1';

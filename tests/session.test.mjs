@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { readSession, sessionDoc, SESSION_FORMAT } from '../js/model/session.js';
 
@@ -45,6 +46,10 @@ test('anything else is refused', () => {
 });
 
 // The popped-out plan asks the CAD live: cadLink's `live`, with a fake window and clock.
+// What the fake CAD says is the CAD's own published sample (vendor/cad.like.audio/contract/host@1/samples.json).
+
+const SAMPLES = JSON.parse(readFileSync(new URL('../vendor/cad.like.audio/contract/host@1/samples.json', import.meta.url), 'utf8'));
+const { protocol: _p, ...GEOMETRY } = SAMPLES.toHost.find((m) => m.type === 'geometry');
 
 async function fakeLink() {
   const listeners = [];
@@ -58,7 +63,8 @@ async function fakeLink() {
     },
   };
   const iframeWin = { postMessage: (m) => (m.type === 'session' ? queueMicrotask(() => fire(iframeWin, { type: 'session', session: { docSnapshot: { edges: [] } } })) : null) };
-  const fire = (source, body) => listeners.forEach((fn) => fn({ origin: 'http://x', source, data: { protocol: 'cad.like.audio/host@1', ...body } }));
+  const { HOST_PROTOCOL } = await import('../js/cad/cadLink.js');
+  const fire = (source, body) => listeners.forEach((fn) => fn({ origin: 'http://x', source, data: { protocol: HOST_PROTOCOL, ...body } }));
   globalThis.window = {
     location: { origin: 'http://x' },
     addEventListener: (type, fn) => type === 'message' && listeners.push(fn),
@@ -86,7 +92,7 @@ test('popped, the plan is live only while the CAD window answers', async () => {
   assert.equal(f.link.live, false, 'not heard since it took the drawing: no walls from memory');
   f.link.heartbeat();
   assert.ok(f.sentTo.includes('hello'), 'a quiet window is asked');
-  f.fire(f.popupWin, { type: 'geometry', fileName: 'a', walls: [] });
+  f.fire(f.popupWin, GEOMETRY);
   assert.equal(f.link.live, true);
   f.tick(f.PING_MS);
   f.sentTo.length = 0;

@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { firstFree, itemFromPart, rackFootprint, rackOf, rackPlan } from '../acoustics/rack.js';
+import { SITE } from '../site.js';
 import { button, h, num, row, select, text } from './dom.js';
 
 /**
@@ -15,13 +16,12 @@ import { button, h, num, row, select, text } from './dom.js';
  * under the rack's CAD block id.
  */
 
-/** The bench's parts catalogue, beside the softapps where the OS is served; [] where it is not (a softapp on its own). */
-const CATALOGUE_URL = new URL('../../../../../OS/BIM/parts.json', import.meta.url);
+/** The bench's parts catalogue, where site.js says it is (relative to the page); [] where there is none. */
 let catalogue = null;
 export function loadCatalogue(onLoad) {
   if (catalogue) return catalogue;
   catalogue = [];
-  fetch(CATALOGUE_URL)
+  fetch(new URL(SITE.catalogue, document.baseURI))
     .then((r) => (r.ok ? r.json() : { parts: [] }))
     .then((d) => {
       catalogue = (d.parts ?? []).filter((p) => p.rack_units > 0);

@@ -1,0 +1,1134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cad.like.audio/contract/host@1/host.schema.json",
+  "title": "cad.like.audio/host@1",
+  "description": "The CAD.Like.audio host bridge: same-origin window.postMessage between the CAD editor (in an iframe, or a window it popped out to) and the softapp hosting it. Every message is an object { protocol: 'cad.like.audio/host@1', type, ...body }. $defs 'toCad.<type>' are what a host may send; 'toHost.<type>' are what the CAD sends. Fields not listed are ignored by the receiver, so a new optional field stays @1; renaming or removing one is @2 (see hostBridge.ts, CHANGING IT). Validate with ../validate.mjs; samples.json carries one sample of every message.",
+  "x-protocol": "cad.like.audio/host@1",
+  "x-transport": "window.postMessage, targetOrigin = window.location.origin; the receiver drops anything whose origin or source is not its peer",
+  "$defs": {
+    "xy": {
+      "description": "A point [x, y] in drawing units (the sheet's `units`; CAD drawings default to mm).",
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "units": {
+      "enum": [
+        "in",
+        "mm",
+        "cm",
+        "m",
+        "ft"
+      ]
+    },
+    "paletteItem": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "hatch": {
+          "type": "string"
+        },
+        "size": {
+          "description": "[w, h] in metres: a fixed-size block. Absent: an area finish.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "note": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "symbolName": {
+          "type": "string"
+        },
+        "acad": {
+          "type": "string"
+        },
+        "alpha": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          },
+          "minItems": 1,
+          "maxItems": 9
+        },
+        "depth": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "mark": {
+      "description": "One thing the host draws under a marks key (hostMarks.ts).",
+      "type": "object",
+      "required": [
+        "kind",
+        "layer"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "fill",
+            "text",
+            "drawing"
+          ]
+        },
+        "layer": {
+          "type": "string"
+        },
+        "layerColor": {
+          "type": "string"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/xy"
+          },
+          "minItems": 3
+        },
+        "paletteId": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "opacity": {
+          "type": "number"
+        },
+        "at": {
+          "$ref": "#/$defs/xy"
+        },
+        "text": {
+          "type": "string"
+        },
+        "height": {
+          "type": "number"
+        },
+        "align": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "vAlign": {
+          "enum": [
+            "top",
+            "middle",
+            "baseline",
+            "bottom"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 5
+          }
+        },
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "text",
+              "x",
+              "y",
+              "height"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "fills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "points"
+            ],
+            "properties": {
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/xy"
+                },
+                "minItems": 3
+              },
+              "color": {
+                "type": "string"
+              },
+              "opacity": {
+                "type": "number"
+              },
+              "layer": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "session": {
+      "description": "The CAD's whole drawing session (SavedSession) — what the browser autosaves, without the sign-in.",
+      "type": "object",
+      "required": [
+        "docSnapshot"
+      ],
+      "properties": {
+        "version": {
+          "type": "number"
+        },
+        "timestamp": {
+          "type": "number"
+        },
+        "currentFileName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "units": {
+          "$ref": "#/$defs/units"
+        },
+        "docSnapshot": {
+          "type": "object",
+          "required": [
+            "edges"
+          ],
+          "properties": {
+            "edges": {
+              "type": "array"
+            }
+          }
+        },
+        "layers": {
+          "type": "array"
+        },
+        "activeLayerId": {
+          "type": "string"
+        }
+      }
+    },
+    "toCad.hello": {
+      "description": "Resend view, geometry and mirror now.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "hello"
+        }
+      }
+    },
+    "toCad.fit": {
+      "description": "Zoom to the drawing.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "fit"
+        }
+      }
+    },
+    "toCad.mirror": {
+      "description": "Put the primary Virtual Mirror axis at x (enabled defaults to true).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "x"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "mirror"
+        },
+        "x": {
+          "type": "number"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "toCad.sheet": {
+      "description": "Jump to the drawing on that layer, making it current; draw seed there first if the layer is empty.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "layer"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "sheet"
+        },
+        "layer": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/xy"
+          }
+        }
+      }
+    },
+    "toCad.palette": {
+      "description": "The host's materials and products. A new palette replaces the last.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "items"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "palette"
+        },
+        "title": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/paletteItem"
+          }
+        }
+      }
+    },
+    "toCad.arm": {
+      "description": "Pick a palette item for the user to place next (null disarms).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "paletteId"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "arm"
+        },
+        "paletteId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "toCad.place": {
+      "description": "Palette products onto the sheet as the user's own blocks, one undo step.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "layer",
+        "items"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "place"
+        },
+        "layer": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "paletteId",
+              "at"
+            ],
+            "properties": {
+              "paletteId": {
+                "type": "string"
+              },
+              "at": {
+                "$ref": "#/$defs/xy"
+              },
+              "rotation": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    "toCad.layer": {
+      "description": "Make sure a layer exists (not made current) and set its finish.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "name"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "layer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "finish": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "toCad.move": {
+      "description": "Set where placed products sit, off the undo stack.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "items"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "move"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "at"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "'block:<n>' — a placed product"
+              },
+              "at": {
+                "$ref": "#/$defs/xy"
+              },
+              "rotation": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    "toCad.remove": {
+      "description": "Take placed products out, one undo step.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "ids"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "remove"
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "'block:<n>' — a placed product"
+          }
+        }
+      }
+    },
+    "toCad.repaint": {
+      "description": "Make painted regions another palette item, one undo step.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "ids",
+        "paletteId"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "repaint"
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "'fill:<n>' — a painted region"
+          }
+        },
+        "paletteId": {
+          "type": "string"
+        }
+      }
+    },
+    "toCad.spaces": {
+      "description": "The drawings kept on the sheet as named windows onto it: bounds [x1, y1, x2, y2].",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "items"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "spaces"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "bounds"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "subtitle": {
+                "type": "string"
+              },
+              "bounds": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              }
+            }
+          }
+        }
+      }
+    },
+    "toCad.walls": {
+      "description": "Reshape the room from the host's plan (hostWalls.ts).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "op"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "walls"
+        },
+        "op": {
+          "enum": [
+            "begin",
+            "end",
+            "detach",
+            "delete",
+            "vertex",
+            "edge",
+            "add"
+          ]
+        },
+        "edgeId": {
+          "type": "integer"
+        },
+        "end": {
+          "enum": [
+            "a",
+            "b"
+          ]
+        },
+        "to": {
+          "$ref": "#/$defs/xy"
+        },
+        "by": {
+          "$ref": "#/$defs/xy"
+        },
+        "a": {
+          "$ref": "#/$defs/xy"
+        },
+        "b": {
+          "$ref": "#/$defs/xy"
+        },
+        "layer": {
+          "type": "string"
+        }
+      }
+    },
+    "toCad.layers": {
+      "description": "Layers on or off by name.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "visible"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "layers"
+        },
+        "visible": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "toCad.select": {
+      "description": "Select here what the host picked.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "edges",
+        "blocks"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "select"
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "'block:<n>' — a placed product"
+          }
+        }
+      }
+    },
+    "toCad.marks": {
+      "description": "Replace everything drawn under key with items; ignored when hash is already on the sheet.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "key",
+        "hash",
+        "items"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "marks"
+        },
+        "key": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/mark"
+          }
+        }
+      }
+    },
+    "toCad.session": {
+      "description": "Ask for the whole drawing session; answered with toHost.session.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "session"
+        }
+      }
+    },
+    "toCad.open": {
+      "description": "Put a session on the sheet, replacing what is there (one undo step).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "session"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "open"
+        },
+        "session": {
+          "$ref": "#/$defs/session"
+        }
+      }
+    },
+    "toCad.floorplan": {
+      "description": "Open a floor plan the user picked in the host as a new drawing.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "file"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "floorplan"
+        },
+        "file": {
+          "description": "A File (structured clone, not JSON): a .dxf, or an image to trace."
+        }
+      }
+    },
+    "toHost.ready": {
+      "description": "The CAD is up and listening. A host resends its palette and spaces on every ready.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "ready"
+        }
+      }
+    },
+    "toHost.view": {
+      "description": "The world→screen transform and where the canvas sits in this window.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "zoom",
+        "panX",
+        "panY",
+        "rect",
+        "units"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "view"
+        },
+        "zoom": {
+          "type": "number"
+        },
+        "panX": {
+          "type": "number"
+        },
+        "panY": {
+          "type": "number"
+        },
+        "units": {
+          "$ref": "#/$defs/units"
+        },
+        "rect": {
+          "type": "object",
+          "required": [
+            "left",
+            "top",
+            "width",
+            "height"
+          ],
+          "properties": {
+            "left": {
+              "type": "number"
+            },
+            "top": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number"
+            },
+            "height": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "toHost.geometry": {
+      "description": "The visible sheet as walls, closed rooms and palette patches (sceneForHost), plus the marks hash on the sheet per key.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "fileName",
+        "units",
+        "walls",
+        "rooms",
+        "layers",
+        "patches",
+        "marks"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "geometry"
+        },
+        "fileName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "units": {
+          "$ref": "#/$defs/units"
+        },
+        "walls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "edgeId",
+              "a",
+              "b",
+              "layerId"
+            ],
+            "properties": {
+              "edgeId": {
+                "type": "integer"
+              },
+              "a": {
+                "$ref": "#/$defs/xy"
+              },
+              "b": {
+                "$ref": "#/$defs/xy"
+              },
+              "layerId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "layerId",
+              "points",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer"
+              },
+              "layerId": {
+                "type": "string"
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/xy"
+                }
+              },
+              "kind": {
+                "enum": [
+                  "loop",
+                  "outline",
+                  "picked"
+                ]
+              }
+            }
+          }
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "color"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              },
+              "finish": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "patches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "paletteId",
+              "layerId",
+              "points"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "paletteId": {
+                "type": "string"
+              },
+              "layerId": {
+                "type": "string"
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/xy"
+                }
+              },
+              "at": {
+                "$ref": "#/$defs/xy"
+              },
+              "rotation": {
+                "type": "number"
+              },
+              "host": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "marks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "toHost.mirror": {
+      "description": "The Virtual Mirror: whether Symmetrical Mode is on and every axis x.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "enabled",
+        "x",
+        "axes"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "mirror"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "x": {
+          "type": "number"
+        },
+        "axes": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "toHost.selection": {
+      "description": "Every change of selection here (selectionForHost).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "edges",
+        "blocks"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "selection"
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "attributes"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "'block:<n>' — a placed product"
+              },
+              "paletteId": {
+                "type": "string"
+              },
+              "attributes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "toHost.session": {
+      "description": "The answer to toCad.session.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "session"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "session"
+        },
+        "session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/session"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

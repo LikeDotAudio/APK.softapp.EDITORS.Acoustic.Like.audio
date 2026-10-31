@@ -49,19 +49,7 @@
 
 The CAD is in an iframe. The CAD's `src/shell/hostBridge/` and `js/cad/cadLink.js` talk over same-origin `postMessage` using the protocol `cad.like.audio/host@1`.
 
-| Direction | Message | Carries |
-| :-- | :-- | :-- |
-| CAD → app | `view` | zoom, pan, canvas rect, units |
-| CAD → app | `geometry` | visible walls (arcs tessellated), closed rooms, layers, file name, and `patches` `[{id, paletteId, layerId, points}]` (fills and product blocks placed from the palette) |
-| CAD → app | `mirror` | Symmetrical Mode on/off, axis x |
-| app → CAD | `hello` · `fit` · `mirror {x, enabled}` | resend · zoom to drawing · place the mirror axis |
-| app → CAD | `sheet {layer, color?, seed?}` | jump to the drawing on that layer and make it current; draw `seed` there first if the layer is empty |
-| app → CAD | `palette {title, items}` | every finish and product (`{id, name, category, color, hatch?, size?, note?}`; `size` [w, h] m = a fixed-size block). Resent on every `ready` |
-| app → CAD | `session` · `open {session}` · `floorplan {file}` | the whole drawing back as `session`, only to relay it to a popped-out CAD window · put a drawing on the sheet (that relay, or an old session@1 file) · open a `.dxf` or an image the user picked as a new drawing under its own name |
-| app → CAD | `move {items}` · `remove {ids}` | set where placed products sit · take them out of the drawing (right-click → Remove on the plan; one undo step in the CAD) |
-| CAD → app | `ready` · `selection` · `session` | the CAD is up (the app resends `palette`, `spaces` and any carried session) · what is selected in the CAD · the reply to `session` |
-| app → CAD | `marks {key, hash, items}` · `place {layer, items}` · `repaint {ids, paletteId}` | draw and keep a set of things under `key` (the slices, the schematic: `js/cad/marks.js`, `js/cad/schematic.js`) · drop items on a layer · give placed blocks another finish |
-| app → CAD | `spaces {items}` · `walls` · `layers {visible}` · `select {edges, blocks}` · `arm {paletteId}` | the model spaces · a wall edit · which layers show · select in the CAD · pick a product for the user to place next |
+The protocol is not restated here: the CAD publishes it as `contract/host@1/` (a JSON Schema with one sample of every message, both ways), and this repo vendors that directory unchanged as `vendor/cad.like.audio/contract/`. Read `host.schema.json` for every message and field. `tests/cadContract.test.mjs` proves `cadLink.js` against it — every message sent validates, every CAD sample reaches its callback — and fails when the vendored copy drifts from the CAD's own (in a monorepo checkout, and in CI after "Get the CAD"). To take a new CAD contract: `cp -r ../EDITORS.CAD.Like.audio/contract/host@1 ../EDITORS.CAD.Like.audio/contract/validate.mjs vendor/cad.like.audio/contract/`.
 
 **Pop out.** `⇱ Pop out` on the plan tile moves the CAD into its own window (handy on a second screen). Then the bridge runs over `window.opener` instead of the iframe. The address gains `&resume`, so the new CAD restores the drawing the old one autosaved. Only one CAD is open at a time. While the CAD is out, the plan tile draws the room's walls itself, and speakers and mics can still be placed and dragged there. `⇲ Dock`, or closing the window, brings the CAD back.
 
@@ -69,7 +57,7 @@ The CAD never reads this app's state: what the app asks of it is drawn (`marks`,
 
 ## Hosting
 
-Published by `.github/workflows/deploy.yml` on every push to `main` and nightly, once `npm test` has passed: to GitHub Pages, and over FTPS to the Varial account that serves https://acoustics.like.audio/ (secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`; variable `FTP_SERVER_DIR`). The CAD's tracked `dist/` is copied into the site as `cad/` and the published page's iframe is pointed there (the tree's `../EDITORS.CAD.Like.audio/dist/` would climb out of a github.io project site), so the bridge stays same-origin; a CAD change shows up here on the next run.
+Published by `.github/workflows/deploy.yml` on every push to `main` and nightly, once `npm test` has passed: to GitHub Pages, and over FTPS to the Varial account that serves https://acoustics.like.audio/ (secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`; variable `FTP_SERVER_DIR`). The CAD's tracked `dist/` is copied into the site as `cad/` and the APK.audio repo's `PODS/POD.THIN/OS/BIM/parts.json` as `catalogue/parts.json`, and `js/site.published.js` is copied over `js/site.js` — the one file that says where the CAD and the catalogue are — so the bridge stays same-origin and racks have their catalogue; a CAD or catalogue change shows up on the next run. `npm run smoke:frame` (also a deploy step, on `_site/`) proves the framed CAD is there and speaks host@1.
 
 **Live now:** https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/
 
@@ -82,7 +70,8 @@ Published by `.github/workflows/deploy.yml` on every push to `main` and nightly,
 ## Layout
 
 ```
-index.html        the page; the plan tile is an iframe of ../EDITORS.CAD.Like.audio/dist/index.html#/drawing?host=acoustic
+index.html        the page; the plan tile is an iframe of the CAD named in js/site.js, opened at #/drawing?host=acoustic
+js/site.js        the one config point: where the CAD and the parts catalogue are (site.published.js on the published site)
 js/main.js        wires the store, the CAD link, the views and the compute engine together
 js/acoustics/     physics, no DOM: bands, materials, patterns, devices, room, elevations, patches, images, field,
                   analysis, layouts, symmetry, advisor, sbir, nulls, isolation, measure, multiSub, rack, windows, …
@@ -94,11 +83,13 @@ js/views/         plan overlay, ceiling + elevations, the Wall page, 3-D, colour
 js/ui/            inspector (every parameter), meter bridge, rack panel, tour, wizard, licence, pop-out
 js/cad/           the bridge client (cadLink.js) and what the app draws into the CAD (marks.js, schematic.js)
 css/              app.css, acoustx.css
-tests/            node --test: physics checked against closed forms (275 tests)
+tests/            node --test: physics checked against closed forms, and the CAD contract (281 tests)
+vendor/           cad.like.audio/contract/ — the CAD's published host@1 schema and samples, vendored unchanged
+scripts/          smoke-frame.mjs — the framed CAD is there and speaks host@1
 Documentation/    acoustics/ — the engine's mathematics, chapter by chapter; acoustic-x/ — Acoustic X and its references
 ```
 
-No build step and no dependencies: plain ES modules, served as they are. The rack panel reads the bench's parts catalogue from `../../../../../OS/BIM/parts.json` relative to `js/ui/` (`POD.THIN/OS/BIM/parts.json` in the tree); where the page is served on its own, that fetch fails and the catalogue is empty, so gear is typed in by hand. A few viewer preferences (reveal speed, graphs on/off, Acoustic X legacy mode) are kept in `localStorage`.
+No build step and no dependencies: plain ES modules, served as they are. The rack panel reads the bench's parts catalogue from where `js/site.js` says, relative to the page (`../../../OS/BIM/parts.json`, i.e. `POD.THIN/OS/BIM/parts.json` in the tree; `catalogue/parts.json` on the published site); where there is none, that fetch fails and the catalogue is empty, so gear is typed in by hand. A few viewer preferences (reveal speed, graphs on/off, Acoustic X legacy mode) are kept in `localStorage`.
 
 ## Tests
 

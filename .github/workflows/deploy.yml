@@ -8,10 +8,11 @@ name: Publish to acoustics.cad.like.audio
 # optionally the variable FTP_SERVER_DIR (defaults to the account root).
 #
 # The host bridge only talks to its own origin, so the CAD cannot come from
-# cad.like.audio: its tracked dist/ is copied into this site as cad/. In the
-# tree the iframe names ../EDITORS.CAD.Like.audio/dist/, which climbs out of a
-# project site (likedotaudio.github.io/<repo>/), so the published copy of
-# index.html is pointed at cad/ instead. The nightly run picks up CAD changes.
+# cad.like.audio: its tracked dist/ is copied into this site as cad/, and the
+# bench's parts catalogue (the APK.audio repo's PODS/POD.THIN/OS/BIM/parts.json)
+# as catalogue/parts.json. Where the page looks for both is one file,
+# js/site.js; the site ships js/site.published.js in its place (a copy, not a
+# pattern rewrite). The nightly run picks up CAD and catalogue changes.
 #
 # DNS: acoustics.cad.like.audio must be a CNAME to likedotaudio.github.io
 # BEFORE the domain is set in Settings → Pages, or the github.io address
@@ -53,15 +54,28 @@ jobs:
         with:
           node-version: '22'
 
-      - name: 🧪 npm test
-        working-directory: acoustic
-        run: npm test
-
       - name: 🚚 Get the CAD
         uses: actions/checkout@v4
         with:
           repository: LikeDotAudio/APK.softapp.EDITORS.CAD.Like.audio
           path: cad
+
+      # The CAD's own contract/ is here now, so the suite also proves the
+      # vendored host@1 copy has not drifted from it (tests/cadContract.test.mjs).
+      - name: 🧪 npm test
+        working-directory: acoustic
+        env:
+          CAD_CONTRACT_DIR: ${{ github.workspace }}/cad/contract
+        run: npm test
+
+      - name: 🚚 Get the parts catalogue
+        uses: actions/checkout@v4
+        with:
+          repository: LikeDotAudio/APK.audio
+          path: apk
+          sparse-checkout: PODS/POD.THIN/OS/BIM/parts.json
+          sparse-checkout-cone-mode: false
+          submodules: false
 
       - name: 🧩 Lay out the site
         run: |
@@ -70,8 +84,14 @@ jobs:
           # the help file Acoustic X opens (Documentation/acoustic-x and /acoustics)
           cp -r acoustic/Documentation _site/
           cp -r cad/dist _site/cad
-          sed -i 's|src="\.\./EDITORS\.CAD\.Like\.audio/dist/index\.html|src="cad/index.html|' _site/index.html
-          grep -q 'src="cad/index.html' _site/index.html
+          mkdir -p _site/catalogue
+          cp apk/PODS/POD.THIN/OS/BIM/parts.json _site/catalogue/parts.json
+          # the one config point: where the CAD and the catalogue are on this site
+          cp acoustic/js/site.published.js _site/js/site.js
+
+      # Not just HTTP 200: the CAD the page frames is there and speaks host@1.
+      - name: 🔎 Framed CAD smoke
+        run: node acoustic/scripts/smoke-frame.mjs _site
 
       - name: 📂 Upload site
         uses: actions/upload-pages-artifact@v3

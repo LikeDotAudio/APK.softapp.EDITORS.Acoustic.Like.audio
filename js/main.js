@@ -15,6 +15,7 @@ import { ROOM_LIBRARY, furnish, grabBag, roomById } from './acoustics/roomLibrar
 import { makeMic } from './acoustics/devices.js';
 import { makeWindow } from './acoustics/windows.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
+import { SITE } from './site.js';
 import { buildMarks, furnitureLayer, hashOf, MARK_KEYS, spacesOf } from './cad/marks.js';
 import { F_MAX, F_MIN } from './compute/compute.js';
 import { createAcousticX } from './acoustx/acoustx.js';
@@ -58,6 +59,8 @@ const CEILING_LAYER = 'Ceiling';
 
 const store = createStore();
 const iframe = document.getElementById('cad');
+// where the CAD is comes from the one config point (site.js); the fragment is the host bridge's own
+iframe.setAttribute('src', `${SITE.cad}#/drawing?host=acoustic`);
 // the plan tile can be in a window of its own (⇱), where the page's getElementById no longer finds what is in it
 const planTile = document.querySelector('.tile.plan');
 const inPlan = (id) => planTile.querySelector(`#${id}`);
