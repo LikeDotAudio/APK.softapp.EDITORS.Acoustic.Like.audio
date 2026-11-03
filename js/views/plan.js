@@ -24,6 +24,7 @@ import { gridCanvas } from './paint.js';
 import { gripAt, gripsOf, othersThan, snapPoint } from './wallGrips.js';
 import { furnitureLayer } from '../cad/marks.js';
 import { ACCENT } from '../brand.js';
+import { openSpeakerDatasheetModal } from '../ui/speakerDatasheetModal.js';
 
 /**
  * THE PLAN IS THE CAD
@@ -420,6 +421,12 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
         el.dataset.id = d.id;
         el.dataset.kind = kind;
         el.addEventListener('pointerdown', (e) => startDrag(e, el));
+        el.addEventListener('dblclick', () => {
+          if (kind === 'speaker') {
+            const dev = store.state.speakers.find((s) => s.id === d.id);
+            if (dev) openSpeakerDatasheetModal(dev, { onUpdate: (patch) => store.update('speaker', dev.id, patch) });
+          }
+        });
         el.addEventListener('contextmenu', (e) => openMenu(e, el));
         hits.appendChild(el);
       }
@@ -577,6 +584,12 @@ export function createPlanView({ tile, iframe, store, engine, onDrag, cad = null
     store.select(kind === 'gear' ? { kind: 'patch', id } : { kind, id });
     const locked = store.isLocked(id);
     showMenu(e, [
+      ...(kind === 'speaker' ? [
+        ['📄 Speaker Datasheet & Simulation…', () => {
+          const dev = store.state.speakers.find((s) => s.id === id);
+          if (dev) openSpeakerDatasheetModal(dev, { onUpdate: (patch) => store.update('speaker', id, patch) });
+        }],
+      ] : []),
       ['↺ Turn 90° left', () => turnBy(kind, id, 90), locked],
       ['↻ Turn 90° right', () => turnBy(kind, id, -90), locked],
       ['⟳ Turn with the pointer…', () => startSpin(el), locked],

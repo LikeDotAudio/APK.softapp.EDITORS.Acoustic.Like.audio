@@ -28,6 +28,7 @@ import { alphaGraph, alphaSpark, INTENTS, intentDial, intentOf, SERIES, spread }
 import { button, check, download, h, num, row, select, slider, text } from './dom.js';
 import { isRack } from '../acoustics/rack.js';
 import { rackPanel } from './rackPanel.js';
+import { openSpeakerDatasheetModal } from './speakerDatasheetModal.js';
 
 /**
  * THE INSPECTOR
@@ -333,6 +334,11 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Aim', num(d.aim, (v) => up({ aim: v }), { step: 1, unit: '°' })),
       row('Tilt', num(d.tilt, (v) => up({ tilt: v }), { step: 1, unit: '°', min: -90, max: 90 })),
       colourRow(setOf(d)),
+      h('div', { class: 'actions', style: 'margin-top: 6px;' },
+        button('📊 Open Speaker Datasheet & Simulation…', () => openSpeakerDatasheetModal(d, {
+          onUpdate: (patch) => up(patch),
+        })),
+      ),
       h('p', { class: 'hint' }, 'How it sounds — drive, range, pattern, coverage, mount — is on the ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); tab = 'Acoustics'; render(); } }, 'Acoustics'), ' tab (Transducer).'),
       actions,
     ];
@@ -389,7 +395,18 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Delay', num(d.delayMs, (v) => up({ delayMs: v }), { step: 0.1, unit: 'ms', min: 0 })),
       row('Mount', select(d.mount, Object.entries(MOUNTS).map(([value, m]) => ({ value, label: m.label })), (v) => up({ mount: v }))),
       d.mount === 'free' && room ? h('p', { class: 'hint' }, sbirHint(d, room)) : '',
-      transducerCard(d, speakerColour(d, S().settings)),
+      h('div', { class: 'actions', style: 'margin-top: 6px; margin-bottom: 6px;' },
+        button('📊 Open Speaker Datasheet & Simulation…', () => openSpeakerDatasheetModal(d, {
+          onUpdate: (patch) => up(patch),
+        })),
+      ),
+      (() => {
+        const card = transducerCard(d, speakerColour(d, S().settings));
+        card.style.cursor = 'pointer';
+        card.title = 'Click to open full Speaker Datasheet & Simulation';
+        card.onclick = () => openSpeakerDatasheetModal(d, { onUpdate: (patch) => up(patch) });
+        return card;
+      })(),
     ];
   }
 
