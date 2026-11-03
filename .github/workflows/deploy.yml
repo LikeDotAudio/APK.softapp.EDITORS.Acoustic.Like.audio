@@ -55,6 +55,8 @@ jobs:
           mkdir -p _site
           cp -r acoustic/index.html acoustic/css acoustic/js acoustic/LICENSE _site/
           mkdir -p _site/vendor && cp -r acoustic/vendor/apk-contracts _site/vendor/
+          cp acoustic/vendor/apk-contracts/apk-contracts.mjs _site/vendor/apk-contracts/apk-contracts.js
+          sed -i 's/apk-contracts\.mjs/apk-contracts\.js/g' _site/js/brand.js
           cp -r acoustic/Documentation _site/
           cp -r cad/dist _site/cad
           mkdir -p _site/catalogue
@@ -75,6 +77,7 @@ jobs:
         with:
           name: site
           path: ./_site/
+          include-hidden-files: true
 
   deploy:
     name: Deploy
