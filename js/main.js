@@ -738,7 +738,6 @@ const widthLanes = { key: [], list: [] };
 const monitor = createMonitor({ root: document.getElementById('monitor'), store, engine });
 const monitorFold = makeFold(document.getElementById('monitorBtn'), document.getElementById('monitor'), { sticky: true, onOpen: () => monitor.render() });
 makeFold(document.getElementById('furnitureBtn'), document.getElementById('furniture'), { closeOn: 'button[data-arm]' });
-makeFold(document.getElementById('moreBtn'), document.getElementById('more'), { closeOn: '#tour' });
 
 /**
  * Sweep the array's width for the flattest low end over the room's seats

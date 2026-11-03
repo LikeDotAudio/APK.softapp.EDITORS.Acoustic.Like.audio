@@ -70,14 +70,11 @@
       <button data-view="wall" title="One wall planned: its elevation split by the division lines drawn in the CAD, each region and what it is, the finish schedule, a stud section of every build, and what the wall soaks up and lets through">🧱 Wall</button>
       <button data-show="trace" title="Ray tracing over every view, on or off: each reflection path from the speakers to the mix seat, up to 3rd order, coloured by its level at the current frequency — sweep to watch them change">✳ Ray tracing</button>
     </div>
-    <button id="moreBtn" title="The tour, a song, and how fast a room builds up in 3-D">⋯</button>
-    <div id="more">
-      <div class="group">
+    <div class="group">
       <button id="tour" title="A film in a window of its own — every view revealed and swept up and down, the groups together, the 3-D built up and swept, ray tracing, then a summary — full or a 5 s / 10 s summary, saved as a video">🎞 Tour</button>
       <label class="button" title="Play a song: the field follows the frequency it excites (WAV, MP3, FLAC…)">🎵 Song<input type="file" id="songFile" accept="audio/*"></label>
-      </div>
-      <label class="reveal" title="How fast a room builds up in 3-D when it arrives — wireframe, grid, surfaces, speakers, treatments. 0: all at once. Moving it plays the reveal again">Reveal <input type="range" id="revealSpeed" min="0" max="4" step="0.25"><output id="revealOut"></output></label>
     </div>
+    <label class="reveal" title="How fast a room builds up in 3-D when it arrives — wireframe, grid, surfaces, speakers, treatments. 0: all at once. Moving it plays the reveal again">Reveal <input type="range" id="revealSpeed" min="0" max="4" step="0.25"><output id="revealOut"></output></label>
     <div id="acx"></div>
     <div class="status" id="status"></div>
     <div id="player" class="player" hidden></div>

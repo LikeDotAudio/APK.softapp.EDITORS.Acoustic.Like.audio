@@ -5,7 +5,7 @@
  * FOLDS
  *
  * A strip of the toolbar that need not take room all the time — the array's
- * fields, the furniture, the tour and the song — folded behind one button
+ * fields and the furniture — folded behind one button
  * and opened over the views when wanted. It closes on a click anywhere
  * else, on Esc, or (`closeOn`, a selector) once one of its own buttons has
  * done its job; one fold open at a time. A `sticky` one (the monitor
