@@ -59,7 +59,7 @@ button.danger:hover { border-color: var(--bad); color: var(--bad); }
 /* a fold closing a group (＋ Furniture ▾) is its last button */
 .group > .fold:last-child > .foldBtn { border-radius: 0 4px 4px 0; }
 /* the speaker sets, a row each: the one that sounds bright, the others' picks dimmed */
-#arrangement { display: flex; flex-direction: column; gap: 2px; }
+#arrangement { display: flex; flex-direction: column; gap: 2px; align-self: flex-start; }
 .speakerSet button { padding: 1px 7px; }
 .speakerSet .setLetter { min-width: 26px; font-weight: 700; }
 .speakerSet:not(.live) button.on:not(.setLetter) { background: var(--panel-2); color: var(--accent); }
@@ -394,10 +394,76 @@ td.bad { color: var(--bad); }
 td.ok { color: #4ade80; }
 .stage .hit.holding { outline: 2px solid #22d3ee; outline-offset: 4px; box-shadow: 0 0 14px #22d3ee; }
 .arrayFields { gap: 6px; align-items: center; }
-#spreader[hidden] { display: none; }
 .arrayField { display: flex; align-items: center; gap: 3px; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .arrayField input { width: 64px; padding: 2px 4px; }
 .arrayFields input[type="range"] { width: 100%; margin: 0; }
+
+/* ---------------------------------------------------------------- the spreader: shared table chart */
+#spreader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-self: flex-start;
+  padding: 3px 6px;
+  background: rgba(15, 18, 24, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+#spreader[hidden] { display: none; }
+
+.spreaderRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+}
+.spreaderRow .fold {
+  display: flex;
+}
+.spreaderRow .arrayBtn {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  width: 86px;
+  text-align: left;
+}
+.spreaderRow .arrayBtn[data-set="A"] { border-color: rgba(253, 224, 71, 0.35); color: #fde047; }
+.spreaderRow .arrayBtn[data-set="B"] { border-color: rgba(56, 189, 248, 0.35); color: #38bdf8; }
+.spreaderRow .arrayBtn[data-set="C"] { border-color: rgba(74, 222, 128, 0.35); color: #4ade80; }
+.spreaderRow .arrayBtn.live { font-weight: 700; border-color: currentColor; border-width: 1.5px; background: rgba(255, 255, 255, 0.06); }
+
+.spreaderRow input[type="range"] {
+  width: 300px;
+  margin: 0;
+  height: 18px;
+  cursor: ew-resize;
+}
+.spreaderRow input[type="range"][data-set="A"] { accent-color: #fde047; }
+.spreaderRow input[type="range"][data-set="B"] { accent-color: #38bdf8; }
+.spreaderRow input[type="range"][data-set="C"] { accent-color: #4ade80; }
+.spreaderRow input[type="range"]:disabled { opacity: 0.25; cursor: not-allowed; }
+
+.spreaderScale {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 1px;
+}
+.scaleSpacer {
+  width: 86px;
+  flex-shrink: 0;
+}
+.spreaderScale .widthScale {
+  width: 300px;
+  flex-shrink: 0;
+}
+.spreaderScale button {
+  padding: 1px 6px;
+  font-size: 12px;
+  height: 22px;
+}
+
 /* the Width slider with its scale under it (main.js syncWidthScale): the thumb is 16px, so everything sits 8px in */
 .widthScale { display: flex; flex-direction: column; width: 300px; }
 .widthScale .lanes { position: relative; height: 26px; font: 8px/1 var(--mono); color: var(--muted); cursor: help; }
@@ -408,6 +474,7 @@ td.ok { color: #4ade80; }
 .widthScale .lanes .mark { position: absolute; transform: translateX(-50%); top: 17px; font-weight: 600; }
 .widthScale .lanes .mark.direct { color: #7dd3fc; }
 .widthScale .lanes .mark.gap { color: #fbbf24; }
+.roomGrow { font: 10px/1 var(--mono); color: var(--bad); }
 
 /* ---------------------------------------------------------------- the song player (ui/player.js) */
 .player { flex-basis: 100%; display: flex; align-items: center; gap: 8px; min-width: 0; }
