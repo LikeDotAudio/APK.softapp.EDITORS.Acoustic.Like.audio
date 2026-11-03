@@ -832,7 +832,7 @@ function syncWidthScale() {
   const el = document.getElementById('widthLanes');
   if (!el) return;
   const { speakers, mics, settings } = store.state;
-  const key = [engine.out.room, speakers, mics, settings.layout];
+  const key = [engine.out.room, speakers, mics, settings.layout, settings.speakerSet];
   if (key.every((k, i) => k === widthLanes.key[i])) return;
   widthLanes.key = key;
   const list = radiusLanes(engine.out.room, speakers, mics, settings, { from: WIDTH_MM[0] / 1000, to: WIDTH_MM[1] / 1000 });
