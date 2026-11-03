@@ -404,7 +404,7 @@ td.ok { color: #4ade80; }
   flex-direction: column;
   gap: 2px;
   align-self: flex-start;
-  padding: 3px 6px;
+  padding: 0 6px 3px 6px;
   background: rgba(15, 18, 24, 0.45);
   border: 1px solid var(--line);
   border-radius: 4px;

@@ -735,6 +735,7 @@ const widthLanes = { key: [], list: [] };
     arrayBtn.addEventListener('click', () => {
       if (k !== activeSet(store.state.settings)) pick(k);
     });
+    row.append(arrayBtn);
     makeFold(arrayBtn, fields);
 
     // each speaker set's own spacing fader
@@ -751,7 +752,7 @@ const widthLanes = { key: [], list: [] };
     fader.addEventListener('input', () => moveSetArray(k, 'radius', parseFloat(fader.value), true));
     fader.addEventListener('change', () => moveSetArray(k, 'radius', parseFloat(fader.value)));
 
-    row.append(arrayBtn.parentElement, fader);
+    row.append(fader);
     spreader.append(row);
   }
 
