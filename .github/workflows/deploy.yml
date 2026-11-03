@@ -1,0 +1,116 @@
+name: Publish to acoustics.cad.like.audio
+
+# Publishes this page twice: to GitHub Pages at
+# https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/ and
+# over FTPS to the Varial account behind https://acoustics.like.audio/.
+#
+# FTPS needs the repository secrets FTP_SERVER, FTP_USERNAME, FTP_PASSWORD and
+# optionally the variable FTP_SERVER_DIR (defaults to the account root).
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Assemble
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚚 Get latest code
+        uses: actions/checkout@v4
+        with:
+          path: acoustic
+
+      - name: 🟢 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 🚚 Get the CAD
+        uses: actions/checkout@v4
+        with:
+          repository: LikeDotAudio/APK.softapp.EDITORS.CAD.Like.audio
+          path: cad
+
+      - name: 🧪 npm test
+        working-directory: acoustic
+        env:
+          CAD_CONTRACT_DIR: ${{ github.workspace }}/cad/contract
+        run: npm test
+
+      - name: 🧩 Lay out the site
+        run: |
+          mkdir -p _site
+          cp -r acoustic/index.html acoustic/css acoustic/js acoustic/LICENSE _site/
+          mkdir -p _site/vendor && cp -r acoustic/vendor/apk-contracts _site/vendor/
+          cp -r acoustic/Documentation _site/
+          cp -r cad/dist _site/cad
+          mkdir -p _site/catalogue
+          cp acoustic/vendor/bim/parts.json _site/catalogue/parts.json
+          cp acoustic/js/site.published.js _site/js/site.js
+          cp acoustic/.htaccess _site/.htaccess
+
+      - name: 🔎 Framed CAD smoke
+        run: node acoustic/scripts/smoke-frame.mjs _site
+
+      - name: 📂 Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site/
+
+      - name: 📦 Keep _site/ for FTPS
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: ./_site/
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 🚀 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  ftps:
+    name: Deploy to acoustics.like.audio (FTPS)
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ftps-deploy
+      cancel-in-progress: false
+    steps:
+      - name: 📥 Get _site/
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: ./_site/
+
+      - name: 📂 Sync files via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          local-dir: ./_site/
+          server-dir: ${{ vars.FTP_SERVER_DIR || './' }}
+          state-name: .ftp-deploy-sync-state.json
+          dangerous-clean-slate: false
