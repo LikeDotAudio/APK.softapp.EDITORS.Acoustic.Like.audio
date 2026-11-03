@@ -13,6 +13,7 @@ import { drawPatch, patchName, rgba, shortName } from './treatments.js';
 import { drawRayOverlay } from './rayOverlay.js';
 import { speakerColour } from '../acoustics/layouts.js';
 import { ACCENT } from '../brand.js';
+import { openSpeakerDatasheetModal } from '../ui/speakerDatasheetModal.js';
 
 /**
  * FIVE OF THE SIX DRAWINGS
@@ -535,6 +536,10 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
       return;
     }
     // lost outside the room: the touch brings it to the middle instead of dragging it further off
+    if (e.altKey && hit.kind === 'speaker') {
+      openSpeakerDatasheetModal(hit.dev, { onUpdate: (patch) => store.update('speaker', hit.dev.id, patch) });
+      return;
+    }
     if (store.bringIn(hit.kind, hit.dev.id, engine.out.room)) return;
     store.select({ kind: hit.kind, id: hit.dev.id });
     const dev0 = hit.dev;

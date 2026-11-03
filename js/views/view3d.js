@@ -13,6 +13,7 @@ import { css, colourOf, turbo } from './paint.js';
 import { fitCanvas } from './glyphs.js';
 import { drawPatch } from './treatments.js';
 import { drawRayOverlay } from './rayOverlay.js';
+import { openSpeakerDatasheetModal } from '../ui/speakerDatasheetModal.js';
 
 /**
  * THE ROOM IN 3-D
@@ -105,6 +106,13 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
    * back to the middle first (inRoom.js), as it does in every view.
    */
   function grab(e, hit) {
+    if (e.altKey && hit.kind === 'speaker') {
+      const spk = store.state.speakers.find((d) => d.id === hit.id);
+      if (spk) {
+        openSpeakerDatasheetModal(spk, { onUpdate: (patch) => store.update('speaker', spk.id, patch) });
+        return;
+      }
+    }
     if (store.bringIn(hit.kind, hit.id, engine.out.room)) return;
     store.select({ kind: hit.kind, id: hit.id });
     const dev = (hit.kind === 'speaker' ? store.state.speakers : store.state.mics).find((d) => d.id === hit.id);
@@ -700,6 +708,14 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
   canvas.addEventListener('dblclick', (e) => {
     const hit = deviceAt(e);
     if (hit) store.bringIn(hit.kind, hit.id, engine.out.room);
+  });
+
+  canvas.addEventListener('dblclick', (e) => {
+    const hit = deviceAt(e);
+    if (hit && hit.kind === 'speaker') {
+      const spk = store.state.speakers.find((d) => d.id === hit.id);
+      if (spk) openSpeakerDatasheetModal(spk, { onUpdate: (patch) => store.update('speaker', spk.id, patch) });
+    }
   });
 
   canvas.addEventListener('pointerdown', (e) => {

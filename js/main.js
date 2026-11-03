@@ -540,12 +540,26 @@ function syncToolbar() {
   for (const input of document.querySelectorAll('.arrayFields input')) {
     if (document.activeElement === input) continue;
     const key = input.dataset.array;
-    input.value = Math.round(key === 'radius' ? (settings.layout.radius ?? 2) * 1000 : key === 'rotate' ? settings.layout.rotate ?? 0 : settings.layout.offset?.[key] ?? 0);
+    const k = input.dataset.set ?? activeSet(settings);
+    const l = setLayout(settings, k);
+    input.value = Math.round(key === 'radius' ? (l.radius ?? 2) * 1000 : key === 'rotate' ? l.rotate ?? 0 : l.offset?.[key] ?? 0);
+  }
+  for (const slider of document.querySelectorAll('.setRadius')) {
+    if (document.activeElement === slider) continue;
+    const k = slider.dataset.set;
+    const l = setLayout(settings, k);
+    slider.value = Math.round((l.radius ?? 2) * 1000);
+    slider.disabled = !LAYOUTS[l.preset];
+  }
+  for (const btn of document.querySelectorAll('.arrayBtn[data-set]')) {
+    const k = btn.dataset.set;
+    const l = setLayout(settings, k);
+    const live = k === activeSet(settings);
+    btn.textContent = `◎ ${k} r ${Math.round((l.radius ?? 2) * 1000)}${l.rotate ? ` ⟲${Math.round(l.rotate)}°` : ''} ▾`;
+    btn.classList.toggle('live', live);
   }
   const spreader = document.getElementById('spreader');
-  if (spreader) spreader.hidden = !LAYOUTS[setLayout(settings, activeSet(settings)).preset];
-  const arrayBtn = document.getElementById('arrayBtn');
-  if (arrayBtn) arrayBtn.textContent = `◎ r ${Math.round((settings.layout.radius ?? 2) * 1000)}${settings.layout.rotate ? ` ⟲${Math.round(settings.layout.rotate)}°` : ''} ▾`;
+  if (spreader) spreader.hidden = !Object.keys(SPEAKER_SETS).some((k) => LAYOUTS[setLayout(settings, k).preset]);
 }
 
 for (const header of document.querySelectorAll('.tile header, .tile.face canvas, .tile.t3d canvas')) {
@@ -681,42 +695,70 @@ const widthLanes = { key: [], list: [] };
   const lastRow = bar.lastElementChild;
   lastRow.append(document.getElementById('monitorBtn'), document.getElementById('monitor'));
 
-  // the array's centre off the mix seat, and its radius, in mm — moving either carries the placed speakers with it
-  const field = (key, glyph, title) => {
-    const input = Object.assign(document.createElement('input'), { type: 'number', step: key === 'rotate' ? 1 : 10, title });
-    input.dataset.array = key;
-    input.addEventListener('change', () => {
-      const v = parseFloat(input.value);
-      if (Number.isFinite(v)) moveArray(key, v);
+  // the spreader: a shared table chart with a spacing fader for each speaker set (A, B, C),
+  // and the shared ruler scale underneath them
+  const spreader = Object.assign(document.createElement('div'), { id: 'spreader', className: 'spreaderTable' });
+  for (const [k, set] of Object.entries(SPEAKER_SETS)) {
+    const row = document.createElement('div');
+    row.className = 'spreaderRow';
+    row.dataset.set = k;
+
+    // the fold with the set's centre offsets and rotation
+    const field = (key, glyph, title) => {
+      const input = Object.assign(document.createElement('input'), { type: 'number', step: key === 'rotate' ? 1 : 10, title });
+      input.dataset.array = key;
+      input.dataset.set = k;
+      input.addEventListener('change', () => {
+        const v = parseFloat(input.value);
+        if (Number.isFinite(v)) moveSetArray(k, key, v);
+      });
+      const label = document.createElement('label');
+      label.className = 'arrayField';
+      label.title = title;
+      label.append(glyph, input);
+      return label;
+    };
+    const fields = document.createElement('div');
+    fields.className = 'group arrayFields';
+    fields.append(
+      field('right', '↔', `${set.title} centre: mm to the listener’s right of the mix seat`),
+      field('front', '↕', `${set.title} centre: mm toward the front from the mix seat`),
+      field('up', '⇡', `${set.title} centre: mm above the mix seat’s ears`),
+      field('radius', 'r', `${set.title} radius, mm — the placed speakers scale with it`),
+      field('rotate', '⟲', `${set.title} rotation, degrees counter-clockwise — the placed speakers turn round the listener with it`),
+    );
+    const arrayBtn = Object.assign(document.createElement('button'), {
+      className: 'arrayBtn',
+      title: `${set.title}: centre off mix seat, width and turn — click to open offsets and make it the sounding set`,
     });
-    const label = document.createElement('label');
-    label.className = 'arrayField';
-    label.title = title;
-    label.append(glyph, input);
-    return label;
-  };
-  const fields = document.createElement('div');
-  fields.className = 'group arrayFields';
-  fields.append(
-    field('right', '↔', 'Array centre: mm to the listener’s right of the mix seat'),
-    field('front', '↕', 'Array centre: mm toward the front from the mix seat'),
-    field('up', '⇡', 'Array centre: mm above the mix seat’s ears'),
-    field('radius', 'r', 'Array radius, mm — the placed speakers scale with it'),
-    field('rotate', '⟲', 'Array rotation, degrees counter-clockwise — the placed speakers turn round the listener with it'),
-  );
-  // the array's width as a slider: drag it and the placed speakers spread out or close in round the listener
-  const width = Object.assign(document.createElement('input'), { type: 'range', min: WIDTH_MM[0], max: WIDTH_MM[1], step: 10, title: 'Array width: its radius round the listener — the placed speakers follow' });
-  width.dataset.array = 'radius';
-  width.addEventListener('input', () => moveArray('radius', parseFloat(width.value), true));
-  width.addEventListener('change', () => moveArray('radius', parseFloat(width.value)));
-  // the best width, once found, is a tick on the slider (and on the Layout tab's)
-  width.setAttribute('list', 'bestWidth');
-  const ticks = Object.assign(document.createElement('datalist'), { id: 'bestWidth' });
-  const find = Object.assign(document.createElement('button'), { textContent: '⌖', title: 'Find the width with the flattest low end over the room’s seats' });
-  find.onclick = () => findWidth();
-  // the array wider than the room allows: how much bigger the room would have to be (acoustics/roomFit.js)
-  const grow = Object.assign(document.createElement('span'), { id: 'roomGrow', className: 'roomGrow', hidden: true });
-  // under the slider, its scale: metres, the room's footprint, and the arrival and first-reflection times (syncWidthScale)
+    arrayBtn.dataset.set = k;
+    arrayBtn.addEventListener('click', () => {
+      if (k !== activeSet(store.state.settings)) pick(k);
+    });
+    makeFold(arrayBtn, fields);
+
+    // each speaker set's own spacing fader
+    const fader = Object.assign(document.createElement('input'), {
+      type: 'range',
+      className: 'setRadius',
+      min: WIDTH_MM[0],
+      max: WIDTH_MM[1],
+      step: 10,
+      title: `${set.title} width: radius round the listener — the placed speakers follow`,
+    });
+    fader.dataset.set = k;
+    fader.setAttribute('list', 'bestWidth');
+    fader.addEventListener('input', () => moveSetArray(k, 'radius', parseFloat(fader.value), true));
+    fader.addEventListener('change', () => moveSetArray(k, 'radius', parseFloat(fader.value)));
+
+    row.append(arrayBtn.parentElement, fader);
+    spreader.append(row);
+  }
+
+  // under the faders: the shared scale ruler chart
+  const scaleRow = document.createElement('div');
+  scaleRow.className = 'spreaderScale';
+  const spacer = Object.assign(document.createElement('div'), { className: 'scaleSpacer' });
   const scale = Object.assign(document.createElement('div'), { className: 'widthScale' });
   const lanes = Object.assign(document.createElement('div'), { id: 'widthLanes', className: 'lanes' });
   lanes.addEventListener('pointermove', (e) => {
@@ -725,15 +767,15 @@ const widthLanes = { key: [], list: [] };
     const near = widthLanes.list.reduce((b, l) => (!b || Math.abs(l.r - r) < Math.abs(b.r - r) ? l : b), null);
     lanes.title = near ? laneText(near) : '';
   });
-  scale.append(width, lanes);
-  // the spreader stays on the bar while an arrangement is chosen, to space the speakers without opening anything
-  const spreader = Object.assign(document.createElement('div'), { id: 'spreader', className: 'group arrayFields' });
-  spreader.append(scale, ticks, find);
-  // the fields fold behind one button over the views; the warning that the room is too small stays on the bar
-  const arrayBtn = Object.assign(document.createElement('button'), { id: 'arrayBtn', title: 'The array: its centre off the mix seat, its width and its turn — the placed speakers follow' });
-  bar.after(arrayBtn);
-  makeFold(arrayBtn, fields);
-  arrayBtn.parentNode.after(spreader, grow);
+  scale.append(lanes);
+  const find = Object.assign(document.createElement('button'), { id: 'findWidthBtn', textContent: '⌖', title: 'Find the width with the flattest low end over the room’s seats' });
+  find.onclick = () => findWidth();
+  const grow = Object.assign(document.createElement('span'), { id: 'roomGrow', className: 'roomGrow', hidden: true });
+  const ticks = Object.assign(document.createElement('datalist'), { id: 'bestWidth' });
+  scaleRow.append(spacer, scale, find, grow, ticks);
+  spreader.append(scaleRow);
+
+  bar.after(spreader);
 }
 const monitor = createMonitor({ root: document.getElementById('monitor'), store, engine });
 const monitorFold = makeFold(document.getElementById('monitorBtn'), document.getElementById('monitor'), { sticky: true, onOpen: () => monitor.render() });
@@ -844,22 +886,29 @@ function followConsole() {
   cad.link.move([{ id: desk.id, at: [+(spot.x / k).toFixed(4), +(spot.y / k).toFixed(4)], rotation: spot.rotation }]);
 }
 
-/** Change the array's centre offset or radius (mm), or its rotation (degrees), carrying the speakers placed in it along. */
-function moveArray(key, mm, live = false) {
+/** Change set k's array centre offset or radius (mm), or its rotation (degrees), carrying its placed speakers along. */
+function moveSetArray(k, key, mm, live = false) {
   const { settings, speakers, mics } = store.state;
-  const layout = settings.layout;
+  const layout = setLayout(settings, k);
   const next =
     key === 'radius' ? { ...layout, radius: Math.max(0.3, mm / 1000) }
     : key === 'rotate' ? { ...layout, rotate: ((((mm + 180) % 360) + 360) % 360) - 180 }
     : { ...layout, offset: { ...layout.offset, [key]: mm } };
   const mix = mics.find((m) => m.mix);
-  // the arrangement laid over the moved array again, not its squeezed places scaled (layouts.js relayArray)
-  const moved = relayArray(speakers, settings, mix, next, engine.out.room);
-  // mid-drag: the quick recompute (field, response, meters) on every step; the release saves and runs it in full
+  const setSettings = { ...settings, speakerSet: k, layout };
+  const moved = relayArray(speakers, setSettings, mix, next, engine.out.room);
   if (moved.length) store.updateMany('speaker', moved, true);
-  // turning the array turns the mixer with it: the listener always faces the array's front
-  if (key === 'rotate' && mix) store.updateMany('mic', [{ id: mix.id, aim: +arrayFront({ ...settings, layout: next }).toFixed(1) }], true);
-  store.setSettings({ layout: next }, live);
+  if (k === activeSet(settings)) {
+    if (key === 'rotate' && mix) store.updateMany('mic', [{ id: mix.id, aim: +arrayFront({ ...settings, layout: next }).toFixed(1) }], true);
+    store.setSettings({ layout: next }, live);
+  } else {
+    store.setSettings({ layoutSets: { ...settings.layoutSets, [k]: next } }, live);
+  }
+}
+
+/** Change the active array's centre offset or radius (mm), or its rotation (degrees), carrying the speakers placed in it along. */
+function moveArray(key, mm, live = false) {
+  moveSetArray(activeSet(store.state.settings), key, mm, live);
 }
 
 // ------------------------------------------------------------------ furniture: the CAD draws it, at true size
