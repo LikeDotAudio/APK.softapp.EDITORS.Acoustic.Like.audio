@@ -1,0 +1,8 @@
+# Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+# MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+
+# LiteSpeed / Apache MIME types for ES modules and assets
+AddType application/javascript .mjs .js
+AddType application/json .json
+AddType audio/flac .flac
+AddType audio/wav .wav

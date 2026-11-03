@@ -63,6 +63,8 @@
  * CAD's own (a monorepo checkout, or CI after "Get the CAD").
  */
 
+import { SITE } from '../site.js';
+
 export const HOST_PROTOCOL = 'cad.like.audio/host@1';
 
 export const METRES_PER_UNIT = { in: 0.0254, mm: 0.001, cm: 0.01, m: 1, ft: 0.3048 };
@@ -78,7 +80,9 @@ function handoverToken() {
 }
 
 export function connectCad(iframe, { onView, onGeometry, onMirror, onReady, onPopped, onSelection, onLive }, { now = () => Date.now() } = {}) {
-  const address = iframe.getAttribute('src');
+  const defaultAddress = `${SITE?.cad ?? 'cad/index.html'}#/drawing?host=acoustic`;
+  const raw = iframe?.getAttribute?.('src') || (iframe?.src && !iframe.src.startsWith('about:') ? iframe.src : null);
+  const address = raw && raw !== 'about:blank' ? raw : defaultAddress;
   let popup = null;
   let watch = 0;
   // popping out: the window opened but has not yet taken the drawing from the docked CAD

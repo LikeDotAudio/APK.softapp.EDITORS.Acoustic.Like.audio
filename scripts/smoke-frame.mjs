@@ -42,6 +42,12 @@ try {
   if (!bundles.length) throw new Error(`${cadPage} loads no script`);
   const speaks = (await Promise.all(bundles.map(get))).some((js) => js.includes(HOST_PROTOCOL));
   if (!speaks) throw new Error(`the CAD at ${cadPage} does not carry ${HOST_PROTOCOL}`);
+  if (base.protocol === 'file:') {
+    const htaccess = await get(new URL('.htaccess', base)).catch(() => null);
+    if (!htaccess || !htaccess.includes('.mjs')) {
+      throw new Error('.htaccess is missing or lacks AddType for .mjs');
+    }
+  }
   console.log(`smoke-frame: ✅ ${cadPage} is there and speaks ${HOST_PROTOCOL}`);
 } catch (err) {
   console.error(`smoke-frame: ❌ ${err.message}`);

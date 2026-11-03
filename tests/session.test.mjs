@@ -161,3 +161,16 @@ test('a CAD window closed by hand docks from the autosave: there is nobody to ha
   assert.ok(f.iframe.src.endsWith('&resume') && !f.iframe.src.includes('handover'));
   assert.equal(f.link.popped, false);
 });
+
+test('popping out falls back to default CAD address when iframe lacks src attribute and never opens null&resume', async () => {
+  const iframeNoSrc = { getAttribute: () => null, addEventListener() {}, contentWindow: { postMessage() {} }, hidden: false, src: '' };
+  const { connectCad } = await import('../js/cad/cadLink.js');
+  let openedUrl = null;
+  globalThis.window.open = (url) => { openedUrl = url; return { closed: false, postMessage() {}, focus() {}, close() {} }; };
+  const link = connectCad(iframeNoSrc, {});
+  link.popOut();
+  assert.ok(openedUrl, 'window.open was called');
+  assert.ok(!openedUrl.includes('null&resume'), 'must never contain null&resume');
+  assert.ok(openedUrl.includes('#/drawing?host=acoustic'), 'contains the CAD entrance fragment');
+});
+
