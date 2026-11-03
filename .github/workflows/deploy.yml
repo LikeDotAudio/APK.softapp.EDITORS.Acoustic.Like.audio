@@ -67,29 +67,12 @@ jobs:
       - name: 🔎 Framed CAD smoke
         run: node acoustic/scripts/smoke-frame.mjs _site
 
-      - name: 📂 Upload site
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./_site/
-
       - name: 📦 Keep _site/ for FTPS
         uses: actions/upload-artifact@v4
         with:
           name: site
           path: ./_site/
           include-hidden-files: true
-
-  deploy:
-    name: Deploy
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: 🚀 Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
 
   ftps:
     name: Deploy to acoustics.like.audio (FTPS)
