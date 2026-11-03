@@ -503,6 +503,14 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     return best;
   }
 
+  canvas.addEventListener('dblclick', (e) => {
+    const r = canvas.getBoundingClientRect();
+    const hit = pick(e.clientX - r.left, e.clientY - r.top);
+    if (hit && hit.kind === 'speaker') {
+      openSpeakerDatasheetModal(hit.dev, { onUpdate: (patch) => store.update('speaker', hit.dev.id, patch) });
+    }
+  });
+
   canvas.addEventListener('pointerdown', (e) => {
     const r = canvas.getBoundingClientRect();
     const hit = pick(e.clientX - r.left, e.clientY - r.top);
