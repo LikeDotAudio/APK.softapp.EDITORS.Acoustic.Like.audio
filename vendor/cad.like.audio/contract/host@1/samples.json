@@ -1,5 +1,5 @@
 {
-  "$comment": "One sample of every cad.like.audio/host@1 message, in both directions. Drawing units are mm (CAD drawings in mm). Both sides test against these: EDITORS.CAD.Like.audio (hostContract.test.ts) and every host that vendors this directory. floorplan.file is a File on the wire; JSON can only stand in an empty object.",
+  "$comment": "One sample of every cad.like.audio/host@1 message, in both directions. Drawing units are mm (CAD drawings in mm). Both sides test against these: EDITORS.CAD.Like.audio (hostContract.test.ts) and every host that vendors this directory. floorplan.file is a File on the wire; JSON can only stand in an empty object. toEditor carries the CAD-to-block-editor direction (the CAD is the parent there); its replies are the toCad.editorReady / blockChanged / blockSave / editorClose samples.",
   "toCad": [
     {
       "protocol": "cad.like.audio/host@1",
@@ -274,6 +274,101 @@
       "protocol": "cad.like.audio/host@1",
       "type": "floorplan",
       "file": {}
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "editorReady",
+      "editor": "Rack Elevation Builder",
+      "blockType": "rack_elevation"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "blockChanged",
+      "block": {
+        "name": "SAMPLE_BLOCK",
+        "description": "A sample outline (100 mm x 50 mm), not a product",
+        "basePoint": {
+          "x": 0,
+          "y": 0
+        },
+        "lines": [
+          [
+            {
+              "x": -50,
+              "y": -25
+            },
+            {
+              "x": 50,
+              "y": -25
+            },
+            {
+              "x": 50,
+              "y": 25
+            },
+            {
+              "x": -50,
+              "y": 25
+            },
+            {
+              "x": -50,
+              "y": -25
+            }
+          ]
+        ]
+      },
+      "meta": {
+        "source": "CAD.Like.audio",
+        "blockName": "SAMPLE_BLOCK",
+        "title": "Rack Elevation Builder (19\"): SAMPLE_BLOCK"
+      }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "blockSave",
+      "editor": "Rack Elevation Builder",
+      "blockType": "rack_elevation",
+      "block": {
+        "name": "SAMPLE_BLOCK",
+        "description": "A sample outline (100 mm x 50 mm), not a product",
+        "basePoint": {
+          "x": 0,
+          "y": 0
+        },
+        "lines": [
+          [
+            {
+              "x": -50,
+              "y": -25
+            },
+            {
+              "x": 50,
+              "y": -25
+            },
+            {
+              "x": 50,
+              "y": 25
+            },
+            {
+              "x": -50,
+              "y": 25
+            },
+            {
+              "x": -50,
+              "y": -25
+            }
+          ]
+        ]
+      },
+      "meta": {
+        "source": "CAD.Like.audio",
+        "blockName": "SAMPLE_BLOCK",
+        "title": "Rack Elevation Builder (19\"): SAMPLE_BLOCK"
+      }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "editorClose",
+      "editor": "Rack Elevation Builder"
     }
   ],
   "toHost": [
@@ -485,6 +580,53 @@
         "layers": [],
         "activeLayerId": "0"
       }
+    }
+  ],
+  "toEditor": [
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "load",
+      "block": {
+        "name": "SAMPLE_BLOCK",
+        "description": "A sample outline (100 mm x 50 mm), not a product",
+        "basePoint": {
+          "x": 0,
+          "y": 0
+        },
+        "lines": [
+          [
+            {
+              "x": -50,
+              "y": -25
+            },
+            {
+              "x": 50,
+              "y": -25
+            },
+            {
+              "x": 50,
+              "y": 25
+            },
+            {
+              "x": -50,
+              "y": 25
+            },
+            {
+              "x": -50,
+              "y": -25
+            }
+          ]
+        ]
+      },
+      "meta": {
+        "source": "CAD.Like.audio",
+        "blockName": "SAMPLE_BLOCK",
+        "title": "Rack Elevation Builder (19\"): SAMPLE_BLOCK"
+      }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "request"
     }
   ]
 }

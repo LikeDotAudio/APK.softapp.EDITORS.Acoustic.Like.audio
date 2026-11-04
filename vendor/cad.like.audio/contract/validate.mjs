@@ -18,6 +18,14 @@
  *   validate(schema, value)                    → [] or ['$.a.b: why', …]
  *   validateMessage(schema, 'toCad', message)  → the same, picking the
  *                                                 schema's `$defs['toCad.<type>']`
+ *
+ * Run it (`node contract/validate.mjs`) and it checks every contract beside
+ * it: each `<name>@<n>/` directory's samples.json against its *.schema.json.
+ * A direction (`toCad`, `toHost`, `toEditor` — any samples key with
+ * `$defs['<key>.<type>']`) must carry exactly one valid sample of every type;
+ * any other key is checked against the `$defs` entry of that name, or must fit
+ * at least one of them. Exit 0 when every sample fits, 1 otherwise. Imported
+ * (a test, a browser), it does nothing on its own.
  */
 
 const KNOWN = new Set([
@@ -92,4 +100,46 @@ export function validateMessage(schema, direction, message) {
 /** The message types a direction carries, from the schema's `$defs` keys. */
 export function messageTypes(schema, direction) {
   return Object.keys(schema.$defs ?? {}).filter((k) => k.startsWith(`${direction}.`)).map((k) => k.slice(direction.length + 1)).sort();
+}
+
+/** Every problem with one contract directory's samples (see the header). */
+export function checkSamples(schema, samples) {
+  const out = [];
+  const defs = schema.$defs ?? {};
+  for (const [key, value] of Object.entries(samples)) {
+    if (key.startsWith('$')) continue;
+    const types = messageTypes(schema, key);
+    if (types.length && Array.isArray(value)) {
+      const seen = value.map((m) => m?.type).sort();
+      if (JSON.stringify(seen) !== JSON.stringify(types)) out.push(`${key}: samples ${JSON.stringify(seen)} are not one of each of ${JSON.stringify(types)}`);
+      for (const m of value) for (const e of validateMessage(schema, key, m)) out.push(`${key}.${m?.type}: ${e}`);
+    } else if (key in defs) {
+      for (const e of validate(defs[key], value, schema)) out.push(`${key}: ${e}`);
+    } else if (!Object.values(defs).some((d) => validate(d, value, schema).length === 0)) {
+      out.push(`${key}: fits none of the schema's $defs`);
+    }
+  }
+  for (const dir of Object.keys(defs).map((k) => k.split('.')[0]).filter((d, i, a) => a.indexOf(d) === i)) {
+    if (messageTypes(schema, dir).length && !(dir in samples)) out.push(`${dir}: no samples for this direction`);
+  }
+  return out;
+}
+
+if (typeof process !== 'undefined' && process.argv?.[1] && import.meta.url === (await import('node:url')).pathToFileURL(process.argv[1]).href) {
+  const { readdirSync, readFileSync, existsSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const here = dirname((await import('node:url')).fileURLToPath(import.meta.url));
+  let bad = 0;
+  for (const dir of readdirSync(here, { withFileTypes: true }).filter((d) => d.isDirectory() && /@\d+$/.test(d.name))) {
+    const path = join(here, dir.name);
+    const schemaFile = readdirSync(path).find((f) => f.endsWith('.schema.json'));
+    if (!schemaFile || !existsSync(join(path, 'samples.json'))) { console.log(`  FAIL ${dir.name}: needs a *.schema.json and a samples.json`); bad++; continue; }
+    const schema = JSON.parse(readFileSync(join(path, schemaFile), 'utf8'));
+    const samples = JSON.parse(readFileSync(join(path, 'samples.json'), 'utf8'));
+    const problems = checkSamples(schema, samples);
+    const n = Object.entries(samples).filter(([k]) => !k.startsWith('$')).reduce((a, [, v]) => a + (Array.isArray(v) ? v.length : 1), 0);
+    if (problems.length) { bad++; console.log(`  FAIL ${dir.name}`); for (const p of problems) console.log(`       ${p}`); }
+    else console.log(`  ok   ${dir.name}: ${n} sample(s) fit ${schemaFile}`);
+  }
+  process.exit(bad ? 1 : 0);
 }

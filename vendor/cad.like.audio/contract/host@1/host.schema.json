@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cad.like.audio/contract/host@1/host.schema.json",
   "title": "cad.like.audio/host@1",
-  "description": "The CAD.Like.audio host bridge: same-origin window.postMessage between the CAD editor (in an iframe, or a window it popped out to) and the softapp hosting it. Every message is an object { protocol: 'cad.like.audio/host@1', type, ...body }. $defs 'toCad.<type>' are what a host may send; 'toHost.<type>' are what the CAD sends. Fields not listed are ignored by the receiver, so a new optional field stays @1; renaming or removing one is @2 (see hostBridge.ts, CHANGING IT). Validate with ../validate.mjs; samples.json carries one sample of every message.",
+  "description": "The CAD.Like.audio host bridge: same-origin window.postMessage between the CAD editor (in an iframe, or a window it popped out to) and the softapp hosting it. Every message is an object { protocol: 'cad.like.audio/host@1', type, ...body }. $defs 'toCad.<type>' are what a host may send; 'toHost.<type>' are what the CAD sends. Fields not listed are ignored by the receiver, so a new optional field stays @1; renaming or removing one is @2 (see hostBridge.ts, CHANGING IT). Validate with ../validate.mjs; samples.json carries one sample of every message. BLOCK EDITORS reverse the roles: when the CAD opens a block-editing softapp in an iframe of its own (SoftappBlockBridgeModal), the CAD is the PARENT; 'toEditor.<type>' are what the CAD sends that editor, and the editor answers with the 'toCad.editorReady' / 'blockChanged' / 'blockSave' / 'editorClose' messages. The browser client every such softapp loads is WEB.Frontend-Assets FrontEnd/shared/apk-softapp.js (window.APKSoftapp.connectHost).",
   "x-protocol": "cad.like.audio/host@1",
   "x-transport": "window.postMessage, targetOrigin = window.location.origin; the receiver drops anything whose origin or source is not its peer",
   "$defs": {
@@ -812,6 +812,101 @@
         }
       }
     },
+    "toCad.editorReady": {
+      "description": "A block editor in the CAD's iframe is up and listening; the CAD answers with toEditor.load.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "editor",
+        "blockType"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "editorReady"
+        },
+        "editor": {
+          "type": "string"
+        },
+        "blockType": {
+          "type": "string"
+        }
+      }
+    },
+    "toCad.blockChanged": {
+      "description": "The user changed the block in the editor (not saved yet): the CAD may show it is dirty.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "block"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "blockChanged"
+        },
+        "block": {
+          "$ref": "#/$defs/blockDoc"
+        },
+        "meta": {
+          "$ref": "#/$defs/blockMeta"
+        }
+      }
+    },
+    "toCad.blockSave": {
+      "description": "Store this block in the CAD drawing under meta.blockName (one undo step).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "block"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "blockSave"
+        },
+        "block": {
+          "$ref": "#/$defs/blockDoc"
+        },
+        "meta": {
+          "$ref": "#/$defs/blockMeta"
+        },
+        "editor": {
+          "type": "string"
+        },
+        "blockType": {
+          "type": "string"
+        }
+      }
+    },
+    "toCad.editorClose": {
+      "description": "The editor asks the CAD to close it.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "editorClose"
+        },
+        "editor": {
+          "type": "string"
+        }
+      }
+    },
     "toHost.ready": {
       "description": "The CAD is up and listening. A host resends its palette and spaces on every ready.",
       "type": "object",
@@ -1148,6 +1243,75 @@
               "type": "null"
             }
           ]
+        }
+      }
+    },
+    "blockMeta": {
+      "description": "What travels with a block between the CAD and its editor. Every field is optional; an editor keeps what it does not understand and sends it back.",
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "blockName": {
+          "description": "The CAD block (Doc.blocks key) this edit belongs to.",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "editor": {
+          "type": "string"
+        },
+        "blockType": {
+          "type": "string"
+        }
+      }
+    },
+    "blockDoc": {
+      "description": "The block itself: the editor's own document, opaque to the transport. When the CAD stores it as a symbol it reads name, description, basePoint, lines, arcs, circles, texts and fills (drawing units, mm).",
+      "type": "object"
+    },
+    "toEditor.load": {
+      "description": "The CAD hands the editor the block to edit (the CAD block of that name, or a fresh stub). Sent on every toCad.editorReady and when the iframe loads.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "block",
+        "meta"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "load"
+        },
+        "block": {
+          "$ref": "#/$defs/blockDoc"
+        },
+        "meta": {
+          "$ref": "#/$defs/blockMeta"
+        }
+      }
+    },
+    "toEditor.request": {
+      "description": "The CAD's \"Save into CAD\": answer with toCad.blockSave of what is on screen now.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "request"
         }
       }
     }
