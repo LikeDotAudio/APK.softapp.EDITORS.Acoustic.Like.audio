@@ -16,6 +16,8 @@
  * window closes with the page.
  */
 
+import { popupBlocked } from './problem.js';
+
 const open = new Set();
 window.addEventListener('pagehide', () => {
   for (const p of open) p.dock();
@@ -41,7 +43,7 @@ export function makePoppable(el, { title, onChange = () => {}, onPopped = () => 
       if (win && !win.closed) return win.focus();
       const w = window.open('', `acoustic-${title.replace(/\W+/g, '-')}`, 'popup,width=960,height=560');
       if (!w) {
-        alert('The browser blocked the window — allow pop-ups for this page.');
+        popupBlocked(title, () => self.pop());
         return;
       }
       win = w;

@@ -42,6 +42,7 @@ import { createPlayer } from './ui/player.js';
 import { createMonitor } from './ui/monitor.js';
 import { createWizard } from './ui/wizard.js';
 import { readSession, sessionDoc } from './model/session.js';
+import { badFile, showProblem } from './ui/problem.js';
 
 const CEILING_LAYER = 'Ceiling';
 
@@ -56,6 +57,40 @@ const CEILING_LAYER = 'Ceiling';
  * The wiring is one loop: the CAD bridge and the inspector write the store;
  * the store tells the engine; the engine's answer redraws every view.
  */
+
+// what this app takes in, puts out and lets you control: the ? button (F1), drawn by the vendored APKSoftapp client
+globalThis.APKSoftapp?.describe({
+  name: 'Acoustics.Like.audio',
+  does: 'Room acoustics over a live CAD plan: speakers, mics and furniture in the room, the sound field painted on the plan, ceiling, four elevations and a 3-D cut-away, and a meter bridge for the selected mic.',
+  inputs: [
+    { name: 'Room drawing', from: 'the CAD in the plan tile (host bridge cad.like.audio/host@1): walls, rooms, patches, Virtual Mirror' },
+    { name: 'Project', from: '📂 Open project: a .acoustic-session.json saved here', kind: 'file' },
+    { name: 'Floor plan', from: '📐 Open floor plan: a .dxf (becomes the drawing) or an image (traced over)', kind: 'file' },
+    { name: 'Song', from: '🎵 Song: any audio file the browser plays (WAV, MP3, FLAC...)', kind: 'file' },
+    { name: 'Measured impulse response', from: 'Inspector: a WAV from REW or a sweep tool', kind: 'file' },
+    { name: 'Rack parts', from: 'the BIM library at /api/bim/parts (rack gear; absent on a static host, then typed by hand)' },
+  ],
+  outputs: [
+    { name: 'Project', to: '💾 Save (Ctrl+S): <drawing>.acoustic-session.json download; the CAD saves the drawing itself', kind: 'file' },
+    { name: 'Marks, furniture and finishes', to: 'the CAD drawing, on their own layers' },
+    { name: 'Overlay JSON / CSV schedules / meter PNG and CSV', to: 'downloads from the Inspector and each meter', kind: 'file' },
+    { name: 'Tour video', to: 'a window of its own, saved as a video' },
+    { name: 'Audition', to: 'the speakers: the song or noise through the monitor controller' },
+  ],
+  controls: [
+    { name: 'Wizard', how: 'room, what is in it, the system, the walls, then what you want to know' },
+    { name: 'Room library / dice', how: 'draw a room shape into the CAD' },
+    { name: 'CAD / Walls / Speaker / Mic modes', how: 'click the plan to place or work walls (Esc back to CAD; Shift keeps placing)' },
+    { name: 'Speaker sets A B C', how: 'pick an arrangement and Place it around the mix seat' },
+    { name: 'Furniture', how: 'arm a piece, then click the plan where it goes' },
+    { name: 'Views / ray tracing / method', how: 'six views, 3-D, one wall; trace on or off; wave or energy' },
+    { name: 'Sweep / Tour / Song', how: 'sweep the frequency, film every view, or let a song drive it' },
+    { name: 'Monitor', how: 'set, volume, dim, mute, per-speaker mute / solo / polarity / trim, noise, calibration' },
+    { name: 'Undo / Redo', how: 'Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y' },
+    { name: '⇱ on any tile', how: 'give it a window of its own; ⇲ Dock brings it back' },
+  ],
+  problems: ['bad_json', 'bad_input', 'file_unreadable', 'timeout', 'permission_denied', 'storage_full', 'script_error'],
+});
 
 const store = createStore();
 const iframe = document.getElementById('cad');
@@ -90,7 +125,10 @@ const engine = createEngine(store, (out, phase) => {
     return;
   }
   status.textContent = out.error ? '⚠ field error — see console' : `${out.room.walls.length} walls · ${store.state.speakers.length} spk · ${store.state.mics.length} mic${out.virtual ? ' · virtual room' : ''}${out.level ? ` · cells ${REFINE_LABEL[out.level]}` : ''}`;
-  if (out.error) console.error(out.error);
+  if (out.error) {
+    console.error(out.error);
+    showProblem(out.error, { subject: 'Sound field', fix: ['Undo the last change (Ctrl+Z): a wall or room the field cannot solve is the usual cause.'] });
+  }
   // nothing ever stands outside the rooms: whatever left one (a layout, a carried array, a smaller plan) comes back, and this runs again
   if (out.room && store.keepInside(out.room, (out.rooms ?? []).map((l) => l.poly))) return;
   // the mix seat is always placed: none (a new room, or it was deleted) puts one in the middle of the room, facing the front
@@ -1214,7 +1252,9 @@ async function openSession(file) {
   try {
     session = readSession(JSON.parse(await file.text()));
   } catch (e) {
-    alert(e instanceof SyntaxError ? 'That file is not JSON.' : e.message);
+    const again = () => document.getElementById('openSession').click();
+    if (e && (e.name === 'NotReadableError' || e.name === 'NotFoundError')) showProblem('file_unreadable', { subject: file.name, detail: e.message, onRetry: again });
+    else badFile(e, file, ['Open a project saved here with 💾 Save (a .acoustic-session.json file).'], again);
     return;
   }
   const { fileName, overlay, handOver } = session;
@@ -1236,7 +1276,12 @@ async function openSession(file) {
 let pendingPlan = null;
 function openFloorPlan(file) {
   if (!cad.link) {
-    alert('The CAD has not started yet — try again in a moment.');
+    showProblem('timeout', {
+      subject: file.name,
+      detail: 'The CAD in the plan tile has not started yet.',
+      fix: ['Wait for the plan to draw, then Retry.', `If it never draws, check the CAD is served beside this app (${SITE.cad}).`],
+      onRetry: () => openFloorPlan(file),
+    });
     return;
   }
   pendingPlan = file.name;

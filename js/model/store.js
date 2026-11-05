@@ -7,6 +7,7 @@ import { clampInside, CLEAR_M, intoRoom, outside } from '../acoustics/inRoom.js'
 import { DEFAULT_MONITOR } from '../acoustics/monitor.js';
 import { activeSet, carryArray, HAND_LAYOUT, LAYOUTS, NO_LAYOUT, OLD_SET_BOXES, selectSet, setLayout, setOf, SPEAKER_SETS } from '../acoustics/layouts.js';
 import { pointInPolygon } from '../acoustics/geometry.js';
+import { showProblem } from '../ui/problem.js';
 
 const wrap180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
 
@@ -157,8 +158,9 @@ export function createStore() {
     saveTimer = setTimeout(() => {
       try {
         localStorage.setItem(KEY + (state.fileName || 'untitled'), JSON.stringify(exportDoc()));
-      } catch {
-        /* private window or quota: the overlay still works, it just won't be there next time */
+      } catch (e) {
+        /* private window or quota: the overlay still works, it just won't be there next time — a full store says so (once) */
+        if (e?.name === 'QuotaExceededError') showProblem('storage_full', { subject: 'Autosave', fix: ['💾 Save writes the project to a file: do that now.'] });
       }
     }, 400);
   };

@@ -5,6 +5,7 @@ import { createView3d, stiColour } from '../views/view3d.js';
 import { talkers, talkPaths } from '../acoustics/talk.js';
 import { STI_RATINGS } from '../acoustics/intelligibility.js';
 import { ACCENT } from '../brand.js';
+import { popupBlocked } from './problem.js';
 
 /**
  * THE TOUR, AS A VIDEO
@@ -306,7 +307,7 @@ export function createTour({ store, engine, onStart, onStop, sweepTo, caption, n
     if (run) return run.win.focus();
     const win = window.open('', 'acoustic-tour', 'popup,width=1300,height=800');
     if (!win) {
-      alert('The browser blocked the window — allow pop-ups for this page.');
+      popupBlocked('Tour', start);
       return;
     }
     const doc = win.document;

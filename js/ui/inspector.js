@@ -29,6 +29,7 @@ import { button, check, download, h, num, row, select, slider, text } from './do
 import { isRack } from '../acoustics/rack.js';
 import { rackPanel } from './rackPanel.js';
 import { openSpeakerDatasheetModal } from './speakerDatasheetModal.js';
+import { badFile } from './problem.js';
 
 /**
  * THE INSPECTOR
@@ -1262,7 +1263,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
           const { fs, channels } = parseWav(await f.arrayBuffer());
           measured = { name: f.name, ...analyseIR(channels[0], fs) };
         } catch (err) {
-          alert(String(err.message || err));
+          badFile(err, f, ['Load a WAV impulse response (PCM or float, as REW or a sweep tool exports it), measured at the mix seat.']);
         }
         render();
       },
@@ -1297,7 +1298,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
         try {
           store.importDoc(JSON.parse(await f.text()));
         } catch (err) {
-          alert(String(err.message || err));
+          badFile(err, f, ['Import a .json this app exported (File tab), or a .acoustic-session.json via Open project.']);
         }
       },
     });
