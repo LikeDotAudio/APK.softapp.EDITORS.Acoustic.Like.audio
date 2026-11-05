@@ -12,6 +12,7 @@ import { acrossWall, faceArea, snapToGuide, wallAbsorption, wallDetails, wallDiv
 import { METRES_PER_UNIT } from '../cad/cadLink.js';
 import { FACE_COLOURS } from './glyphs.js';
 import { ACCENT } from '../brand.js';
+import { tableHtml, standIn } from '../apkTable.js';
 
 /**
  * THE WALL BUILDER
@@ -300,6 +301,7 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
           </div>
         </div>
       </div>`;
+    standIn(root);   // THE ONE TABLE: the cards' tables are APKTables now, not on the next tick
   }
 
   // ---------------------------------------------------------------- the elevation
@@ -478,12 +480,12 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
         <td class="n">${f2(mat.alpha[0])}</td><td class="n">${f2(mat.alpha[2])}</td><td class="n">${f2(mat.alpha[4])}</td><td class="n">${f2(mat.scatter[3])}</td></tr>`;
     };
     const base = material(absorb.rest.name ? MATERIALS.find((m) => m.name === absorb.rest.name)?.id : null);
-    return `<div class="wb-scroll"><table class="wb-table">
-      <thead><tr><th>Tag</th><th>Finish / product · fit</th><th class="n">mm</th><th class="n">m²</th><th class="n">α125</th><th class="n">α500</th><th class="n">α2k</th><th class="n">s</th></tr></thead>
-      <tbody>${regions.map(row).join('')}
+    return `<div class="wb-scroll">${tableHtml('acoustic-wall-schedule', { className: 'wb-table',
+      head: '<tr><th>Tag</th><th>Finish / product · fit</th><th class="n">mm</th><th class="n">m²</th><th class="n">α125</th><th class="n">α500</th><th class="n">α2k</th><th class="n">s</th></tr>',
+      body: `${regions.map(row).join('')}
         <tr class="base"><td class="tag">—</td><td>${esc(absorb.rest.name)}<div class="muted">base · the rest of the wall</div></td><td class="n">—</td><td class="n">${absorb.rest.area.toFixed(2)}</td>
-        <td class="n">${f2(base.alpha[0])}</td><td class="n">${f2(base.alpha[2])}</td><td class="n">${f2(base.alpha[4])}</td><td class="n">${f2(base.scatter[3])}</td></tr>
-      </tbody></table></div>`;
+        <td class="n">${f2(base.alpha[0])}</td><td class="n">${f2(base.alpha[2])}</td><td class="n">${f2(base.alpha[4])}</td><td class="n">${f2(base.scatter[3])}</td></tr>`,
+    })}</div>`;
   }
 
   // ---------------------------------------------------------------- the stud sections
@@ -603,10 +605,14 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
       .join('')}</svg><p class="wb-small"><span style="color:#64748b">■</span> the build alone · <span style="color:${ACCENT}">■</span> the wall as it is, glass and all</p>`;
     const leak = trans.leak
       ? `<p class="wb-calc">Shared with the house: for ${trans.roomDb[0]} dB in the room, L_house = L_room − TL + 10·log10(S / 10 m²) with S ${trans.area.toFixed(1)} m²:</p>
-         <table class="wb-table"><tr><th>Hz</th>${BAND_HEADS.map((b) => `<th class="n">${b}</th>`).join('')}</tr><tr><td>House side, dB</td>${trans.leak.map((v) => `<td class="n">${f0(v)}</td>`).join('')}</tr></table>`
+         ${tableHtml('acoustic-wall-house-leak', { className: 'wb-table', sortable: false,
+           head: `<tr><th>Hz</th>${BAND_HEADS.map((b) => `<th class="n">${b}</th>`).join('')}</tr>`,
+           body: `<tr><td>House side, dB</td>${trans.leak.map((v) => `<td class="n">${f0(v)}</td>`).join('')}</tr>` })}`
       : `<p class="wb-small">Not shared with the house (${esc(iso.setting)}) — the Build tab says which walls are.</p>`;
     return `<h4>Transmission loss · what the wall lets through</h4>
-      <div class="wb-scroll"><table class="wb-table"><thead><tr><th>Element</th><th class="n">m²</th>${BAND_HEADS.map((b) => `<th class="n">${b}</th>`).join('')}<th class="n">≈STC</th></tr></thead><tbody>${rows.join('')}${comp}</tbody></table></div>
+      <div class="wb-scroll">${tableHtml('acoustic-wall-transmission', { className: 'wb-table',
+        head: `<tr><th>Element</th><th class="n">m²</th>${BAND_HEADS.map((b) => `<th class="n">${b}</th>`).join('')}<th class="n">≈STC</th></tr>`,
+        body: `${rows.join('')}${comp}` })}</div>
       ${bars}
       <p class="wb-calc">τ = Σ Sᵢ·10^(−TLᵢ/10) / S · TL = −10·log10 τ${windows.length ? ` · glass on the STC contour from its single number` : ''} · rated by the highest contour it clears (no octave &gt; 8 dB under, &gt; 10 dB summed). Treatment on the room side adds next to nothing and is left out.${iso.walls === 'unset' ? ' Build not set: single stud assumed.' : ''}</p>
       ${leak}
@@ -617,12 +623,13 @@ export function createWallBuilder({ root, store, engine, cad, inputs, jumpTo }) 
   function absorptionCard(absorb, room, face) {
     const row = (name, area, A, cls = '') => `<tr class="${cls}"><td>${name}</td><td class="n">${area.toFixed(2)}</td>${A.map((v) => `<td class="n">${f2(v)}</td>`).join('')}</tr>`;
     return `<h4>Absorption · what the wall soaks up, m² sabins</h4>
-      <div class="wb-scroll"><table class="wb-table"><thead><tr><th>Region</th><th class="n">m²</th>${BAND_HEADS.map((b) => `<th class="n">${b}</th>`).join('')}</tr></thead><tbody>
+      <div class="wb-scroll">${tableHtml('acoustic-wall-absorption', { className: 'wb-table', sortable: false,
+        head: `<tr><th>Region</th><th class="n">m²</th>${BAND_HEADS.map((b) => `<th class="n">${b}</th>`).join('')}</tr>`,
+        body: `
       ${absorb.rows.map((r) => row(`${r.tag} · ${esc(r.name)}`, r.area, r.A)).join('')}
       ${row(`${esc(absorb.rest.name)} · base`, absorb.rest.area, absorb.rest.A, 'base')}
       ${row('Wall', faceArea(room, face), absorb.total, 'total')}
-      <tr class="share"><td>Share of the room's</td><td></td>${absorb.share.map((v) => `<td class="n">${Number.isFinite(v) ? `${Math.round(v * 100)} %` : '—'}</td>`).join('')}</tr>
-      </tbody></table></div>
+      <tr class="share"><td>Share of the room's</td><td></td>${absorb.share.map((v) => `<td class="n">${Number.isFinite(v) ? `${Math.round(v * 100)} %` : '—'}</td>`).join('')}</tr>` })}</div>
       <p class="wb-calc">A = Σ Sᵢ·αᵢ + S_rest·α_base, per octave; the share is of the room's A, surfaces and furniture, as its RT60 is summed.</p>`;
   }
 

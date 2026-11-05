@@ -14,6 +14,7 @@
  * never inject markup. Pure: string in, HTML string out.
  */
 
+import { tableHtml } from '../apkTable.js';
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** A heading's anchor, the way GitHub makes one: lower case, punctuation gone, spaces to dashes. */
@@ -54,6 +55,7 @@ export function renderMarkdown(md) {
   const lines = md.replace(/\r\n/g, '\n').split('\n');
   const out = [];
   let i = 0;
+  let tables = 0;
   const isTableRule = (l) => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(l);
   while (i < lines.length) {
     const line = lines[i];
@@ -94,7 +96,11 @@ export function renderMarkdown(md) {
       i += 2;
       const rows = [];
       while (i < lines.length && lines[i].trim().startsWith('|')) rows.push(cells(lines[i++]));
-      out.push(`<table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      // THE ONE TABLE: a chapter's table is APKTable 'acoustx-help-<n>' (../apkTable.js).
+      out.push(tableHtml(`acoustx-help-${++tables}`, {
+        head: `<tr>${head.map((c) => `<th>${inline(c)}</th>`).join('')}</tr>`,
+        body: rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join(''),
+      }));
       continue;
     }
     if (/^\s*>/.test(line)) {

@@ -46,6 +46,7 @@ import {
 } from './classic.js';
 import { DEFAULT_USER, VIEWS, boxPath, drawBox, fit, nudgeUser, project } from './roomView.js';
 import { renderMarkdown } from './markdown.js';
+import { tableSnapshot, standIn } from '../apkTable.js';
 import {
   MEDIA,
   NC_BANDS,
@@ -2846,7 +2847,10 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     function html(reps) {
       const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
       const head = `<h1>Acoustic X report</h1>${projectLines().map((l) => `<div>${esc(l)}</div>`).join('')}<div>${new Date().toLocaleString()}</div>`;
-      const body = reps.map((r) => `<h2>${esc(r.title)}</h2>${r.sections.map((s) => `<h3>${esc(s.heading)}</h3>${s.text ? `<p>${esc(s.text)}</p>` : ''}${s.rows ? `<table>${s.head ? `<tr>${s.head.map((x) => `<th>${esc(x)}</th>`).join('')}</tr>` : ''}${s.rows.map((r2) => `<tr>${r2.map((x) => `<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</table>` : ''}`).join('')}`).join('');
+      // THE ONE TABLE: each section's table is drawn by APKTable (text cells) and
+      // carried into the report window as that drawn table (../apkTable.js).
+      let n = 0;
+      const body = reps.map((r) => `<h2>${esc(r.title)}</h2>${r.sections.map((s) => `<h3>${esc(s.heading)}</h3>${s.text ? `<p>${esc(s.text)}</p>` : ''}${s.rows ? tableSnapshot(`acoustx-report-${++n}`, s.head, s.rows) : ''}`).join('')}`).join('');
       return `<!doctype html><html><head><meta charset="utf-8"><title>Acoustic X report</title><style>body{font:12px/1.35 Arial,sans-serif;margin:24px;color:#000;background:#fff}table{border-collapse:collapse;margin:4px 0 10px}td,th{border:1px solid #999;padding:2px 6px;text-align:left}h2{border-bottom:2px solid #000;margin-top:24px}</style></head><body>${head}${body}</body></html>`;
     }
     function delimited(reps, sep) {
@@ -2995,6 +2999,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         return;
       }
       page.innerHTML = renderMarkdown(md);
+      standIn(page);   // the chapter's tables are APKTables before its math is typeset
       page.parentElement.scrollTop = 0;
       if (hash) page.querySelector(`[id="${CSS.escape(hash)}"]`)?.scrollIntoView();
       const math = page.querySelectorAll('.math');
