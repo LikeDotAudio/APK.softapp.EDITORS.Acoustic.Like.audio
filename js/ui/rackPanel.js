@@ -16,6 +16,25 @@ import { button, h, num, row, select, text } from './dom.js';
  * under the rack's CAD block id.
  */
 
+/** One catalogue part as the rack wants it, whichever shape it came in: the BIM
+    library's apk.bim.part/1 (physical.rack_units / physical.depth_mm) or the old
+    flat parts.json the published site still ships (rack_units / depth_mm). */
+export function asRackPart(p) {
+  const phys = p.physical ?? {};
+  return {
+    id: p.id,
+    name: p.name ?? `${p.manufacturer ?? ''} ${p.model ?? ''}`.trim(),
+    model: p.model,
+    rack_units: phys.rack_units ?? p.rack_units,
+    depth_mm: phys.depth_mm ?? p.depth_mm,
+  };
+}
+
+/** A catalogue reply → rackable parts: `{items}` (DATABASE.server.BIM) or `{parts}` (parts.json). */
+export function catalogueRows(reply) {
+  return (reply?.items ?? reply?.parts ?? []).map(asRackPart).filter((p) => p.rack_units > 0);
+}
+
 /** The bench's parts catalogue, where site.js says it is (relative to the page); [] where there is none. */
 let catalogue = null;
 export function loadCatalogue(onLoad) {
@@ -24,7 +43,7 @@ export function loadCatalogue(onLoad) {
   fetch(new URL(SITE.catalogue, document.baseURI))
     .then((r) => (r.ok ? r.json() : { parts: [] }))
     .then((d) => {
-      catalogue = (d.parts ?? []).filter((p) => p.rack_units > 0);
+      catalogue = catalogueRows(d);
       onLoad?.();
     })
     .catch(() => {});
@@ -105,6 +124,13 @@ export function rackPanel(piece, racks, put, rerender) {
     ? select(pick, parts.map((p) => ({ value: p.id, label: `${p.name} · ${p.rack_units} U${Number.isFinite(p.depth_mm) ? ` · ${p.depth_mm} mm` : ''}` })), (v) => (pick = v))
     : null;
 
+  // 📚 Library: the whole BIM library, rack gear only, through the picker it serves. No library (the static site): no button.
+  const libSlot = h('span', {});
+  import('/api/bim/ui/picker.js').then(({ libraryButton }) => {
+    libSlot.replaceWith(libraryButton({ title: 'Rack a device from the BIM library', filter: { rack: 1 } },
+      (part) => add(itemFromPart(asRackPart(part), 1))));
+  }).catch(() => libSlot.remove());
+
   return [
     h('h4', {}, `Rack · ${rack.units} U`),
     h('p', { class: 'stat' }, `${plan.used} U used · ${plan.free} U free${runs ? ` (${runs})` : ''}${deepest ? ` · deepest ${deepest.name}, ${Math.round(deepest.reach)} mm of ${Math.round(plan.railDepth)} mm` : ''}`),
@@ -134,6 +160,7 @@ export function rackPanel(piece, racks, put, rerender) {
     h(
       'div',
       { class: 'actions' },
+      libSlot,
       partPick ?? '',
       partPick ? button('＋ From the catalogue', () => {
         const part = parts.find((p) => p.id === pick);
