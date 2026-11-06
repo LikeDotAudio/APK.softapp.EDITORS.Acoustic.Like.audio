@@ -257,7 +257,7 @@
       }
     },
     "toCad.hello": {
-      "description": "Resend view, geometry and mirror now.",
+      "description": "Resend view, geometry and mirror now. bimDrops (2.10.0): the host takes a part dropped from the BIM library itself — the CAD hands it over as toHost.bimDrop instead of placing its own block.",
       "type": "object",
       "required": [
         "protocol",
@@ -269,6 +269,9 @@
         },
         "type": {
           "const": "hello"
+        },
+        "bimDrops": {
+          "type": "boolean"
         }
       }
     },
@@ -482,7 +485,7 @@
       }
     },
     "toCad.layer": {
-      "description": "Make sure a layer exists (not made current), re-colour it, set its finish and its lineweight.",
+      "description": "Make sure a layer exists (not made current), re-colour it, set its finish, its lineweight and its IFC classification.",
       "type": "object",
       "required": [
         "protocol",
@@ -515,6 +518,38 @@
           ],
           "minimum": 0,
           "description": "hundredths of a millimetre, snapped to a DXF step; null back to Default. Host block line work on the layer is drawn in proportion (thinner below 0.25 mm too)."
+        },
+        "ifc": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "entity"
+              ],
+              "properties": {
+                "entity": {
+                  "const": "IfcWall",
+                  "description": "Every edge on the layer is one IfcWall in the IFC export (cad-4)."
+                },
+                "predefinedType": {
+                  "type": "string",
+                  "description": "An IfcWallTypeEnum value: STANDARD, PARTITIONING, SOLIDWALL, MOVABLE, …"
+                },
+                "height_mm": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "thickness_mm": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How the IFC export classifies the layer's linework; null takes it off (the edges are drawing again)."
         }
       }
     },
@@ -1093,7 +1128,7 @@
       }
     },
     "toCad.session": {
-      "description": "Ask for the whole drawing session; answered with toHost.session.",
+      "description": "Ask for the whole drawing session; answered with toHost.session. With format 'ifc' the answer also carries the drawing as IFC4X3_ADD2 STEP text (src/io/ifc), the document a host saves as its .ifc.",
       "type": "object",
       "required": [
         "protocol",
@@ -1105,6 +1140,12 @@
         },
         "type": {
           "const": "session"
+        },
+        "format": {
+          "enum": [
+            "ifc"
+          ],
+          "description": "'ifc': answer with the session AND its IFC4X3_ADD2 twin (toHost.session ifc)."
         }
       }
     },
@@ -1130,12 +1171,11 @@
       }
     },
     "toCad.open": {
-      "description": "Put a session on the sheet, replacing what is there (one undo step).",
+      "description": "Put a session on the sheet, replacing what is there (one undo step): the native session, or an IFC4X3 file (ifc), which wins when both come.",
       "type": "object",
       "required": [
         "protocol",
-        "type",
-        "session"
+        "type"
       ],
       "properties": {
         "protocol": {
@@ -1146,8 +1186,24 @@
         },
         "session": {
           "$ref": "#/$defs/session"
+        },
+        "ifc": {
+          "type": "string",
+          "description": "A whole-model ISO 10303-21 STEP text (IFC4X3_ADD2), as toHost.session ifc gives it or another tool wrote it: read by importIfc, linework, walls, rooms and placed parts."
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "session"
+          ]
+        },
+        {
+          "required": [
+            "ifc"
+          ]
+        }
+      ]
     },
     "toCad.floorplan": {
       "description": "Open a floor plan the user picked in the host as a new drawing.",
@@ -1165,7 +1221,7 @@
           "const": "floorplan"
         },
         "file": {
-          "description": "A File (structured clone, not JSON): a .dxf, or an image to trace."
+          "description": "A File (structured clone, not JSON): a .dxf, an .ifc (opened as the drawing, as toCad.open ifc), or an image to trace."
         }
       }
     },
@@ -1704,6 +1760,10 @@
               "type": "null"
             }
           ]
+        },
+        "ifc": {
+          "type": "string",
+          "description": "Present when toCad.session asked for format 'ifc': the drawing as IFC4X3_ADD2 STEP text, the lossless twin of session (IfcProject → Site → Building → Storey 'Level 0' → IfcSpace per room; walls IfcWall; placed BIM parts occurrences of their library type; mm)."
         }
       }
     },
@@ -1797,6 +1857,56 @@
         },
         "text": {
           "type": "string"
+        }
+      }
+    },
+    "toHost.bimDrop": {
+      "description": "A part dragged from the BIM library (application/x-apk-bim, apk.bim.library@1) and dropped on the sheet, handed to a host that said hello { bimDrops: true } instead of being placed as the CAD's own block (ROAD-3595): bim is the part, ref its BIM reference, at where it was let go (drawing units).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "bim",
+        "ref",
+        "at"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "bimDrop"
+        },
+        "bim": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "ref": {
+          "type": "object",
+          "required": [
+            "part"
+          ],
+          "properties": {
+            "part": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "rev": {
+              "type": "string"
+            }
+          }
+        },
+        "at": {
+          "$ref": "#/$defs/xy"
         }
       }
     },

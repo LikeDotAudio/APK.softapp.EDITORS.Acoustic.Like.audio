@@ -364,7 +364,8 @@
     },
     {
       "protocol": "cad.like.audio/host@1",
-      "type": "session"
+      "type": "session",
+      "format": "ifc"
     },
     {
       "protocol": "cad.like.audio/host@1",
@@ -733,7 +734,8 @@
         },
         "layers": [],
         "activeLayerId": "0"
-      }
+      },
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4X3_ADD2'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
     },
     {
       "protocol": "cad.like.audio/host@1",
@@ -761,6 +763,32 @@
       "type": "dxf",
       "fileName": "Simulation — Bench (mm).dxf",
       "text": "0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nEOF\n"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "bimDrop",
+      "bim": {
+        "id": "keysight/34401a",
+        "manufacturer": "Keysight",
+        "model": "34401A",
+        "name": "Keysight 34401A",
+        "ports": [
+          {
+            "group": "GPIB",
+            "side": "connection",
+            "domain": "control"
+          }
+        ]
+      },
+      "ref": {
+        "part": "keysight/34401a",
+        "url": "http://apk.local:8160/api/bim/parts/keysight/34401a",
+        "rev": "3f1c0a9be27d4410"
+      },
+      "at": [
+        1200,
+        -400
+      ]
     }
   ],
   "toEditor": [
