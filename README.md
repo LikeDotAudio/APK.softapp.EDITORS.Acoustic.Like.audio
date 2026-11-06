@@ -10,6 +10,7 @@
 
 - **The plan is the CAD.** CAD.Like.audio runs live in the plan tile, opened as `#/drawing?host=acoustic`. You draw the room there as a closed loop. Everything acoustic is drawn as an overlay on that sheet and follows it as you pan and zoom.
 - **📂 Open ▾: a project, or a floor plan.** *Open project* brings back a saved `.acoustic-session.json`: speakers, mics and settings, and the name of the CAD drawing they sit on. The drawing itself is the CAD's to save and open; the session never holds a copy of it (an older file that does hands it to the CAD once). *Open floor plan* starts a new room layout from a plan. A `.dxf` becomes the drawing, in its own units (mm when it names none). An image goes under a cleared sheet, and you trace the walls over it after clicking two points whose distance you know. Nothing from the last room comes with it: the first room loop on the sheet is furnished and seated as a library room is, and the toolbar's speaker arrangement is placed around the new mix seat. The settings and speaker sets are kept. Both ask for the placebo licence key first, as the 1997 program did.
+- **💾 Save writes an .ifc twin.** Beside `<drawing>.acoustic-session.json`, Save downloads `<drawing>.ifc`: the designed room as IFC4X3_ADD2 (ISO 16739-1:2024), every length in mm. The room is an `IfcSpace` under site, building and storey, with `Qto_SpaceBaseQuantities`. Each wall is an `IfcWall` (its plan line) with an `IfcCovering` finish, the floor an `IfcSlab` with its flooring, the ceiling an `IfcCovering`; all of them bound the space. Each material is an `IfcMaterial` carrying `APK_AcousticMaterial`: α and scattering per octave band as an `IfcPropertyTableValue` keyed by `IfcFrequencyMeasure`. Panels and clouds are `IfcDiscreteAccessory` SOUNDABSORPTION, glass `IfcWindow`, furniture `IfcFurniture`. Speakers and mics are typed `IfcAudioVisualAppliance` occurrences, aimed and tilted in their own placement, and a listener seat is an `IfcVirtualElement`. Each speaker set is an `IfcDistributionSystem` ELECTROACOUSTIC. Virtual Mirror twins name each other's GlobalId. The last results (RT60 per band, each seat's ISO 3382 figures) carry the hash of the model they were computed on. GlobalIds are deterministic, so a re-save diffs cleanly. The IFC is built first: if it cannot be, nothing is saved. *Open project* takes the .ifc too: ours reads back exactly, and an architect's (IFC4 or IFC4X3: `IfcSpace` and its walls and slabs) is read for its room. Its materials are guessed from the catalogue by name, and every guess is listed in the status line. Its GlobalIds are kept for the next save. The app still works in metres; the conversion to mm happens at the file (`js/ifc/`).
 - **The walls are in the CAD too.** Click an elevation tile and the CAD jumps to that wall's drawing: the same file, on its own layer (`Elevation Front`, `Back`, `Left`, `Right`). A wall not drawn yet is seeded with the room's current outline, under the plan. Drag it into a sloped ceiling, a raked floor or a vault. The room becomes the plan extruded and cut by every elevation drawn: the ceiling is the lowest any of them allows there, the floor the highest. Volume, surface areas and RT are integrated over that real shape. Image sources and modes stand in with the mean floor and ceiling height. Click the ceiling tile (or ⌂ Plan) to jump back.
 - **Six drawings or a 3-D room.** The plan is extruded to a ceiling height, with a front direction you choose. That gives the plan (a slice at ear height) plus the reflected ceiling and the front, back, left and right elevations. The 3-D view is a cut-away. Every surface is painted with its sound field.
 - **Sources and receivers.**
@@ -82,10 +83,14 @@ js/model/         the store: speakers, mics, sets, racks, undo
 js/views/         plan overlay, ceiling + elevations, the Wall page, 3-D, colour map, glyphs, treatments
 js/ui/            inspector (every parameter), meter bridge, rack panel, tour, wizard, licence, pop-out
 js/cad/           the bridge client (cadLink.js) and what the app draws into the CAD (marks.js, schematic.js)
+js/ifc/           the .ifc twin: roomModel.js (the room in mm, and back), roomToIfc.js (write), ifcToRoom.js (read ours
+                  or an architect's), props.js (APK_ properties both ways), placement.js (aim + tilt in an axis placement)
 css/              app.css, acoustx.css
 tests/            node --test: physics checked against closed forms, and the CAD contract (281 tests)
-vendor/           cad.like.audio/contract/ — the CAD's published host@1 schema and samples, vendored unchanged
-scripts/          smoke-frame.mjs — the framed CAD is there and speaks host@1
+vendor/           cad.like.audio/contract/ — the CAD's published host@1 schema and samples, vendored unchanged;
+                  apk-contracts/apk-ifc.js — contracts/src/ifc (ifcGuid + the STEP reader/writer), bundled
+scripts/          smoke-frame.mjs — the framed CAD is there and speaks host@1; vendor-ifc.mjs [--check] — rebuild
+                  apk-ifc.js; validate-ifc.py — the IfcOpenShell check; make-ifc-fixtures.py — tests/fixtures/*.ifc
 Documentation/    acoustics/ — the engine's mathematics, chapter by chapter; acoustic-x/ — Acoustic X and its references
 ```
 
@@ -94,8 +99,19 @@ No build step and no dependencies: plain ES modules, served as they are. The rac
 ## Tests
 
 ```
-npm test          # node --test tests/*.test.mjs — 275 tests, about 2 s, no install needed
+npm test          # node --test tests/*.test.mjs — 322 tests, about 10 s, no install needed
+APK_IFC_PYTHON=/path/to/python-with-ifcopenshell npm test   # also runs the IfcOpenShell check of the .ifc twin
 ```
+
+The .ifc twin (tests/ifc.test.mjs) is checked as follows:
+- a designed room exports, reads back equal to its model, and writes the same bytes again
+- aim and tilt survive the placement on a 1° grid
+- every catalogue material survives `APK_AcousticMaterial`
+- Virtual Mirror twins name each other and sum to twice the axis
+- results carry the model hash, and a changed room marks them stale
+- the room built from what comes back has the same volume and surfaces
+- the BIM repo's `cad_spine.py` prototype (IFC4) and an architect's room in metres open with their GlobalIds kept, their materials guessed and listed
+- with `APK_IFC_PYTHON` set, IfcOpenShell finds 0 schema and EXPRESS errors in every exported file, and its Psets match the IFC4X3 templates (scripts/validate-ifc.py)
 
 The tests check the following against closed forms:
 - flush mounting gives +6 dB

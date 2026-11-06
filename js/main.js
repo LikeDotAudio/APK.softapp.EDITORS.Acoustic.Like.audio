@@ -41,7 +41,8 @@ import { makeFold } from './ui/fold.js';
 import { createPlayer } from './ui/player.js';
 import { createMonitor } from './ui/monitor.js';
 import { createWizard } from './ui/wizard.js';
-import { readSession, sessionDoc } from './model/session.js';
+import { readProjectFile, sessionFiles } from './model/session.js';
+import { resultsOf, sessionFromModel } from './ifc/roomModel.js';
 import { badFile, showProblem } from './ui/problem.js';
 
 const CEILING_LAYER = 'Ceiling';
@@ -64,14 +65,14 @@ globalThis.APKSoftapp?.describe({
   does: 'Room acoustics over a live CAD plan: speakers, mics and furniture in the room, the sound field painted on the plan, ceiling, four elevations and a 3-D cut-away, and a meter bridge for the selected mic.',
   inputs: [
     { name: 'Room drawing', from: 'the CAD in the plan tile (host bridge cad.like.audio/host@1): walls, rooms, patches, Virtual Mirror' },
-    { name: 'Project', from: '📂 Open project: a .acoustic-session.json saved here', kind: 'file' },
+    { name: 'Project', from: '📂 Open project: a .acoustic-session.json saved here, its .ifc twin, or an architect\'s IFC room (IfcSpace + walls/slabs, IFC4 or IFC4X3)', kind: 'file' },
     { name: 'Floor plan', from: '📐 Open floor plan: a .dxf (becomes the drawing) or an image (traced over)', kind: 'file' },
     { name: 'Song', from: '🎵 Song: any audio file the browser plays (WAV, MP3, FLAC...)', kind: 'file' },
     { name: 'Measured impulse response', from: 'Inspector: a WAV from REW or a sweep tool', kind: 'file' },
     { name: 'Rack parts', from: 'the BIM library at /api/bim/parts (rack gear; absent on a static host, then typed by hand)' },
   ],
   outputs: [
-    { name: 'Project', to: '💾 Save (Ctrl+S): <drawing>.acoustic-session.json download; the CAD saves the drawing itself', kind: 'file' },
+    { name: 'Project', to: '💾 Save (Ctrl+S): <drawing>.acoustic-session.json and its <drawing>.ifc twin (IFC4X3_ADD2, mm) downloads; the CAD saves the drawing itself', kind: 'file' },
     { name: 'Marks, furniture and finishes', to: 'the CAD drawing, on their own layers' },
     { name: 'Overlay JSON / CSV schedules / meter PNG and CSV', to: 'downloads from the Inspector and each meter', kind: 'file' },
     { name: 'Tour video', to: 'a window of its own, saved as a video' },
@@ -1237,26 +1238,63 @@ tourBtn.addEventListener('click', () => (tour.running ? tour.stop() : tour.start
 // ------------------------------------------------------------------ sessions: this overlay and the name of the CAD drawing it sits on (model/session.js)
 function saveSession() {
   const drawingName = store.state.cad.geometry?.fileName ?? store.state.fileName ?? null;
-  const doc = sessionDoc(store.exportDoc(), drawingName);
+  let files;
+  try {
+    // the session and its .ifc twin, both or neither (model/session.js sessionFiles)
+    files = sessionFiles({ overlay: store.exportDoc(), drawingName, geometry: store.state.cad.geometry, mirror: store.state.cad.mirror, results: resultsOf(engine.out, store.state.settings) });
+  } catch (e) {
+    showProblem('save_failed', { subject: drawingName ?? 'room', detail: String(e?.message || e), fix: ['Nothing was saved: the room could not be written as IFC.', 'File → Export overlay still downloads the overlay JSON.'] });
+    return;
+  }
+  files.forEach((f, i) => setTimeout(() => download(f), i * 300));
   const name = (drawingName || 'room').replace(/\.[^.]+$/, '');
+  status.textContent = `💾 saved ${name} — ${store.state.speakers.length} speakers, ${store.state.mics.length} mics, and its .ifc twin; the drawing stays the CAD's to save`;
+}
+
+function download({ name, type, text }) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' }));
-  a.download = `${name}.acoustic-session.json`;
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  status.textContent = `💾 saved ${name} — ${store.state.speakers.length} speakers, ${store.state.mics.length} mics; the drawing stays the CAD's to save`;
+}
+
+/** An .ifc opened: its overlay adopted under its drawing name, its loops, walls, products and mirror handed to the CAD. */
+function openIfc(file, { model, report }) {
+  const units = store.state.cad.geometry?.units ?? store.state.cad.view?.units ?? 'mm';
+  const { fileName, overlay, cad: toCad } = sessionFromModel(model, units);
+  pendingPlan = null;
+  store.adopt(fileName, overlay);
+  if (cad.link) {
+    for (const s of toCad.sheets) cad.link.sheet(s.layer, { color: '#e5e7eb', seed: s.seed });
+    const main = toCad.sheets.find((s) => s.main);
+    if (main) cad.link.sheet(main.layer, { color: '#e5e7eb' });
+    for (const l of toCad.lines) cad.link.walls({ op: 'add', a: l.a, b: l.b, layer: l.layer });
+    for (const p of toCad.place) cad.link.place(p.layer, [p.item]);
+    if (toCad.mirror) cad.link.setMirror(toCad.mirror.x, toCad.mirror.enabled);
+  }
+  const said = [
+    report.own ? `📂 opened ${file.name}` : `📂 opened the room of ${file.name} (${report.schema})`,
+    `${model.spaces.length} room${model.spaces.length === 1 ? '' : 's'}, ${model.speakers.length} speakers, ${model.mics.length} mics`,
+    ...(toCad.fills ? [`${toCad.fills} painted finish${toCad.fills === 1 ? '' : 'es'} are in the file but not repainted — the CAD's own drawing holds them`] : []),
+    ...(report.guessed.length ? [`materials guessed: ${report.guessed.map((g) => `${g.material} → ${g.as ?? 'none'}`).join(', ')}`] : []),
+    ...(report.resultsStale ? ['its saved results are stale (the room changed after they were computed): recomputing'] : []),
+    ...report.warnings,
+  ];
+  status.textContent = said.join(' · ');
 }
 
 async function openSession(file) {
   let session;
   try {
-    session = readSession(JSON.parse(await file.text()));
+    session = readProjectFile(file.name, await file.text());
   } catch (e) {
     const again = () => document.getElementById('openSession').click();
     if (e && (e.name === 'NotReadableError' || e.name === 'NotFoundError')) showProblem('file_unreadable', { subject: file.name, detail: e.message, onRetry: again });
-    else badFile(e, file, ['Open a project saved here with 💾 Save (a .acoustic-session.json file).'], again);
+    else badFile(e, file, ['Open a project saved here with 💾 Save (a .acoustic-session.json file, or its .ifc twin), or an architect\'s .ifc room.'], again);
     return;
   }
+  if (session.kind === 'ifc') return openIfc(file, session);
   const { fileName, overlay, handOver } = session;
   pendingPlan = null;
   store.adopt(fileName, overlay);
