@@ -9,8 +9,9 @@ prints one JSON object per file:
   schema            FILE_SCHEMA (IFC4X3_ADD2 for our export)
   statements        ifcopenshell.validate with express_rules=True: every schema and where-rule finding
   pset_problems     every Pset_ / Qto_ checked against the IFC4X3 templates (name, applicable entity,
-                    property, IfcProperty class, measure, enumerator) by the BIM repo's oracle when it is
-                    beside this app, else by the same rules here; any other set must be APK_*
+                    property, IfcProperty class, measure, enumerator) and every APK_ set against its
+                    declaration (DATABASE.server.BIM tools/ifc/apk_psets.py) by the BIM repo's oracle when
+                    it is beside this app; any other set must be APK_*
   counts            entities per type the room is made of
   checks            the room's own shape: every IfcWall bounds an IfcSpace, every IfcSpace has
                     Qto_SpaceBaseQuantities.Height (and NetVolume once it has a body), every covering's material has
@@ -59,7 +60,11 @@ def pset_problems(f):
     for pdef, owner in owners:
         name = pdef.Name or ""
         if name.startswith("APK_"):
-            continue  # APK's own sets: open-ended here, checked by the room's own checks below
+            # APK's own sets: declared, property by property, in the BIM repo's tools/ifc/apk_psets.py
+            # (apk_psets_acoustic.py); without that repo beside this app only the room's checks below hold
+            if oracle:
+                out += oracle._check_set(pdef, owner)
+            continue
         if not name.startswith(("Pset_", "Qto_")):
             out.append("%s: a set outside ISO must be named APK_*" % name)
             continue

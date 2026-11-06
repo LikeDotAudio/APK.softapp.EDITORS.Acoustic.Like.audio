@@ -139,6 +139,11 @@ export const SPEAKER_TABLE = {
   mute: ['Mute', 'bool'],
   solo: ['Solo', 'bool'],
   invert: ['PolarityInverted', 'bool'],
+  nearField: ['NearField', 'bool'],
+  midField: ['MidField', 'bool'],
+  mainMonitor: ['MainMonitor', 'bool'],
+  metric: ['MetricDatasheet', 'bool'],
+  tag: ['CatalogueTag', 'label'],
 };
 
 /** A mic or listener (devices.js makeMic) → APK_MicOccurrence / APK_Listener. */

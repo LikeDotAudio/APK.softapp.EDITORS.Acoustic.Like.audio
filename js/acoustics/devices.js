@@ -31,6 +31,7 @@
  */
 
 import { ACOUSTX_SPEAKERS } from '../acoustx/database.js';
+import { SPEAKER_PARTS } from './speakerParts.js';
 
 // The library. First the real boxes, by maker and model — `litres` is the
 // cabinet's internal volume, which sets the size it is drawn (boxSize), and
@@ -172,13 +173,32 @@ export function newId(prefix) {
   return `${prefix}${Date.now().toString(36)}${(nextId++).toString(36)}`;
 }
 
+/**
+ * The BIM part a preset box is (acoustics-3): every preset is a library part
+ * (DATABASE.server.BIM importers/import_acoustic_speakers.py), and speakerParts.js,
+ * which that importer writes, maps the key to it. null for a key that is no preset.
+ */
+export function speakerPart(kind) {
+  return SPEAKER_PARTS[kind] ?? null;
+}
+
+/** The preset key a BIM part id is placed from (the first key that maps to it), or null. */
+export function presetForPart(partId) {
+  if (!partId) return null;
+  const id = String(partId).toLowerCase();
+  return Object.keys(SPEAKER_PARTS).find((k) => SPEAKER_PARTS[k].part === id && k in ALL_SPEAKER_PRESETS) ?? null;
+}
+
 export function makeSpeaker(kind, at, extra = {}) {
   const p = SPEAKER_PRESETS[kind] ?? ACOUSTX_SPEAKER_PRESETS[kind] ?? SPEAKER_PRESETS.monitor;
   const spec = Object.fromEntries(SPEAKER_SPEC.map((k) => [k, p[k]]));
+  // placed by part id: the box IS the library part its preset became (its IFC type is part/<id>)
+  const part = speakerPart(kind in SPEAKER_PRESETS || kind in ACOUSTX_SPEAKER_PRESETS ? kind : 'monitor')?.part;
   return {
     id: newId('s'),
     name: extra.name ?? p.label,
     kind,
+    ...(part ? { part } : {}),
     x: at.x,
     y: at.y,
     z: at.z ?? 1.2,

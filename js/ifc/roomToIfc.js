@@ -29,7 +29,8 @@
  */
 
 import { encodeString, formatReal, ifcGuid, enumv, real, ref, typed, writeStep } from '../../vendor/apk-contracts/apk-ifc.js';
-import { ALL_SPEAKER_PRESETS, isListener, MIC_PRESETS } from '../acoustics/devices.js';
+import { ALL_SPEAKER_PRESETS, isListener, MIC_PRESETS, speakerPart } from '../acoustics/devices.js';
+import { SPEAKER_PARTS } from '../acoustics/speakerParts.js';
 import { lookup, PRODUCTS } from '../acoustics/materials.js';
 import { elevationFaceOf } from '../acoustics/elevations.js';
 import { isCeilingLayer } from '../acoustics/patches.js';
@@ -334,26 +335,33 @@ export function roomToIfc(model) {
     associate(p.paletteId, el);
   }
 
-  // ---- speakers: one type per kind (or BIM part), each box an occurrence aimed in its placement
+  // ---- speakers: one type per BIM part (a preset box IS a library part: speakerParts.js), else per kind;
+  // each box an occurrence aimed in its placement. A part's type carries the part's own GlobalId
+  // (part/<id>) and the identity DATABASE.server.BIM writes for it (bim/ifc.py), so the two files agree.
   const typeRefs = new Map();
+  const partById = new Map(Object.values(SPEAKER_PARTS).map((p) => [p.part, p]));
   const typeOf = (kind, avKind, d) => {
-    const key = d.part ? `part:${d.part}` : `${avKind}:${kind}`;
+    const partId = d.part ?? (avKind === 'SPEAKER' ? speakerPart(kind)?.part : null) ?? null;
+    const key = partId ? `part:${partId}` : `${avKind}:${kind}`;
     if (typeRefs.has(key)) return typeRefs.get(key);
     const preset = avKind === 'SPEAKER' ? ALL_SPEAKER_PRESETS[kind] : MIC_PRESETS[kind];
-    const tGid = d.part ? ifcGuid('part', d.part) : ifcGuid('decl', P, 'type', avKind.toLowerCase(), String(kind));
+    const known = partId ? partById.get(partId) : null;
+    const tGid = partId ? ifcGuid('part', partId) : ifcGuid('decl', P, 'type', avKind.toLowerCase(), String(kind));
     const psets = [];
-    const maker = preset?.maker;
+    const maker = known?.manufacturer ?? preset?.maker;
+    const modelLabel = known?.name ?? preset?.label;
     const info = [
       ...(maker ? [{ name: 'Manufacturer', value: label(maker) }] : []),
-      ...(preset?.label ? [{ name: 'ModelLabel', value: label(preset.label) }] : []),
-      ...(d.part ? [{ name: 'ModelReference', value: label(d.part) }] : []),
+      ...(modelLabel ? [{ name: 'ModelLabel', value: label(modelLabel) }] : []),
+      ...(partId ? [{ name: 'ModelReference', value: label(known?.model ?? partId) }] : []),
     ];
     if (info.length) psets.push(typePset(tGid, 'Pset_ManufacturerTypeInformation', info));
+    if (partId) psets.push(typePset(tGid, 'APK_Part', [{ name: 'PartId', value: ident(partId) }]));
     if (avKind === 'SPEAKER') {
       const st = /coax/i.test(preset?.driver ?? '') ? 'COAXIAL' : kind === 'sub' || preset?.lowpass > 0 ? 'WOOFER' : 'FULLRANGE';
       psets.push(typePset(tGid, 'Pset_AudioVisualApplianceTypeSpeaker', [{ name: 'SpeakerType', value: { enum: label(st) } }]));
     }
-    const t = W.add('IFCAUDIOVISUALAPPLIANCETYPE', tGid, null, preset?.label ?? d.part ?? String(kind), null, null, psets.length ? psets : null, null, String(d.part ?? kind), null, enumv(avKind));
+    const t = W.add('IFCAUDIOVISUALAPPLIANCETYPE', tGid, null, known?.name ?? preset?.label ?? partId ?? String(kind), null, null, psets.length ? psets : null, null, String(partId ?? kind), null, enumv(avKind));
     typeRefs.set(key, { ref: t, gid: tGid, occ: [] });
     return typeRefs.get(key);
   };

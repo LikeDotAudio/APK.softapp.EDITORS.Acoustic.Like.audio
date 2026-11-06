@@ -26,7 +26,7 @@
  */
 
 import { parseStep, inverseIndex, schemaOf } from '../../vendor/apk-contracts/apk-ifc.js';
-import { ALL_SPEAKER_PRESETS } from '../acoustics/devices.js';
+import { ALL_SPEAKER_PRESETS, presetForPart } from '../acoustics/devices.js';
 import { lookup, MATERIALS } from '../acoustics/materials.js';
 import { wallKey } from '../acoustics/wallChains.js';
 import { BANDS, BANDS_9 } from '../acoustics/bands.js';
@@ -640,8 +640,13 @@ function readForeign(F, name) {
     const id = `${kind === 'SPEAKER' ? 's' : 'm'}-${e.args[0]}`;
     const at = { x: mm(M.o[0] / 1000), y: mm(M.o[1] / 1000), z: mm((M.o[2] - floorZ) / 1000), aim, tilt };
     if (kind === 'SPEAKER') {
-      const preset = Object.entries(ALL_SPEAKER_PRESETS).find(([, p]) => p.label === typeName || p.name === typeName || (val(info, 'ModelLabel') && p.label === val(info, 'ModelLabel')));
-      const part = typeof typeName === 'string' && /^[a-z0-9-]+\/[a-z0-9._-]+$/i.test(typeName) ? typeName.toLowerCase() : null;
+      // a BIM part type names its part (APK_Part.PartId, else its Tag); the box is placed from the preset that part is
+      const isPartId = (x) => typeof x === 'string' && /^[a-z0-9-]+\/[a-z0-9._-]+$/i.test(x);
+      const stated = [val(psetsOf(F, e).APK_Part, 'PartId'), type?.args[7], typeName].find(isPartId);
+      const part = stated ? stated.toLowerCase() : null;
+      const byPart = presetForPart(part);
+      const preset = byPart ? [byPart, ALL_SPEAKER_PRESETS[byPart]]
+        : Object.entries(ALL_SPEAKER_PRESETS).find(([, p]) => p.label === typeName || p.name === typeName || (val(info, 'ModelLabel') && p.label === val(info, 'ModelLabel')));
       if (!preset) warn(`speaker ${e.args[2] ?? id}: its type (${typeName ?? 'none'}) is no preset here — placed as a studio monitor${part ? `, part ${part} kept` : ''}`);
       model.speakers.push({ id, name: e.args[2] ?? id, kind: preset?.[0] ?? 'monitor', ...(part ? { part } : {}), ...at, mount: 'free' });
     } else model.mics.push({ id, name: e.args[2] ?? id, kind: 'omni', pattern: 'omni', mix: false, ...at });
