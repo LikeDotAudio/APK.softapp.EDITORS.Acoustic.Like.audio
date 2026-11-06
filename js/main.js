@@ -72,7 +72,7 @@ globalThis.APKSoftapp?.describe({
     { name: 'Rack parts', from: 'the BIM library at /api/bim/parts (rack gear; absent on a static host, then typed by hand)' },
   ],
   outputs: [
-    { name: 'Project', to: '💾 Save (Ctrl+S): <drawing>.acoustic-session.json and its <drawing>.ifc twin (IFC4X3_ADD2, mm) downloads; the CAD saves the drawing itself', kind: 'file' },
+    { name: 'Project', to: '💾 Save (Ctrl+S): <drawing>.acoustic-session.json and its .acoustic-session.ifc twin (IFC4X3_ADD2, mm), both or neither, into a folder picked once (Save Model) or as downloads; the CAD saves the drawing itself', kind: 'file' },
     { name: 'Marks, furniture and finishes', to: 'the CAD drawing, on their own layers' },
     { name: 'Overlay JSON / CSV schedules / meter PNG and CSV', to: 'downloads from the Inspector and each meter', kind: 'file' },
     { name: 'Tour video', to: 'a window of its own, saved as a video' },
@@ -1246,9 +1246,21 @@ function saveSession() {
     showProblem('save_failed', { subject: drawingName ?? 'room', detail: String(e?.message || e), fix: ['Nothing was saved: the room could not be written as IFC.', 'File → Export overlay still downloads the overlay JSON.'] });
     return;
   }
-  files.forEach((f, i) => setTimeout(() => download(f), i * 300));
   const name = (drawingName || 'room').replace(/\.[^.]+$/, '');
-  status.textContent = `💾 saved ${name} — ${store.state.speakers.length} speakers, ${store.state.mics.length} mics, and its .ifc twin; the drawing stays the CAD's to save`;
+  const said = (where) => { status.textContent = `💾 saved ${name} — ${store.state.speakers.length} speakers, ${store.state.mics.length} mics, and its .ifc twin${where}; the drawing stays the CAD's to save`; };
+  const [session, twin] = files;
+  const S = globalThis.APKSoftapp;
+  if (typeof S?.saveModel !== 'function') {
+    files.forEach((f, i) => setTimeout(() => download(f), i * 300));
+    said('');
+    return;
+  }
+  // Save Model (FrontEnd/shared/apk-softapp.js, ROAD-3583): one folder picked once a
+  // session, the .ifc first, then the session JSON — both or neither — else both download.
+  S.saveModel(JSON.parse(session.text), { name: session.name.replace(/\.json$/i, ''), toIfc: () => twin.text }).then((r) => {
+    if (r.ok) said(r.via === 'directory' ? ` (${r.files.join(' + ')})` : '');
+    else if (!r.cancelled) showProblem('save_failed', { subject: name, detail: r.problem?.detail ?? r.problem?.title ?? 'Save Model failed', fix: ['Nothing was saved: try 💾 Save again, or pick another folder.'] });
+  });
 }
 
 function download({ name, type, text }) {
