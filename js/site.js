@@ -13,4 +13,6 @@
 export const SITE = {
   /** The CAD bundle; `#/drawing?host=acoustic` is added by main.js (that part is the protocol, not the layout). */
   cad: '../EDITORS.CAD.Like.audio/dist/index.html',
+  /** The BIM library's picker (ROAD-3597): the copy published with the OS, by its root path, else apk.audio's. */
+  picker: ['/APK%3AOS/system/bim/library/picker.js', 'https://apk.audio/APK%3AOS/system/bim/library/picker.js'],
 };

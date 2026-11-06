@@ -57,7 +57,7 @@ The CAD never reads this app's state: what the app asks of it is drawn (`marks`,
 
 ## Hosting
 
-Published by `.github/workflows/deploy.yml` on every push to `main` and nightly, once `npm test` has passed: to GitHub Pages, and over FTPS to the Varial account that serves https://acoustics.like.audio/ (secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`; variable `FTP_SERVER_DIR`). The CAD's tracked `dist/` is copied into the site as `cad/` and this repo's `vendor/bim/parts.json` (a copy of the APK.audio repo's `PODS/POD.THIN/OS/BIM/parts.json`, held equal by `tests/vendor-parts.test.mjs`) as `catalogue/parts.json`, and `js/site.published.js` is copied over `js/site.js` — the one file that says where the CAD and the catalogue are — so the bridge stays same-origin and racks have their catalogue; a CAD change shows up on the next run, a catalogue change once the vendored copy is refreshed. `npm run smoke:frame` (also a deploy step, on `_site/`) proves the framed CAD is there and speaks host@1.
+Published by `.github/workflows/deploy.yml` on every push to `main` and nightly, once `npm test` has passed: to GitHub Pages, and over FTPS to the Varial account that serves https://acoustics.like.audio/ (secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`; variable `FTP_SERVER_DIR`). The CAD's tracked `dist/` is copied into the site as `cad/`, and `js/site.published.js` is copied over `js/site.js` — the one file that says where the CAD and the BIM library's picker are — so the bridge stays same-origin; rack gear comes from apk.audio's published library (📚 Library). A CAD change shows up on the next run. `npm run smoke:frame` (also a deploy step, on `_site/`) proves the framed CAD is there and speaks host@1.
 
 **Live now:** https://likedotaudio.github.io/APK.softapp.EDITORS.Acoustic.Like.audio/
 
@@ -89,7 +89,7 @@ scripts/          smoke-frame.mjs — the framed CAD is there and speaks host@1
 Documentation/    acoustics/ — the engine's mathematics, chapter by chapter; acoustic-x/ — Acoustic X and its references
 ```
 
-No build step and no dependencies: plain ES modules, served as they are. The rack panel reads the bench's parts catalogue from where `js/site.js` says, (`/api/bim/parts` — WEB.OsApi's route over the OS's `BIM/parts.json` — on APK:OS; `catalogue/parts.json` on the published site); where there is none, that fetch fails and the catalogue is empty, so gear is typed in by hand. A few viewer preferences (reveal speed, graphs on/off, Acoustic X legacy mode) are kept in `localStorage`.
+No build step and no dependencies: plain ES modules, served as they are. The rack panel adds gear only from the BIM library (📚 Library, Ctrl+Shift+L): the picker is loaded from where `js/site.js` says (the copy published with the OS on APK:OS, apk.audio's on the published site), and each item keeps its `bimId` and `bimRef`. A few viewer preferences (reveal speed, graphs on/off, Acoustic X legacy mode) are kept in `localStorage`.
 
 ## Tests
 

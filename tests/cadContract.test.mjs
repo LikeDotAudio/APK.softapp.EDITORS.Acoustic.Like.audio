@@ -80,11 +80,12 @@ test('every message cadLink sends is a valid toCad message', async () => {
     assert.deepEqual(validateMessage(schema, 'toCad', m), [], `${m.type}: ${JSON.stringify(m)}`);
     sent.add(m.type);
   }
-  // every type sent is one the CAD answers (validateMessage refuses an unknown type); `layer` is the one this host does not use,
+  // every type sent is one the CAD answers (validateMessage refuses an unknown type); `layer`, and the Simulation's
+  // `dxf` / `schematic` / `schematicMove` / `tool` (host@1 2.5–2.9), are the ones this host does not use,
   // and editorReady / blockChanged / blockSave / editorClose are a block editor's, in the CAD's own iframe (the `toEditor` direction's replies)
   const blockEditor = ['blockChanged', 'blockSave', 'editorClose', 'editorReady'];
   const unused = messageTypes(schema, 'toCad').filter((t) => !sent.has(t) && !blockEditor.includes(t));
-  assert.deepEqual(unused, ['layer']);
+  assert.deepEqual(unused, ['dxf', 'layer', 'schematic', 'schematicMove', 'tool']);
 });
 
 test('every toHost sample reaches its callback', async () => {

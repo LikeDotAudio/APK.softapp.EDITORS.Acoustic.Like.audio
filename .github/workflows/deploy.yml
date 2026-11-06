@@ -59,8 +59,6 @@ jobs:
           sed -i 's/apk-contracts\.mjs/apk-contracts\.js/g' _site/js/brand.js
           cp -r acoustic/Documentation _site/
           cp -r cad/dist _site/cad
-          mkdir -p _site/catalogue
-          cp acoustic/vendor/bim/parts.json _site/catalogue/parts.json
           cp acoustic/js/site.published.js _site/js/site.js
           cp acoustic/.htaccess _site/.htaccess
 

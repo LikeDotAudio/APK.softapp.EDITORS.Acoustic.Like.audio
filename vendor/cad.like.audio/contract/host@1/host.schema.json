@@ -273,7 +273,7 @@
       }
     },
     "toCad.fit": {
-      "description": "Zoom to the drawing.",
+      "description": "Zoom to the drawing, or to box (drawing units) when given. inset (px) is canvas the host keeps covered — the box is framed in what is left; minZoom (px per drawing unit) is the least zoom: a box that would need less is shown from its top-left corner at that zoom.",
       "type": "object",
       "required": [
         "protocol",
@@ -285,6 +285,56 @@
         },
         "type": {
           "const": "fit"
+        },
+        "box": {
+          "type": "object",
+          "required": [
+            "x1",
+            "y1",
+            "x2",
+            "y2"
+          ],
+          "properties": {
+            "x1": {
+              "type": "number"
+            },
+            "y1": {
+              "type": "number"
+            },
+            "x2": {
+              "type": "number"
+            },
+            "y2": {
+              "type": "number"
+            }
+          }
+        },
+        "inset": {
+          "type": "object",
+          "description": "px of the canvas the host covers (Library Equipment's sash)",
+          "properties": {
+            "left": {
+              "type": "number",
+              "minimum": 0
+            },
+            "top": {
+              "type": "number",
+              "minimum": 0
+            },
+            "right": {
+              "type": "number",
+              "minimum": 0
+            },
+            "bottom": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "minZoom": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "px per drawing unit"
         }
       }
     },
@@ -432,7 +482,7 @@
       }
     },
     "toCad.layer": {
-      "description": "Make sure a layer exists (not made current) and set its finish.",
+      "description": "Make sure a layer exists (not made current), re-colour it, set its finish and its lineweight.",
       "type": "object",
       "required": [
         "protocol",
@@ -457,6 +507,14 @@
             "string",
             "null"
           ]
+        },
+        "lineweight": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "hundredths of a millimetre, snapped to a DXF step; null back to Default. Host block line work on the layer is drawn in proportion (thinner below 0.25 mm too)."
         }
       }
     },
@@ -674,7 +732,7 @@
       }
     },
     "toCad.select": {
-      "description": "Select here what the host picked.",
+      "description": "Select here what the host picked; host [{ key, ref }] shows those of its own schematic blocks picked.",
       "type": "object",
       "required": [
         "protocol",
@@ -700,6 +758,24 @@
           "items": {
             "type": "string",
             "description": "'block:<n>' — a placed product"
+          }
+        },
+        "host": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "ref"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              }
+            }
           }
         }
       }
@@ -731,6 +807,287 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/mark"
+          }
+        }
+      }
+    },
+    "toCad.schematic": {
+      "description": "The host's devices as BIM blocks with ports, not line work (hostSchematic.ts). Replaces everything placed under key: the CAD builds each block from its part (partToDefinition) and resolves each terminal to a port itself. A placement's ports are the terminals that instance showed beyond its part's. portals: { ref: { terminal: far } }, far a string (a patch-bay position, grey) or { text, wired } (another block, accent). A hash already on the sheet is ignored.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "key",
+        "hash",
+        "parts",
+        "placements",
+        "connections"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "schematic"
+        },
+        "key": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "layer": {
+          "type": "string"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "manufacturer": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "group": {
+                      "type": "string"
+                    },
+                    "terminal": {
+                      "type": "string"
+                    },
+                    "side": {
+                      "type": "string"
+                    },
+                    "domain": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "labels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "placements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "part",
+              "at"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "part": {
+                "type": "string"
+              },
+              "at": {
+                "$ref": "#/$defs/xy"
+              },
+              "group": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "size": {
+                "$ref": "#/$defs/xy"
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "group": {
+                      "type": "string"
+                    },
+                    "terminal": {
+                      "type": "string"
+                    },
+                    "side": {
+                      "type": "string"
+                    },
+                    "domain": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "labels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "connections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "a",
+              "b"
+            ],
+            "properties": {
+              "a": {
+                "type": "object",
+                "required": [
+                  "ref",
+                  "terminal"
+                ],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "terminal": {
+                    "type": "string"
+                  }
+                }
+              },
+              "b": {
+                "type": "object",
+                "required": [
+                  "ref",
+                  "terminal"
+                ],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "terminal": {
+                    "type": "string"
+                  }
+                }
+              },
+              "label": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "parent": {
+                "type": "string"
+              },
+              "labelWidth": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "portals": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "text"
+                  ],
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    },
+                    "wired": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "toCad.schematicMove": {
+      "description": "Set where some of the host's schematic placements stand, without rebuilding them (hostSchematic.ts moveHostSchematic) — a host moving its blocks with its own layout. Off the undo stack.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "key",
+        "items"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "schematicMove"
+        },
+        "key": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "at"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "at": {
+                "$ref": "#/$defs/xy"
+              }
+            }
           }
         }
       }
@@ -809,6 +1166,42 @@
         },
         "file": {
           "description": "A File (structured clone, not JSON): a .dxf, or an image to trace."
+        }
+      }
+    },
+    "toCad.dxf": {
+      "description": "Ask for the sheet as Download DXF writes it; answered with toHost.dxf (hostPick.ts).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "dxf"
+        }
+      }
+    },
+    "toCad.tool": {
+      "description": "Put a tool in the user's hand, as its toolbar button would (hostPick.ts); an id this editor does not have is ignored. The Simulation asks for 'select'.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "id"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "tool"
+        },
+        "id": {
+          "type": "string"
         }
       }
     },
@@ -1136,6 +1529,56 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "schematic": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "hostPlacements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "ref",
+              "at"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              },
+              "at": {
+                "$ref": "#/$defs/xy"
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "terminal",
+                    "at"
+                  ],
+                  "properties": {
+                    "terminal": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "$ref": "#/$defs/xy"
+                    }
+                  }
+                }
+              },
+              "size": {
+                "description": "[w, h] the block as drawn (its outline's extent, centred on at) — bigger than the host's seat when the part needs more room",
+                "$ref": "#/$defs/xy"
+              }
+            }
+          }
         }
       }
     },
@@ -1171,7 +1614,7 @@
       }
     },
     "toHost.selection": {
-      "description": "Every change of selection here (selectionForHost).",
+      "description": "Every change of selection here (selectionForHost); host [{ key, ref }] names the host's own schematic blocks picked (a Select press on one picks it).",
       "type": "object",
       "required": [
         "protocol",
@@ -1216,6 +1659,24 @@
               }
             }
           }
+        },
+        "host": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "ref"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },
@@ -1243,6 +1704,99 @@
               "type": "null"
             }
           ]
+        }
+      }
+    },
+    "toHost.pick": {
+      "description": "A click (count 1) or double-click (count 2) on the sheet, where it landed — so a host can hit-test the pins inside its own marks (hostPick.ts). A press that travelled more than a few pixels was a drag and is not sent.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "at",
+        "count",
+        "tool"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "pick"
+        },
+        "at": {
+          "$ref": "#/$defs/xy"
+        },
+        "count": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "tool": {
+          "type": "string",
+          "description": "the active tool; a host acts on 'select' only"
+        },
+        "shift": {
+          "type": "boolean"
+        },
+        "ctrl": {
+          "type": "boolean",
+          "description": "ctrl or meta"
+        },
+        "client": {
+          "description": "[x, y] client pixels in the CAD's window",
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "host": {
+          "description": "on one of the host's own schematic blocks: { key, ref, terminal? } (terminal: the caption of the port clicked), or { key, group } inside one of its groups (hostDrag.ts)",
+          "type": "object",
+          "required": [
+            "key"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "terminal": {
+              "type": "string"
+            },
+            "group": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "toHost.dxf": {
+      "description": "The answer to toCad.dxf: the sheet as a DXF file's text.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "fileName",
+        "text"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "dxf"
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
         }
       }
     },

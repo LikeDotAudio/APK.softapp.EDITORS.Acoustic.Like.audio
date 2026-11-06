@@ -2,7 +2,10 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { firstFree, itemFromPart, rackFootprint, rackOf, rackPlan } from '../acoustics/rack.js';
 import { button, h, num, row, text } from './dom.js';
-import { acceptLibraryDrops, bimFields, libraryButton } from '../bimLibrary.js';
+import { acceptLibraryDrops, bimFields, libraryButton, setPickerUrls } from '../bimLibrary.js';
+import { SITE } from '../site.js';
+
+setPickerUrls(SITE.picker);   // where the picker is: the one config point (site.js), never a module
 
 /**
  * THE RACK, IN THE INSPECTOR

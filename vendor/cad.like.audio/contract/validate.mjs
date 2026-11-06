@@ -31,7 +31,7 @@
 const KNOWN = new Set([
   '$schema', '$id', '$ref', '$defs', '$comment', 'title', 'description', 'examples',
   'type', 'const', 'enum', 'required', 'properties', 'additionalProperties',
-  'items', 'minItems', 'maxItems', 'minimum', 'anyOf',
+  'items', 'minItems', 'maxItems', 'minimum', 'exclusiveMinimum', 'anyOf',
 ]);
 
 const typeOf = (v) => {
@@ -63,6 +63,7 @@ function check(root, schema, value, path, out) {
   if ('const' in schema && JSON.stringify(value) !== JSON.stringify(schema.const)) out.push(`${path}: expected ${JSON.stringify(schema.const)}`);
   if (schema.enum && !schema.enum.some((e) => JSON.stringify(e) === JSON.stringify(value))) out.push(`${path}: expected one of ${schema.enum.map((e) => JSON.stringify(e)).join(', ')}`);
   if (schema.minimum !== undefined && typeof value === 'number' && value < schema.minimum) out.push(`${path}: below ${schema.minimum}`);
+  if (schema.exclusiveMinimum !== undefined && typeof value === 'number' && value <= schema.exclusiveMinimum) out.push(`${path}: not above ${schema.exclusiveMinimum}`);
   if (schema.anyOf) {
     const fits = schema.anyOf.some((s) => { const o = []; check(root, s, value, path, o); return o.length === 0; });
     if (!fits) out.push(`${path}: matches none of anyOf`);

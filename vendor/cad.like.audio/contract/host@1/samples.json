@@ -7,7 +7,17 @@
     },
     {
       "protocol": "cad.like.audio/host@1",
-      "type": "fit"
+      "type": "fit",
+      "box": {
+        "x1": 0,
+        "y1": -400,
+        "x2": 1200,
+        "y2": 0
+      },
+      "inset": {
+        "left": 400
+      },
+      "minZoom": 0.5
     },
     {
       "protocol": "cad.like.audio/host@1",
@@ -98,7 +108,8 @@
       "type": "layer",
       "name": "Ceiling",
       "color": "#e5e7eb",
-      "finish": "carpet-heavy"
+      "finish": "carpet-heavy",
+      "lineweight": 35
     },
     {
       "protocol": "cad.like.audio/host@1",
@@ -175,6 +186,12 @@
       ],
       "blocks": [
         "block:7"
+      ],
+      "host": [
+        {
+          "key": "sim-bench",
+          "ref": "U12"
+        }
       ]
     },
     {
@@ -243,6 +260,105 @@
           "attributes": {
             "speaker": "L"
           }
+        }
+      ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "schematic",
+      "key": "bench",
+      "hash": "b1",
+      "layer": "Bench",
+      "parts": [
+        {
+          "id": "google/cast-speaker",
+          "manufacturer": "Google",
+          "model": "Cast speaker",
+          "ports": [
+            {
+              "group": "MAINS IN",
+              "side": "input",
+              "domain": "power"
+            },
+            {
+              "group": "AUDIO OUT",
+              "side": "output",
+              "domain": "audio"
+            }
+          ]
+        }
+      ],
+      "placements": [
+        {
+          "ref": "U9",
+          "part": "google/cast-speaker",
+          "at": [
+            0,
+            0
+          ],
+          "group": "cast",
+          "name": "Basement speaker",
+          "size": [
+            96,
+            96
+          ]
+        },
+        {
+          "ref": "U10",
+          "part": "google/cast-speaker",
+          "at": [
+            200,
+            0
+          ],
+          "group": "cast",
+          "ports": [
+            {
+              "group": "wlan0",
+              "side": "connection",
+              "domain": "network"
+            }
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "a": {
+            "ref": "U9",
+            "terminal": "AUDIO OUT"
+          },
+          "b": {
+            "ref": "U10",
+            "terminal": "MAINS IN"
+          }
+        }
+      ],
+      "groups": [
+        {
+          "id": "cast",
+          "name": "Google and Apple"
+        }
+      ],
+      "portals": {
+        "U9": {
+          "AUDIO OUT": {
+            "text": "U10 MAINS IN",
+            "wired": true
+          },
+          "MAINS IN": "card 1 · E12 pin 9"
+        }
+      }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "schematicMove",
+      "key": "bench",
+      "items": [
+        {
+          "ref": "U9",
+          "at": [
+            40,
+            0
+          ]
         }
       ]
     },
@@ -369,6 +485,15 @@
       "protocol": "cad.like.audio/host@1",
       "type": "editorClose",
       "editor": "Rack Elevation Builder"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "dxf"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "tool",
+      "id": "select"
     }
   ],
   "toHost": [
@@ -538,7 +663,30 @@
       ],
       "marks": {
         "auto-panels": "a1b2c3"
-      }
+      },
+      "hostPlacements": [
+        {
+          "key": "sim-bench",
+          "ref": "U108",
+          "at": [
+            1012,
+            1799.6
+          ],
+          "size": [
+            420,
+            1830
+          ],
+          "ports": [
+            {
+              "terminal": "MIC 1",
+              "at": [
+                802,
+                2700
+              ]
+            }
+          ]
+        }
+      ]
     },
     {
       "protocol": "cad.like.audio/host@1",
@@ -564,6 +712,12 @@
             "paletteId": "panel-1200x600"
           }
         }
+      ],
+      "host": [
+        {
+          "key": "sim-bench",
+          "ref": "U12"
+        }
       ]
     },
     {
@@ -580,6 +734,33 @@
         "layers": [],
         "activeLayerId": "0"
       }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "pick",
+      "at": [
+        1250.5,
+        -340.25
+      ],
+      "count": 2,
+      "tool": "select",
+      "shift": false,
+      "ctrl": false,
+      "client": [
+        412,
+        288
+      ],
+      "host": {
+        "key": "bench",
+        "ref": "U9",
+        "terminal": "AUDIO OUT"
+      }
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "dxf",
+      "fileName": "Simulation — Bench (mm).dxf",
+      "text": "0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nEOF\n"
     }
   ],
   "toEditor": [
