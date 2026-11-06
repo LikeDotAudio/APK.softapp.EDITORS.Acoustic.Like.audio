@@ -7,7 +7,7 @@
   "x-transport": "window.postMessage, targetOrigin = window.location.origin; the receiver drops anything whose origin or source is not its peer",
   "$defs": {
     "xy": {
-      "description": "A point [x, y] in drawing units (the sheet's `units`; CAD drawings default to mm).",
+      "description": "A point [x, y] in drawing units: mm, always (2.11.0, cad-1 — the CAD keeps its drawing in mm and its units choice is display only).",
       "type": "array",
       "items": {
         "type": "number"
@@ -216,7 +216,7 @@
       }
     },
     "session": {
-      "description": "The CAD's whole drawing session (SavedSession) — what the browser autosaves, without the sign-in.",
+      "description": "The CAD's whole drawing session (SavedSession) — what the browser autosaves, without the sign-in. version 2 (2.11.0, cad-1): every number is mm and units is only how lengths are shown; version 1: the numbers are in units (the CAD scales such a session to mm when it opens it).",
       "type": "object",
       "required": [
         "docSnapshot"
@@ -542,6 +542,22 @@
                 "thickness_mm": {
                   "type": "number",
                   "exclusiveMinimum": 0
+                },
+                "isExternal": {
+                  "type": "boolean",
+                  "description": "Pset_WallCommon.IsExternal, as the host states it (2.11.0); absent: not said."
+                },
+                "loadBearing": {
+                  "type": "boolean",
+                  "description": "Pset_WallCommon.LoadBearing, as the host states it (2.11.0); absent: not said."
+                },
+                "acousticRating": {
+                  "type": "string",
+                  "description": "Pset_WallCommon.AcousticRating as written — STC 52, Rw 45 dB (2.11.0); never parsed. 1–255 characters once whitespace is collapsed; an empty one is not said."
+                },
+                "fireRating": {
+                  "type": "string",
+                  "description": "Pset_WallCommon.FireRating as written — EI 60, 2 HR (2.11.0); never parsed. 1–255 characters once whitespace is collapsed; an empty one is not said."
                 }
               }
             },
@@ -1373,7 +1389,7 @@
       }
     },
     "toHost.view": {
-      "description": "The world→screen transform and where the canvas sits in this window.",
+      "description": "The world→screen transform and where the canvas sits in this window. units is what zoom is per: 'mm' from 2.11.0 (cad-1), whatever lengths are shown in.",
       "type": "object",
       "required": [
         "protocol",
@@ -1429,7 +1445,7 @@
       }
     },
     "toHost.geometry": {
-      "description": "The visible sheet as walls, closed rooms and palette patches (sceneForHost), plus the marks hash on the sheet per key.",
+      "description": "The visible sheet as walls, closed rooms and palette patches (sceneForHost), plus the marks hash on the sheet per key. units says what the numbers are in: 'mm' from 2.11.0 (cad-1), whatever lengths are shown in.",
       "type": "object",
       "required": [
         "protocol",
