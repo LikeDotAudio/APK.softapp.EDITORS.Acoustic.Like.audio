@@ -30,72 +30,66 @@
  * shows its SBIR notch there and a flush one does not.
  */
 
-import { ACOUSTX_SPEAKERS } from '../acoustx/database.js';
-import { SPEAKER_PARTS } from './speakerParts.js';
-import { partSpec } from './speakerLibrary.js';
+import { SPEAKER_LIBRARY, SPEAKER_LOOK, SPEAKER_PARTS } from './speakerParts.js';
+import { partSpec, specFromPart } from './speakerLibrary.js';
 
-// The library. First the real boxes, by maker and model — `litres` is the
-// cabinet's internal volume, which sets the size it is drawn (boxSize), and
-// `driver` how it is built; a figure not read off the maker's datasheet is
-// flagged `typical`. Then the generic classes, typical datasheet figures each,
-// the watts chosen so each starts at the operating level it always had (94,
-// 118, 120, 100 dB at 1 m). The first entry is what ＋ Speaker places.
-export const SPEAKER_PRESETS = {
-  // Tannoy DMT 12 (discontinued): 12" Dual Concentric — the tweeter fires through the woofer's throat, one point source — in a 44 L cabinet.
-  // Its datasheet is not to hand: coverage, sensitivity, max SPL and range are a Tannoy 12" Dual Concentric's typical figures.
-  dmt12: { label: 'Tannoy DMT 12 · 12" coaxial · 44 L', maker: 'Tannoy', driver: 'coaxial 12"', litres: 44, typical: true, pattern: 'horn', hCov: 90, vCov: 90, sensitivity: 93, watts: 4, maxSpl: 116, fLow: 45, fHigh: 20000, omniBelow: 300, lowpass: 0, color: '#e0b04a' },
-  // Tannoy DMT 8: its 8" Dual Concentric sibling in a 22 L cabinet — the surrounds and heights round a pair of DMT 12s. Typical figures as above.
-  dmt8: { label: 'Tannoy DMT 8 · 8" coaxial · 22 L', maker: 'Tannoy', driver: 'coaxial 8"', litres: 22, typical: true, pattern: 'horn', hCov: 90, vCov: 90, sensitivity: 90, watts: 4, maxSpl: 110, fLow: 55, fHigh: 20000, omniBelow: 400, lowpass: 0, color: '#d4a03c' },
-  // the small mono check box: one full-range 4.5" driver, sealed, no bass to speak of — how the mix sounds on a cheap set
-  cube: { label: 'Mix cube · 4.5" full-range · 3 L', driver: 'full-range 4.5"', litres: 3, pattern: 'cardioid', hCov: 120, vCov: 120, sensitivity: 86, watts: 5, maxSpl: 104, fLow: 150, fHigh: 15000, omniBelow: 800, lowpass: 0, color: '#c9c2b0' },
-  monitor: { label: 'Studio monitor', litres: 12, pattern: 'cardioid', hCov: 90, vCov: 60, sensitivity: 87, watts: 5, maxSpl: 112, fLow: 45, fHigh: 22000, omniBelow: 300, lowpass: 0, color: '#5aa9ff' },
-  'horn-90x50': { label: 'Projection 90×50 horn', litres: 45, pattern: 'horn', hCov: 90, vCov: 50, sensitivity: 104, watts: 25, maxSpl: 133, fLow: 60, fHigh: 18000, omniBelow: 500, lowpass: 0, color: '#ffb347' },
-  'horn-60x40': { label: 'Projection 60×40 horn', litres: 35, pattern: 'horn', hCov: 60, vCov: 40, sensitivity: 107, watts: 20, maxSpl: 135, fLow: 65, fHigh: 18000, omniBelow: 600, lowpass: 0, color: '#ff8c42' },
-  sub: { label: 'Subwoofer', litres: 60, pattern: 'omni', hCov: 360, vCov: 360, sensitivity: 100, watts: 1, maxSpl: 128, fLow: 30, fHigh: 0, omniBelow: 0, lowpass: 100, color: '#b388ff' },
-};
+// THE SPEAKERS ARE THE BIM LIBRARY'S (ROAD-3598 answer 8). Every box the page
+// can place is a library part (DATABASE.server.BIM SRC/library), its whole
+// acoustic definition the part's APK_LoudspeakerType with its units —
+// sensitivity, max SPL, range, coverage in degrees, the enclosure in litres,
+// nominal ohms — and its cabinet in mm. The page reads them from the library
+// only: live (speakerLibrary.js, GET /api/bim/parts/<id>) and, offline, from
+// speakerParts.js, which the importer writes FROM the library. The old preset
+// lists (speakerPresets.js) are the importer's source and nothing here reads them.
+//
+// What a box is drawn and driven with — its colour and the amplifier watts it
+// starts at — is the page's own (SPEAKER_LOOK). A figure the part does not state
+// (an Acoustic X monitor gives no coverage or max SPL) is the generic studio
+// monitor's, a library part too; a cabinet given only by its sides holds 60 %
+// of its outside volume.
+const FILL_PART = 'generic/monitor';
+const FILL_KEYS = ['sensitivity', 'maxSpl', 'pattern', 'hCov', 'vCov', 'omniBelow'];
 
-/** Acoustic X classic studio reference monitor presets (Genelec, Dynaudio, Meyer Sound). */
-export const ACOUSTX_SPEAKER_PRESETS = Object.fromEntries(
-  ACOUSTX_SPEAKERS.flatMap((s) => {
-    const slug = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const preset = {
-      label: s.label,
-      name: s.name,
-      maker: s.maker,
-      driver: `${s.maker} monitor`,
-      w: s.w,
-      d: s.d,
-      h: s.h,
-      centerHeight: s.centerHeight,
-      wooferHeight: s.wooferHeight,
-      sensitivity: s.sensitivity || 88,
-      watts: 4,
-      maxSpl: 112,
-      fLow: s.fLow,
-      fHigh: s.fHigh,
-      fCross: s.fCross,
-      nearField: s.nearField,
-      midField: s.midField,
-      mainMonitor: s.mainMonitor,
-      metric: s.metric,
-      tag: s.tag,
-      pattern: 'cardioid',
-      hCov: 90,
-      vCov: 60,
-      omniBelow: 300,
-      lowpass: 0,
-      color: s.mainMonitor ? '#e0b04a' : s.midField ? '#38bdf8' : '#5aa9ff',
-      litres: +(s.w * s.d * s.h * 600).toFixed(1),
-    };
-    return [
-      [s.key, preset],
-      [slug, preset],
-      [s.id, preset],
-    ];
-  }),
-);
+/** A library part (its spec from speakerLibrary.specFromPart) as the box the page places. */
+function boxOf(pid, spec = specFromPart(SPEAKER_LIBRARY[pid]) ?? {}) {
+  const lib = SPEAKER_LIBRARY[pid] ?? {};
+  const fill = specFromPart(SPEAKER_LIBRARY[FILL_PART]) ?? {};
+  const box = { label: lib.description ?? lib.name ?? pid, name: lib.name ?? pid, ...spec };
+  for (const k of FILL_KEYS) if (box[k] === undefined && fill[k] !== undefined) box[k] = fill[k];
+  if (box.litres === undefined && box.w && box.h && box.d) box.litres = +(box.w * box.d * box.h * 600).toFixed(1);
+  if (box.driver === undefined && box.maker) box.driver = `${box.maker} monitor`;
+  box.lowpass ??= 0;
+  box.typical = Boolean(lib.ifc?.psets?.APK_LoudspeakerType?.FiguresTypical);
+  return { ...box, ...(SPEAKER_LOOK[pid] ?? {}) };
+}
+
+const boxes = (group) => Object.freeze(Object.fromEntries(
+  Object.entries(SPEAKER_PARTS).filter(([, p]) => p.group === group).map(([k, p]) => [k, Object.freeze(boxOf(p.part))]),
+));
+
+/** The house boxes (two Tannoy monitors, the generic classes), by key: the first is what ＋ Speaker places. */
+export const SPEAKER_PRESETS = boxes('house');
+
+/** The Acoustic X studio reference monitors (Genelec, Dynaudio, Meyer Sound), each under its three keys. */
+export const ACOUSTX_SPEAKER_PRESETS = boxes('acoustx');
 
 export const ALL_SPEAKER_PRESETS = { ...SPEAKER_PRESETS, ...ACOUSTX_SPEAKER_PRESETS };
+
+/** The Acoustic X monitors once each, [key, box] by their name key ('genelec-1032a'), in the database's order. */
+export const ACOUSTX_MENU = Object.freeze((() => {
+  const seen = new Set();
+  return Object.entries(SPEAKER_PARTS)
+    .filter(([k, p]) => p.group === 'acoustx' && /^[a-z]/.test(k) && !k.startsWith('acx-spk-') && !seen.has(p.part) && seen.add(p.part))
+    .map(([k]) => [k, ACOUSTX_SPEAKER_PRESETS[k]]);
+})());
+
+/** The Acoustic X monitors once each, [key, box] by their database key ('acx-spk-5'). */
+export const ACOUSTX_BY_ID = Object.freeze((() => {
+  const seen = new Set();
+  return Object.entries(SPEAKER_PARTS)
+    .filter(([k, p]) => p.group === 'acoustx' && k.startsWith('acx-spk-') && !seen.has(p.part) && seen.add(p.part))
+    .map(([k]) => [k, ACOUSTX_SPEAKER_PRESETS[k]]);
+})());
 
 /**
  * A box's outside size from its litres, metres { w, h, d }: a monitor stands
@@ -137,8 +131,6 @@ export const SPEAKER_SPEC = [
   'midField',
   'mainMonitor',
   'maker',
-  'metric',
-  'tag',
 ];
 
 /**
@@ -175,15 +167,14 @@ export function newId(prefix) {
 }
 
 /**
- * The BIM part a preset box is (acoustics-3): every preset is a library part
- * (DATABASE.server.BIM importers/import_acoustic_speakers.py), and speakerParts.js,
- * which that importer writes, maps the key to it. null for a key that is no preset.
+ * The BIM part a box is (acoustics-3): speakerParts.js, which the importer writes from the
+ * library, maps each key to it. null for a key that is no box.
  */
 export function speakerPart(kind) {
   return SPEAKER_PARTS[kind] ?? null;
 }
 
-/** The preset key a BIM part id is placed from (the first key that maps to it), or null. */
+/** The key a BIM part id is placed from (the first key that maps to it), or null. */
 export function presetForPart(partId) {
   if (!partId) return null;
   const id = String(partId).toLowerCase();
@@ -191,20 +182,23 @@ export function presetForPart(partId) {
 }
 
 /**
- * The fields a box of this preset / part is given (SPEAKER_SPEC): the BIM part's own figures
- * when the library has answered for it (speakerLibrary.js loadSpeakerParts), the preset's for
- * whatever the part does not state — and the preset alone offline. `part` defaults to the
- * preset's part (speakerParts.js); a key that is no preset falls back to the studio monitor.
+ * The fields a box of this key / part is given (SPEAKER_SPEC), all from the library: the part as
+ * the library answered this page (speakerLibrary.js loadSpeakerParts), else as speakerParts.js
+ * holds it. `part` defaults to the key's part; a key that is no box falls back to the studio
+ * monitor, and a part the page holds nothing of to the box of that key.
  */
 export function speakerSpec(kind, part = undefined) {
-  const preset = SPEAKER_PRESETS[kind] ?? ACOUSTX_SPEAKER_PRESETS[kind];
-  const p = preset ?? SPEAKER_PRESETS.monitor;
-  const pid = part ?? speakerPart(preset ? kind : 'monitor')?.part ?? null;
-  const lib = partSpec(pid) ?? {};
-  const spec = Object.fromEntries(SPEAKER_SPEC.map((k) => [k, lib[k] !== undefined ? lib[k] : p[k]]));
-  // a cabinet is the part's three sides or the preset's: never one side of each
-  if (!(lib.w && lib.h && lib.d)) Object.assign(spec, { w: p.w, h: p.h, d: p.d });
-  return { spec, part: pid, label: preset ? p.label : (lib.name ?? p.label) };
+  const own = SPEAKER_PARTS[kind] ? kind : 'monitor';
+  const pid = part ?? SPEAKER_PARTS[own]?.part ?? null;
+  const live = partSpec(pid);
+  const base = SPEAKER_LIBRARY[pid] || live ? boxOf(pid, live ?? undefined) : ALL_SPEAKER_PRESETS[own];
+  const look = SPEAKER_LOOK[pid] ?? SPEAKER_LOOK[SPEAKER_PARTS[own]?.part] ?? {};
+  const box = { ...look, ...base };
+  const spec = Object.fromEntries(SPEAKER_SPEC.map((k) => [k, box[k]]));
+  // a cabinet is its three sides or none
+  if (!(box.w && box.h && box.d)) Object.assign(spec, { w: undefined, h: undefined, d: undefined });
+  const named = SPEAKER_PARTS[kind] && (!part || part === SPEAKER_PARTS[kind].part);
+  return { spec, part: pid, label: named ? ALL_SPEAKER_PRESETS[kind].label : (live?.name ?? box.name ?? box.label) };
 }
 
 export function makeSpeaker(kind, at, extra = {}) {

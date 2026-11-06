@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
 import { talkers } from '../acoustics/talk.js';
-import { ACOUSTX_SPEAKER_PRESETS, MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, makeSpeaker, newId, speakerLevel, speakerSpec, wattsFor } from '../acoustics/devices.js';
+import { ACOUSTX_MENU, MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, makeSpeaker, newId, speakerLevel, speakerSpec, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { receiverOrder, sourceGroups } from '../acoustics/groups.js';
 import { outside } from '../acoustics/inRoom.js';
@@ -839,7 +839,7 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       .map(([k, plus, minus]) => `${Math.abs(off[k])} mm ${off[k] > 0 ? plus : minus}`)
       .join(', ');
     // the generic boxes, then every monitor in the Acoustic X library by its slug (each is listed under three keys)
-    const acx = Object.entries(ACOUSTX_SPEAKER_PRESETS).filter(([k, p]) => k === p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
+    const acx = ACOUSTX_MENU;
     const boxes = [...Object.entries(SPEAKER_PRESETS).filter(([k]) => k !== 'sub'), ...acx].map(([value, p]) => ({ value, label: p.label }));
     const parts = [
       h('h3', {}, SPEAKER_SETS[activeSet(settings)].title),

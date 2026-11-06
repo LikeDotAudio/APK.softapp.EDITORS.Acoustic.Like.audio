@@ -4,9 +4,10 @@
  * THE SPEAKER IS THE LIBRARY PART (acoustics-3). Every preset box is a part in
  * DATABASE.server.BIM (speakerParts.js maps key → part), and the part is the
  * truth: makeSpeaker() takes its figures from GET <BIM API>/parts/<maker>/<model>
- * — the part's APK_LoudspeakerType, its maker and its cabinet — and falls back to
- * the preset in devices.js only for what the part does not say, or when the
- * library does not answer (a static host, offline). The API is same-origin
+ * — the part's APK_LoudspeakerType, its maker and its cabinet — and, when the
+ * library does not answer (a static host, offline), from the same part as
+ * speakerParts.js SPEAKER_LIBRARY holds it (written from the library; ROAD-3598
+ * answer 8: no preset list is read). The API is same-origin
  * /api/bim unless the page sets window.APK_BIM_API.
  *
  * The saved room embeds each part's own IFC type (GET …/parts/<id>.ifc, as
@@ -77,7 +78,7 @@ export function specFromPart(part) {
   return out;
 }
 
-/** The library's spec of a part, read already (loadSpeakerParts), or null: then the preset alone holds. */
+/** The library's spec of a part, read already (loadSpeakerParts), or null: then speakerParts.js's copy holds. */
 export function partSpec(pid) {
   return (pid && specs.get(String(pid))) || null;
 }

@@ -3,7 +3,7 @@
 import { BANDS, BAND_LABELS, C, dbSum } from '../acoustics/bands.js';
 import { MATERIALS, material as baseMaterial } from '../acoustics/materials.js';
 import { buildRoom, fromFrame, inFrame } from '../acoustics/room.js';
-import { SPEAKER_PRESETS, boxSize } from '../acoustics/devices.js';
+import { ACOUSTX_BY_ID, ACOUSTX_SPEAKER_PRESETS, SPEAKER_PRESETS, boxSize } from '../acoustics/devices.js';
 import { FAVOURABLE_RATIOS, bonello, dimensionGrid, ituBs1116, keepBest, modeList, scoreDimensions, steps, thirdOctaveBands } from '../acoustics/modalDistribution.js';
 import { sbirDeviation, sbirFreqs } from '../acoustics/sbir.js';
 import { FORMULAS, RT_TARGETS, rtFormulas, rtTarget } from '../acoustics/reverbTargets.js';
@@ -11,9 +11,7 @@ import {
   ACOUSTX_ABSORBERS,
   ACOUSTX_FREQ_3RD,
   ACOUSTX_FREQ_OCTAVE,
-  ACOUSTX_SPEAKERS,
   findAbsorber,
-  findSpeaker,
 } from './database.js';
 
 const material = (id) => findAbsorber(id) ?? baseMaterial(id);
@@ -1427,16 +1425,16 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
     const T = tabs(win, ['Room', 'SPK', 'Listener', 'Search']);
     T.pages.Room.append(dimsGroup(win), group('Surfaces', ...FACES6.map((f) => h('div', { class: 'row' }, h('span', { class: 'lbl' }, FACE_LABEL[f]), faceMatSelect(win, f)))));
 
-    // ── SPK: size (or from the database) and position
+    // ── SPK: size (or from the BIM library: the Acoustic X monitors are library parts) and position
     function spkOptions() {
-      const makers = [...new Set(ACOUSTX_SPEAKERS.map((s) => s.maker))];
+      const makers = [...new Set(ACOUSTX_BY_ID.map(([, s]) => s.maker))];
       return [
         h('option', { value: '' }, '— speaker database —'),
         ...makers.map((m) =>
           h(
             'optgroup',
             { label: `Acoustic X · ${m}` },
-            ACOUSTX_SPEAKERS.filter((s) => s.maker === m).map((s) => h('option', { value: s.key }, s.label)),
+            ACOUSTX_BY_ID.filter(([, s]) => s.maker === m).map(([key, s]) => h('option', { value: key }, s.label)),
           ),
         ),
         h(
@@ -1463,9 +1461,9 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         M.centerHeight = +(b.h * 0.5).toFixed(3);
         if (p.fLow) M.lfCut = p.fLow;
       } else {
-        const s = findSpeaker(v);
+        const s = ACOUSTX_SPEAKER_PRESETS[v];
         if (!s) return;
-        M.spkModel = s.key;
+        M.spkModel = v;
         M.spkSize = { w: s.w, d: s.d, h: s.h };
         M.woofer = s.wooferHeight;
         M.centerHeight = s.centerHeight;
@@ -1653,7 +1651,7 @@ export function createAcousticX({ store, engine, mount, onDrawRoom } = {}) {
         title: 'Speaker Boundary Interference Response',
         sections: [
           { heading: `Positions (${M.units}: X from the left wall, Y from the front wall, Z above the floor)`, head: ['', 'X', 'Y', 'Z'], rows: [pos('Speaker 1 (woofer)', M.spk1), pos('Speaker 2 (woofer)', spk2()), pos('Listener', M.lis), ...(M.gen.sbir.centre ? [pos('Centre', r.sur.centre)] : []), ...(M.gen.sbir.rear ? [pos('Rear left', r.sur.rearLeft), pos('Rear right', r.sur.rearRight)] : [])] },
-          { heading: 'Speaker', rows: [['Model', findSpeaker(M.spkModel)?.label ?? SPEAKER_PRESETS[M.spkModel]?.label ?? 'entered by size'], ['Size (w × d × h)', `${fmt(toU(M.spkSize.w))} × ${fmt(toU(M.spkSize.d))} × ${fmt(toU(M.spkSize.h))} ${M.units}`], ['Center height', `${fmt(toU(M.centerHeight ?? M.spkSize.h * 0.5))} ${M.units}`], ['Woofer height', `${fmt(toU(M.woofer))} ${M.units}`], ['LF cut-off', `${M.lfCut} Hz`], ['LF cross-over', `${M.xover} Hz`]] },
+          { heading: 'Speaker', rows: [['Model', ACOUSTX_SPEAKER_PRESETS[M.spkModel]?.label ?? SPEAKER_PRESETS[M.spkModel]?.label ?? 'entered by size'], ['Size (w × d × h)', `${fmt(toU(M.spkSize.w))} × ${fmt(toU(M.spkSize.d))} × ${fmt(toU(M.spkSize.h))} ${M.units}`], ['Center height', `${fmt(toU(M.centerHeight ?? M.spkSize.h * 0.5))} ${M.units}`], ['Woofer height', `${fmt(toU(M.woofer))} ${M.units}`], ['LF cut-off', `${M.lfCut} Hz`], ['LF cross-over', `${M.xover} Hz`]] },
           { heading: 'Result', rows: [[S.mode === 'negative' ? 'Negative deviation' : 'Absolute deviation', `${fmt(r.score, 2)} dB`], ['At the crossover', Number.isFinite(r.xo.dev) ? `${fmt(r.xo.dev, 1)} dB${r.xo.dips ? ' — dips' : ''}` : '—'], ['Angle between speakers', `${fmt(r.geo.angle, 1)}°`], ['Speaker tilt', `${fmt(r.geo.tilt, 1)}° ${r.geo.warn}`], ['Modes excited', r.excited.map((m) => `${m.nx}${m.ny}${m.nz} ${fmt(m.f, 1)} Hz`).join(', ') || 'none flagged']] },
           { heading: `Specular absorption for a ${fmt(toU(S.win))} ${M.units} listening window (u, v on the surface)`, head: ['Surface', 'u', 'v', 'Area'], rows: [surf('Left wall (u = Y, v = Z)', A.left), surf('Right wall (u = Y, v = Z)', A.right), surf('Ceiling (u = X, v = Y)', A.ceiling)] },
           { heading: 'Deviation, 1/12 octave', head: ['Hz', 'dB'], rows: thinned(r.fine, 12).map(([f, d]) => [fmt(f, 1), fmt(d, 1)]) },

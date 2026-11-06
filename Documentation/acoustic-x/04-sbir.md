@@ -21,7 +21,7 @@ The chart draws the deviation at 1/1, ⅓, ⅙ or 1/12 octave resolution (the or
 
 ## The speaker's critical frequencies
 
-- **LF cut-off** (red line): the speaker's designed lower limit. Only frequencies **above** it count toward the deviation, and the bars below it are greyed. Picking a speaker from the database fills it in from the Acoustic X speaker database (`js/acoustx/database.js` `ACOUSTX_SPEAKERS`: 29 Genelec, Dynaudio and Meyer reference monitors) with its exact cabinet size, acoustic center height, woofer height, LF cut-off and crossover. Modern presets (`devices.js` `SPEAKER_PRESETS`) remain available.
+- **LF cut-off** (red line): the speaker's designed lower limit. Only frequencies **above** it count toward the deviation, and the bars below it are greyed. Picking a speaker fills it in from the BIM library: the Acoustic X reference monitors (29 Genelec, Dynaudio and Meyer Sound boxes, imported from `js/acoustx/database.js`) are library parts, each with its exact cabinet size (mm), acoustic center height, woofer height, LF cut-off and crossover (`devices.js` `ACOUSTX_BY_ID`, from `speakerParts.js`). The house boxes (`devices.js` `SPEAKER_PRESETS`, library parts too) remain available.
 - **LF cross-over** (yellow line): if the deviation **dips** at the crossover, the window flags it (`classic.js` `crossoverCheck`). The deviation there is read off the curve by linear interpolation on a log-frequency axis:
 
 $$\text{dev}(f_x) = d_{i-1} + \frac{\ln(f_x/f_{i-1})}{\ln(f_i/f_{i-1})}\,(d_i - d_{i-1})$$

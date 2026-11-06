@@ -8,14 +8,16 @@
  *
  * One entry per box (an Acoustic X monitor is reachable under three keys; it is one box):
  *   keys      every preset key that places it ('dmt12'; 'acx-spk-4', 'genelec-1032a', '4')
- *   preset    the preset as js/acoustics/devices.js holds it (label, maker, spec …)
+ *   preset    the preset as js/acoustics/speakerPresets.js holds it (label, maker, spec …; colour
+ *             and watts are the page's own look, carried to speakerParts.js SPEAKER_LOOK)
  *   acoustx   the Acoustic X database row it came from (js/acoustx/database.js), or null —
  *             what the datasheet table says, apart from the figures the preset fills by default
- * The importer writes the parts and js/acoustics/speakerParts.js (preset key → part id) back here.
+ * The importer writes the parts and, from the library, js/acoustics/speakerParts.js back here: the
+ * page reads its speakers from that and the live library, never from speakerPresets.js.
  */
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { SPEAKER_PRESETS, ACOUSTX_SPEAKER_PRESETS } from '../js/acoustics/devices.js';
+import { SPEAKER_PRESETS, ACOUSTX_SPEAKER_PRESETS } from '../js/acoustics/speakerPresets.js';
 import { ACOUSTX_SPEAKERS } from '../js/acoustx/database.js';
 
 export function speakerPresets() {

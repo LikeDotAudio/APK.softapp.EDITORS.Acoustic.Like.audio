@@ -72,7 +72,7 @@ globalThis.APKSoftapp?.describe({
     { name: 'Song', from: '🎵 Song: any audio file the browser plays (WAV, MP3, FLAC...)', kind: 'file' },
     { name: 'Measured impulse response', from: 'Inspector: a WAV from REW or a sweep tool', kind: 'file' },
     { name: 'Rack parts', from: 'the BIM library at /api/bim/parts (rack gear; absent on a static host, then typed by hand)' },
-    { name: 'Speaker parts', from: 'the BIM library: GET /api/bim/parts/<id> gives each box its figures, /parts/<id>.ifc its IFC type in the saved room (absent on a static host, then the built-in presets)', kind: 'http' },
+    { name: 'Speaker parts', from: 'the BIM library: GET /api/bim/parts/<id> gives each box its figures, /parts/<id>.ifc its IFC type in the saved room (absent on a static host, then the same parts as speakerParts.js holds them, written from the library)', kind: 'http' },
   ],
   outputs: [
     { name: 'Project', to: '💾 Save (Ctrl+S): <drawing>.acoustic-session.json and its .acoustic-session.ifc twin (IFC4X3_ADD2, mm), both or neither, into a folder picked once (Save Model) or as downloads; the CAD saves the drawing itself', kind: 'file' },
@@ -97,7 +97,7 @@ globalThis.APKSoftapp?.describe({
 });
 
 // every preset box is a BIM library part: read them once, so ＋ Speaker places the part's own figures
-// (acoustics/speakerLibrary.js); a host with no library answers the health probe with nothing, and the presets hold
+// (acoustics/speakerLibrary.js); a host with no library answers the health probe with nothing, and speakerParts.js's copy of the parts holds
 const bimLibraryUp = fetch(`${bimApi()}/health`, { headers: { Accept: 'application/json' } }).then((r) => r.ok, () => false);
 bimLibraryUp.then((up) => up && loadSpeakerParts(Object.values(SPEAKER_PARTS).map((p) => p.part)));
 

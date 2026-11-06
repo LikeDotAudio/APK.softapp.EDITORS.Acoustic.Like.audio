@@ -1,9 +1,10 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 /**
- * acoustics-3: the speaker IS its BIM library part. makeSpeaker() takes the part's figures from
- * GET /api/bim/parts/<id> (the presets only fill what the part does not say, and hold alone
- * offline), and the saved room embeds the part's own IFC type from /api/bim/parts/<id>.ifc —
+ * acoustics-3, ROAD-3598 answer 8: the speaker IS its BIM library part. makeSpeaker() takes the
+ * part's figures from GET /api/bim/parts/<id>, and offline from the same parts as speakerParts.js
+ * holds them (written from the library) — never from a preset list; the saved room embeds the
+ * part's own IFC type from /api/bim/parts/<id>.ifc —
  * its GlobalIds, sets, ports and units — instead of a type that only names it.
  * Fixtures: tests/fixtures/bim-parts/, the library's own files (DATABASE.server.BIM SRC/library
  * 28eb1fa) for tannoy/dmt-12, generic/sub, genelec/1032a and l-acoustics-inc/ks28.
@@ -16,6 +17,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { makeSpeaker, SPEAKER_PRESETS, speakerSpec } from '../js/acoustics/devices.js';
+import { SPEAKER_LIBRARY, SPEAKER_LOOK } from '../js/acoustics/speakerParts.js';
 import { clearSpeakerLibrary, loadPartTypes, loadSpeakerParts, partSpec, partUrl, specFromPart } from '../js/acoustics/speakerLibrary.js';
 import { roomModel } from '../js/ifc/roomModel.js';
 import { roomToIfc } from '../js/ifc/roomToIfc.js';
@@ -56,9 +58,10 @@ test('specFromPart reads APK_LoudspeakerType, the maker and the cabinet (mm → 
   assert.equal(specFromPart(null), null);
 });
 
-test('makeSpeaker takes the library part\'s figures once it has answered; the preset fills the rest and holds offline', async () => {
+test('makeSpeaker takes the live library part\'s figures once it has answered, the library snapshot offline', async () => {
   clearSpeakerLibrary();
   const offline = makeSpeaker('dmt12', { x: 0, y: 0 });
+  assert.equal(offline.sensitivity, SPEAKER_LIBRARY['tannoy/dmt-12'].ifc.psets.APK_LoudspeakerType.Sensitivity);
   assert.equal(offline.sensitivity, SPEAKER_PRESETS.dmt12.sensitivity);
 
   // a library whose part says something else than the preset: the part wins, field by field
@@ -70,14 +73,14 @@ test('makeSpeaker takes the library part\'s figures once it has answered; the pr
   assert.deepEqual([found, missing, asked], [['tannoy/dmt-12'], [], ['/api/bim/parts/tannoy/dmt-12']]);
   const s = makeSpeaker('dmt12', { x: 0, y: 0 });
   assert.deepEqual([s.part, s.sensitivity, s.hCov, s.vCov, s.watts, s.color], ['tannoy/dmt-12', 95, 75, 90, SPEAKER_PRESETS.dmt12.watts, SPEAKER_PRESETS.dmt12.color]);
-  assert.equal(s.level, 95 + 10 * Math.log10(SPEAKER_PRESETS.dmt12.watts), 'its level is the part\'s sensitivity driven by the preset\'s watts');
-  assert.equal(s.name, SPEAKER_PRESETS.dmt12.label, 'a preset box keeps its preset label');
+  assert.equal(s.level, 95 + 10 * Math.log10(SPEAKER_LOOK['tannoy/dmt-12'].watts), 'its level is the part\'s sensitivity driven by the page\'s starting watts');
+  assert.equal(s.name, SPEAKER_LIBRARY['tannoy/dmt-12'].description, 'a box is labelled by its part\'s description');
   await loadSpeakerParts(['tannoy/dmt-12'], { fetchFn });
   assert.equal(asked.length, 1, 'a part is read once a page');
   clearSpeakerLibrary();
 });
 
-test('a part placed by id alone is named and sized by the library; a library that does not answer leaves the preset', async () => {
+test('a part placed by id alone is named and sized by the library; a library that does not answer leaves the snapshot', async () => {
   clearSpeakerLibrary();
   const { fetchFn } = library({ down: true });
   const r = await loadSpeakerParts(['genelec/1032a'], { fetchFn });
