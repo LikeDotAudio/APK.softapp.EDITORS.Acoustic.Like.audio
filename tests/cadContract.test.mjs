@@ -117,16 +117,17 @@ test('a message under another protocol or from another origin is not heard', asy
   assert.equal(got.length, 1);
 });
 
-test('the published site config names the CAD and the catalogue beside the page', async () => {
+test('the published site config names the CAD beside the page', async () => {
   const tree = (await import('../js/site.js')).SITE;
   const published = (await import('../js/site.published.js')).SITE;
   assert.deepEqual(Object.keys(published).sort(), Object.keys(tree).sort());
   assert.equal(published.cad, 'cad/index.html');
-  assert.ok(!/\.\.\//.test(published.cad + published.catalogue), 'the published site never climbs out of itself');
+  assert.ok(!/\.\.\//.test(published.cad), 'the published site never climbs out of itself');
 });
 
-test('the bench config asks the BIM library API for the catalogue, never a path into the OS repo', async () => {
+test('rack gear comes from the BIM library picker, not a catalogue of this page\'s own (ROAD-3572)', async () => {
   const tree = (await import('../js/site.js')).SITE;
-  assert.ok(!/\.\.\//.test(tree.catalogue), 'no relative climb out of this repository (WS-04)');
-  assert.match(tree.catalogue, /^\/api\/bim\/parts(\?|$)/); // DATABASE.server.BIM, through the gateway
+  assert.equal(tree.catalogue, undefined);
+  const { PICKER_URLS } = await import('../js/bimLibrary.js');
+  assert.ok(PICKER_URLS.some((u) => /^https:\/\/apk\.audio\/.*\/picker\.js$/.test(u)), 'the public picker is the last resort');
 });

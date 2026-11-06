@@ -1,8 +1,8 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { firstFree, itemFromPart, rackFootprint, rackOf, rackPlan } from '../acoustics/rack.js';
-import { SITE } from '../site.js';
-import { button, h, num, row, select, text } from './dom.js';
+import { button, h, num, row, text } from './dom.js';
+import { acceptLibraryDrops, bimFields, libraryButton } from '../bimLibrary.js';
 
 /**
  * THE RACK, IN THE INSPECTOR
@@ -10,15 +10,14 @@ import { button, h, num, row, select, text } from './dom.js';
  * A selected rack shows itself twice — its front, U by U, the empty spaces
  * hatched; and its side, each item as deep as it really goes behind the
  * front rail, its cables after it, against the line where the rails stop —
- * then what it holds as rows to edit. Gear comes from the parts catalogue the
- * bench declares (OS/BIM/parts.json: its U, and its depth where the manual
- * gives one) or is typed in by hand. All of it saves into settings.racks
- * under the rack's CAD block id.
+ * then what it holds as rows to edit. Gear comes from the BIM library (📚
+ * Library, ROAD-3572: its U, and its depth where the part declares one) — never
+ * a list of its own, never typed in. Each item keeps bimId and bimRef. All of it
+ * saves into settings.racks under the rack's CAD block id.
  */
 
-/** One catalogue part as the rack wants it, whichever shape it came in: the BIM
-    library's apk.bim.part/1 (physical.rack_units / physical.depth_mm) or the old
-    flat parts.json the published site still ships (rack_units / depth_mm). */
+/** One BIM part as the rack wants it: apk.bim.part/1 (physical.rack_units /
+    physical.depth_mm), or a flat record (rack_units / depth_mm). */
 export function asRackPart(p) {
   const phys = p.physical ?? {};
   return {
@@ -30,24 +29,27 @@ export function asRackPart(p) {
   };
 }
 
-/** A catalogue reply → rackable parts: `{items}` (DATABASE.server.BIM) or `{parts}` (parts.json). */
-export function catalogueRows(reply) {
-  return (reply?.items ?? reply?.parts ?? []).map(asRackPart).filter((p) => p.rack_units > 0);
+/** A pick's part with its body (U, depth): the picked row is the part as the CAD draws it,
+    so the part itself is read from its BIM reference — the live /api/bim/parts/… or the
+    snapshot file that holds it ('audio.json#maker/model'). The row alone when neither answers. */
+export async function partOfPick(item, fetcher = globalThis.fetch) {
+  const url = item?.ref?.url;
+  if (!url) return item?.bim ?? {};
+  try {
+    const [file, id] = url.split('#');
+    const r = await fetcher(file);
+    if (!r.ok) return item.bim;
+    const d = await r.json();
+    const got = id ? (d.items ?? d.parts ?? []).find((p) => p.id === id) : d;
+    return got ? { ...item.bim, ...got } : item.bim;
+  } catch (_) { return item.bim; }
 }
 
-/** The bench's parts catalogue, where site.js says it is (relative to the page); [] where there is none. */
-let catalogue = null;
-export function loadCatalogue(onLoad) {
-  if (catalogue) return catalogue;
-  catalogue = [];
-  fetch(new URL(SITE.catalogue, document.baseURI))
-    .then((r) => (r.ok ? r.json() : { parts: [] }))
-    .then((d) => {
-      catalogue = catalogueRows(d);
-      onLoad?.();
-    })
-    .catch(() => {});
-  return catalogue;
+/** A picked {bim, ref} as a rack item at `at`, keeping its BIM reference. */
+export async function rackItemOfPick(item, at, fetcher) {
+  const part = asRackPart(await partOfPick(item, fetcher));
+  const { bimId, bimRef } = bimFields(item);
+  return { ...itemFromPart(part, at), bimId, ...(bimRef ? { bimRef } : {}) };
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -111,7 +113,6 @@ export function rackPanel(piece, racks, put, rerender) {
   const items = told.items ?? [];
   const setItems = (list) => save({ items: list });
   const upItem = (i, patch) => setItems(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
-  const parts = loadCatalogue(rerender);
   const runs = plan.runs.map((r) => (r.from === r.to ? `U${r.from}` : `U${r.from}–U${r.to}`)).join(', ');
   const deepest = plan.deepest;
 
@@ -119,22 +120,27 @@ export function rackPanel(piece, racks, put, rerender) {
     const at = firstFree(plan, item.units);
     setItems([...items, { ...item, at: at ?? plan.units + 1 }]);
   };
-  let pick = parts[0]?.id ?? '';
-  const partPick = parts.length
-    ? select(pick, parts.map((p) => ({ value: p.id, label: `${p.name} · ${p.rack_units} U${Number.isFinite(p.depth_mm) ? ` · ${p.depth_mm} mm` : ''}` })), (v) => (pick = v))
-    : null;
+  // 📚 Library (ROAD-3572): the BIM library's picker — live on the bench, the snapshot on the
+  // static site. Each pick is racked with its U and depth, keeping its BIM reference.
+  const addPicks = async (picks) => {
+    let list = items;
+    for (const it of picks) {
+      const item = await rackItemOfPick(it, 1);
+      const at = firstFree(rackPlan({ ...rack, items: list }), item.units);
+      list = [...list, { ...item, at: at ?? plan.units + 1 }];
+    }
+    setItems(list);
+  };
+  const libSlot = libraryButton(addPicks, { title: 'Rack a device from the BIM library', multiple: true });
 
-  // 📚 Library: the whole BIM library, rack gear only, through the picker it serves. No library (the static site): no button.
-  const libSlot = h('span', {});
-  import('/api/bim/ui/picker.js').then(({ libraryButton }) => {
-    libSlot.replaceWith(libraryButton({ title: 'Rack a device from the BIM library', filter: { rack: 1 } },
-      (part) => add(itemFromPart(asRackPart(part), 1))));
-  }).catch(() => libSlot.remove());
+  // a part dragged from the library onto the rack drawing is racked the same way
+  const drawing = rackDrawing(rack, plan, piece.paletteId);
+  acceptLibraryDrops(drawing, (it) => { void addPicks([it]); });
 
   return [
     h('h4', {}, `Rack · ${rack.units} U`),
     h('p', { class: 'stat' }, `${plan.used} U used · ${plan.free} U free${runs ? ` (${runs})` : ''}${deepest ? ` · deepest ${deepest.name}, ${Math.round(deepest.reach)} mm of ${Math.round(plan.railDepth)} mm` : ''}`),
-    rackDrawing(rack, plan, piece.paletteId),
+    drawing,
     plan.problems.length ? h('ul', { class: 'warn' }, ...plan.problems.map((p) => h('li', {}, p))) : '',
     row('Rack units', num(rack.units, (v) => save({ units: Math.max(1, Math.round(v)) }), { step: 1, min: 1, max: 60, unit: 'U' })),
     row('Rail depth', num(rack.railDepth, (v) => save({ railDepth: Math.max(50, v) }), { step: 10, min: 50, unit: 'mm' })),
@@ -161,12 +167,6 @@ export function rackPanel(piece, racks, put, rerender) {
       'div',
       { class: 'actions' },
       libSlot,
-      partPick ?? '',
-      partPick ? button('＋ From the catalogue', () => {
-        const part = parts.find((p) => p.id === pick);
-        if (part) add(itemFromPart(part, 1));
-      }, { title: 'Put this part in the lowest free space it fits, with its U and its depth from the catalogue (OS/BIM/parts.json)' }) : '',
-      button('＋ By hand', () => add({ id: `hand-${Date.now().toString(36)}`, name: 'New unit', units: 1, depth: null }), { title: 'Add a unit the catalogue does not have: name it, give it its U and its depth' }),
       button('＋ 1 U blank', () => add({ id: `blank-${Date.now().toString(36)}`, name: 'Blank panel', units: 1, depth: 10 }), { title: 'A blanking panel — a used space with nothing behind it' }),
     ),
     h('p', { class: 'hint' }, 'U1 is the lowest. Depth is the chassis behind the front rail; “really” adds the cables behind it, and that is what has to fit the rails. The elevations hatch the empty spaces and, side-on, show each depth.'),

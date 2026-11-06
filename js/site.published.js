@@ -8,5 +8,4 @@
  */
 export const SITE = {
   cad: 'cad/index.html',
-  catalogue: 'catalogue/parts.json',
 };
