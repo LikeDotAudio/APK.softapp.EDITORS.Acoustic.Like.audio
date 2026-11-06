@@ -53,12 +53,14 @@ export function readSession(doc) {
 /**
  * The files 💾 Save writes, both or neither: [{ name, type, text }] — the
  * session, then its .ifc twin. `geometry`/`mirror` are the CAD's last host@1
- * messages, `results` the engine's last numbers (roomModel resultsOf) or null.
+ * messages, `results` the engine's last numbers (roomModel resultsOf) or null,
+ * `types` the speakers' BIM part types as the library gave them (none offline).
  */
-export function sessionFiles({ overlay, drawingName, geometry = null, mirror = null, results = null, savedAt }) {
+export function sessionFiles({ overlay, drawingName, geometry = null, mirror = null, results = null, savedAt, types = {} }) {
   const base = (drawingName || overlay?.fileName || 'room').replace(/\.[^.]+$/, '');
-  // the twin first: a room that cannot be written as IFC stops the save before anything is downloaded
-  const ifc = roomToIfc(roomModel({ geometry, mirror, overlay, results }));
+  // the twin first: a room that cannot be written as IFC stops the save before anything is downloaded.
+  // `types` {partId: .ifc text} (acoustics/speakerLibrary.js loadPartTypes): each speaker's own BIM type
+  const ifc = roomToIfc(roomModel({ geometry, mirror, overlay, results }), { types });
   const doc = sessionDoc(overlay, drawingName, savedAt);
   return [
     { name: `${base}.acoustic-session.json`, type: 'application/json', text: JSON.stringify(doc) },

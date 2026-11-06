@@ -42,6 +42,8 @@ import { createPlayer } from './ui/player.js';
 import { createMonitor } from './ui/monitor.js';
 import { createWizard } from './ui/wizard.js';
 import { readProjectFile, sessionFiles } from './model/session.js';
+import { bimApi, loadPartTypes, loadSpeakerParts } from './acoustics/speakerLibrary.js';
+import { SPEAKER_PARTS } from './acoustics/speakerParts.js';
 import { resultsOf, sessionFromModel } from './ifc/roomModel.js';
 import { badFile, showProblem } from './ui/problem.js';
 
@@ -70,6 +72,7 @@ globalThis.APKSoftapp?.describe({
     { name: 'Song', from: '🎵 Song: any audio file the browser plays (WAV, MP3, FLAC...)', kind: 'file' },
     { name: 'Measured impulse response', from: 'Inspector: a WAV from REW or a sweep tool', kind: 'file' },
     { name: 'Rack parts', from: 'the BIM library at /api/bim/parts (rack gear; absent on a static host, then typed by hand)' },
+    { name: 'Speaker parts', from: 'the BIM library: GET /api/bim/parts/<id> gives each box its figures, /parts/<id>.ifc its IFC type in the saved room (absent on a static host, then the built-in presets)', kind: 'http' },
   ],
   outputs: [
     { name: 'Project', to: '💾 Save (Ctrl+S): <drawing>.acoustic-session.json and its .acoustic-session.ifc twin (IFC4X3_ADD2, mm), both or neither, into a folder picked once (Save Model) or as downloads; the CAD saves the drawing itself', kind: 'file' },
@@ -92,6 +95,11 @@ globalThis.APKSoftapp?.describe({
   ],
   problems: ['bad_json', 'bad_input', 'file_unreadable', 'timeout', 'permission_denied', 'storage_full', 'script_error'],
 });
+
+// every preset box is a BIM library part: read them once, so ＋ Speaker places the part's own figures
+// (acoustics/speakerLibrary.js); a host with no library answers the health probe with nothing, and the presets hold
+const bimLibraryUp = fetch(`${bimApi()}/health`, { headers: { Accept: 'application/json' } }).then((r) => r.ok, () => false);
+bimLibraryUp.then((up) => up && loadSpeakerParts(Object.values(SPEAKER_PARTS).map((p) => p.part)));
 
 const store = createStore();
 const iframe = document.getElementById('cad');
@@ -1236,12 +1244,15 @@ sweepBtn.addEventListener('click', () => (tour.running ? tour.stop() : sweep ? s
 tourBtn.addEventListener('click', () => (tour.running ? tour.stop() : tour.start()));
 
 // ------------------------------------------------------------------ sessions: this overlay and the name of the CAD drawing it sits on (model/session.js)
-function saveSession() {
+async function saveSession() {
   const drawingName = store.state.cad.geometry?.fileName ?? store.state.fileName ?? null;
+  const overlay = store.exportDoc();
+  // each speaker's own BIM part type, as the library has it (acoustics/speakerLibrary.js): offline, none
+  const { types } = (await bimLibraryUp) ? await loadPartTypes(overlay) : { types: {} };
   let files;
   try {
     // the session and its .ifc twin, both or neither (model/session.js sessionFiles)
-    files = sessionFiles({ overlay: store.exportDoc(), drawingName, geometry: store.state.cad.geometry, mirror: store.state.cad.mirror, results: resultsOf(engine.out, store.state.settings) });
+    files = sessionFiles({ overlay, drawingName, geometry: store.state.cad.geometry, mirror: store.state.cad.mirror, results: resultsOf(engine.out, store.state.settings), types });
   } catch (e) {
     showProblem('save_failed', { subject: drawingName ?? 'room', detail: String(e?.message || e), fix: ['Nothing was saved: the room could not be written as IFC.', 'File → Export overlay still downloads the overlay JSON.'] });
     return;

@@ -2,7 +2,7 @@
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { BANDS, BAND_LABELS, C } from '../acoustics/bands.js';
 import { talkers } from '../acoustics/talk.js';
-import { ACOUSTX_SPEAKER_PRESETS, MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, SPEAKER_SPEC, makeSpeaker, newId, speakerLevel, wattsFor } from '../acoustics/devices.js';
+import { ACOUSTX_SPEAKER_PRESETS, MIC_PRESETS, MOUNTS, SPEAKER_PRESETS, makeSpeaker, newId, speakerLevel, speakerSpec, wattsFor } from '../acoustics/devices.js';
 import { DEG, distToSegment } from '../acoustics/geometry.js';
 import { receiverOrder, sourceGroups } from '../acoustics/groups.js';
 import { outside } from '../acoustics/inRoom.js';
@@ -322,8 +322,9 @@ export function createInspector({ root, store, engine, cad, jumpTo, drawRoom, on
       row('Name', text(d.name, (v) => up({ name: v }))),
       row('Role', text(d.role ?? '', (v) => up({ role: v || undefined }))),
       row('Preset', select(d.kind, Object.entries(SPEAKER_PRESETS).map(([value, p]) => ({ value, label: p.label })), (v) => {
-        const p = SPEAKER_PRESETS[v];
-        up({ kind: v, drive: 'power', ...Object.fromEntries(SPEAKER_SPEC.map((k) => [k, p[k]])) });
+        // the preset's BIM part, its figures as the library gives them (the preset's offline)
+        const { spec, part } = speakerSpec(v);
+        up({ kind: v, drive: 'power', ...spec, ...(part ? { part } : {}) });
       })),
       row('Cabinet', num(d.litres ?? SPEAKER_PRESETS[d.kind]?.litres ?? 12, (v) => up({ litres: Math.max(0.5, v) }), { step: 1, min: 0.5, unit: `L${d.driver ? ` · ${d.driver}` : ''}` })),
       SPEAKER_PRESETS[d.kind]?.typical ? h('p', { class: 'hint' }, 'Coverage, sensitivity, max SPL and range are typical figures for this driver, not read off its datasheet — check them against yours.') : '',

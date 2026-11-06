@@ -32,6 +32,7 @@
 
 import { ACOUSTX_SPEAKERS } from '../acoustx/database.js';
 import { SPEAKER_PARTS } from './speakerParts.js';
+import { partSpec } from './speakerLibrary.js';
 
 // The library. First the real boxes, by maker and model — `litres` is the
 // cabinet's internal volume, which sets the size it is drawn (boxSize), and
@@ -189,14 +190,30 @@ export function presetForPart(partId) {
   return Object.keys(SPEAKER_PARTS).find((k) => SPEAKER_PARTS[k].part === id && k in ALL_SPEAKER_PRESETS) ?? null;
 }
 
+/**
+ * The fields a box of this preset / part is given (SPEAKER_SPEC): the BIM part's own figures
+ * when the library has answered for it (speakerLibrary.js loadSpeakerParts), the preset's for
+ * whatever the part does not state — and the preset alone offline. `part` defaults to the
+ * preset's part (speakerParts.js); a key that is no preset falls back to the studio monitor.
+ */
+export function speakerSpec(kind, part = undefined) {
+  const preset = SPEAKER_PRESETS[kind] ?? ACOUSTX_SPEAKER_PRESETS[kind];
+  const p = preset ?? SPEAKER_PRESETS.monitor;
+  const pid = part ?? speakerPart(preset ? kind : 'monitor')?.part ?? null;
+  const lib = partSpec(pid) ?? {};
+  const spec = Object.fromEntries(SPEAKER_SPEC.map((k) => [k, lib[k] !== undefined ? lib[k] : p[k]]));
+  // a cabinet is the part's three sides or the preset's: never one side of each
+  if (!(lib.w && lib.h && lib.d)) Object.assign(spec, { w: p.w, h: p.h, d: p.d });
+  return { spec, part: pid, label: preset ? p.label : (lib.name ?? p.label) };
+}
+
 export function makeSpeaker(kind, at, extra = {}) {
-  const p = SPEAKER_PRESETS[kind] ?? ACOUSTX_SPEAKER_PRESETS[kind] ?? SPEAKER_PRESETS.monitor;
-  const spec = Object.fromEntries(SPEAKER_SPEC.map((k) => [k, p[k]]));
-  // placed by part id: the box IS the library part its preset became (its IFC type is part/<id>)
-  const part = speakerPart(kind in SPEAKER_PRESETS || kind in ACOUSTX_SPEAKER_PRESETS ? kind : 'monitor')?.part;
+  // placed by part id: the box IS the library part its preset became (its IFC type is part/<id>),
+  // its figures the part's as the library gives them (the preset's offline)
+  const { spec, part, label } = speakerSpec(kind, extra.part);
   return {
     id: newId('s'),
-    name: extra.name ?? p.label,
+    name: extra.name ?? label,
     kind,
     ...(part ? { part } : {}),
     x: at.x,

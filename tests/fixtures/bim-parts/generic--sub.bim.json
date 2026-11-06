@@ -1,0 +1,39 @@
+{
+ "schema": "apk.bim.part/1",
+ "id": "generic/sub",
+ "manufacturer": "Generic",
+ "maker": "generic",
+ "model": "sub",
+ "name": "Subwoofer",
+ "description": "Subwoofer",
+ "category": "Audio",
+ "class": "Loudspeaker",
+ "stage": "stub",
+ "ifc": {
+  "psets": {
+   "Pset_AudioVisualApplianceTypeSpeaker": {
+    "SpeakerType": "WOOFER"
+   },
+   "APK_LoudspeakerType": {
+    "Sensitivity": 100,
+    "MaxSpl": 128,
+    "FrequencyLow": 30,
+    "LowPass": 100,
+    "CoverageHorizontal": 360,
+    "CoverageVertical": 360,
+    "Pattern": "omni",
+    "EnclosureVolume": 60,
+    "FiguresTypical": true
+   }
+  }
+ },
+ "sources": [
+  "acoustic-presets"
+ ],
+ "seeded": {
+  "from": "Acoustic presets: a class's typical datasheet figures (EDITORS.Acoustic.Like.audio js/acoustics/devices.js)",
+  "fields": [
+   "ifc"
+  ]
+ }
+}

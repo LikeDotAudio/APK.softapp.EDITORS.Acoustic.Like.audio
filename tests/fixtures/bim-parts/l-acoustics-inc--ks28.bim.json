@@ -1,0 +1,32 @@
+{
+ "schema": "apk.bim.part/1",
+ "id": "l-acoustics-inc/ks28",
+ "manufacturer": "L-ACOUSTICS, INC",
+ "maker": "l-acoustics-inc",
+ "model": "KS28",
+ "name": "L-ACOUSTICS, INC KS28",
+ "description": "Flyable subwoofer 2 x 18''",
+ "category": "Audio",
+ "class": "Loudspeaker",
+ "stage": "declared",
+ "physical": {
+  "weight_kg": 79.0
+ },
+ "ports": [
+  {
+   "group": "Connectors",
+   "terminal": "4-point speakON",
+   "side": "connection",
+   "domain": "audio",
+   "connector": "SPEAKON",
+   "count": 1,
+   "signal": "Connectors: 4-point speakON",
+   "connector_as_declared": "speakON"
+  }
+ ],
+ "sources": [
+  "symbols-stub",
+  "maker-page"
+ ],
+ "note": "physical, ports from the maker's page https://www.l-acoustics.com/products/ks28/ (read 2026-11-05 by enrich_from_pages.py) — declared, not measured"
+}

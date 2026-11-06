@@ -20,8 +20,10 @@
  *                    octave band as IfcPropertyTableValue (IfcFrequencyMeasure → IfcNormalisedRatioMeasure)
  *   treatment        IfcDiscreteAccessory SOUNDABSORPTION; a finish patch IfcCovering; glass IfcWindow;
  *                    a door IfcDoor; furniture IfcFurniture — each with APK_Patch (its sheet outline, mm)
- *   speakers         IfcAudioVisualAppliance SPEAKER typed by IfcAudioVisualApplianceType SPEAKER,
- *                    aim + tilt in its IfcAxis2Placement3D; APK_SpeakerOccurrence; each set an
+ *   speakers         IfcAudioVisualAppliance SPEAKER typed by IfcAudioVisualApplianceType SPEAKER —
+ *                    the BIM part's own type, copied whole from its .ifc (opts.types, partType.js),
+ *                    else (offline) a type naming the part — aim + tilt in its IfcAxis2Placement3D;
+ *                    APK_SpeakerOccurrence; each set an
  *                    IfcDistributionSystem ELECTROACOUSTIC; mirror twins name each other (MirrorPair)
  *   mics             IfcAudioVisualAppliance MICROPHONE; a listener seat IfcVirtualElement 'Listener'
  *                    (APK_Listener); each with its ISO 3382 figures in APK_AcousticResult
@@ -35,6 +37,7 @@ import { lookup, PRODUCTS } from '../acoustics/materials.js';
 import { elevationFaceOf } from '../acoustics/elevations.js';
 import { isCeilingLayer } from '../acoustics/patches.js';
 import { aimAxes } from './placement.js';
+import { copyType, partTypes, partUnits } from './partType.js';
 import { bool, encodeProps, FURNITURE_TABLE, ident, label, measure, MIC_RESULT_TABLE, MIC_TABLE, SPEAKER_TABLE, SYMMETRY_TABLE, text } from './props.js';
 import { BANDS, BANDS_9 } from '../acoustics/bands.js';
 
@@ -91,8 +94,12 @@ const pt = (W, c) => W.add('IFCCARTESIANPOINT', c.map((x) => real(x)));
 const dir = (W, c) => W.add('IFCDIRECTION', c.map((x) => real(x)));
 const LEN = (x) => measure('IFCLENGTHMEASURE', x);
 
-/** The room model as IFC4X3_ADD2 STEP text. */
-export function roomToIfc(model) {
+/**
+ * The room model as IFC4X3_ADD2 STEP text. `opts.types` {partId: the part's .ifc text}
+ * (speakerLibrary.js loadPartTypes): each speaker part named there is typed by the part's
+ * own type, copied in; a part not there (offline) by a type that names it.
+ */
+export function roomToIfc(model, { types: partTexts = {} } = {}) {
   const W = new Writer();
   const kept = model.ifc ?? {};
   const file = model.fileName ?? 'untitled';
@@ -105,15 +112,17 @@ export function roomToIfc(model) {
   const si = (type, prefix, name) => W.add('IFCSIUNIT', { kind: 'derived' }, enumv(type), prefix ? enumv(prefix) : null, enumv(name));
   const radian = si('PLANEANGLEUNIT', null, 'RADIAN');
   const degree = W.add('IFCCONVERSIONBASEDUNIT', dims0, enumv('PLANEANGLEUNIT'), 'DEGREE', W.add('IFCMEASUREWITHUNIT', measure('IFCPLANEANGLEMEASURE', 0.017453292519943295), radian));
-  const units = W.add('IFCUNITASSIGNMENT', [
-    si('LENGTHUNIT', 'MILLI', 'METRE'),
-    si('AREAUNIT', null, 'SQUARE_METRE'),
-    si('VOLUMEUNIT', null, 'CUBIC_METRE'),
-    si('TIMEUNIT', null, 'SECOND'),
-    si('FREQUENCYUNIT', null, 'HERTZ'),
-    si('POWERUNIT', null, 'WATT'),
-    degree,
-  ]);
+  const ROOM_SI = [['LENGTHUNIT', 'MILLI', 'METRE'], ['AREAUNIT', null, 'SQUARE_METRE'], ['VOLUMEUNIT', null, 'CUBIC_METRE'], ['TIMEUNIT', null, 'SECOND'], ['FREQUENCYUNIT', null, 'HERTZ'], ['POWERUNIT', null, 'WATT']];
+  // the parts' own types the speakers name, and the units their files assign that the room does not (mass, volt ...)
+  const wanted = new Set((model.speakers ?? []).map((d) => d.part ?? speakerPart(d.kind)?.part).filter((p) => p && partTexts[p]));
+  const parsedTypes = partTypes(Object.fromEntries([...wanted].map((p) => [p, partTexts[p]])));
+  const siUnits = new Map([['PLANEANGLEUNIT//RADIAN', radian]]);
+  const roomSi = [...ROOM_SI, ...partUnits(parsedTypes, ['PLANEANGLEUNIT', ...ROOM_SI.map(([u]) => u)]).map((u) => [u.type, u.prefix, u.name])].map(([u, pre, n]) => {
+    const r = si(u, pre, n);
+    siUnits.set(`${u}/${pre ?? ''}/${n}`, r);
+    return r;
+  });
+  const units = W.add('IFCUNITASSIGNMENT', [...roomSi.slice(0, ROOM_SI.length), degree, ...roomSi.slice(ROOM_SI.length)]);
   const unitRefs = { dB: W.add('IFCCONTEXTDEPENDENTUNIT', dims0, enumv('USERDEFINED'), 'dB') };
   const origin = W.add('IFCAXIS2PLACEMENT3D', pt(W, [0, 0, 0]), null, null);
   const ctx = W.add('IFCGEOMETRICREPRESENTATIONCONTEXT', null, 'Model', 3, real(1e-5), origin, null);
@@ -340,10 +349,19 @@ export function roomToIfc(model) {
   // (part/<id>) and the identity DATABASE.server.BIM writes for it (bim/ifc.py), so the two files agree.
   const typeRefs = new Map();
   const partById = new Map(Object.values(SPEAKER_PARTS).map((p) => [p.part, p]));
+  const contextUnits = new Map(); // a part file's dBu / Vpp ..., once each in the room
+  const conversionUnits = new Map(); // and its litre ..., once each
   const typeOf = (kind, avKind, d) => {
     const partId = d.part ?? (avKind === 'SPEAKER' ? speakerPart(kind)?.part : null) ?? null;
     const key = partId ? `part:${partId}` : `${avKind}:${kind}`;
     if (typeRefs.has(key)) return typeRefs.get(key);
+    // the library's own type for the part, whole, with its GlobalIds (part/<id> is the type's)
+    const own = avKind === 'SPEAKER' && partId ? parsedTypes.get(partId) : null;
+    if (own) {
+      const { ref: t } = copyType(W, own, { ctx, bodyCtx, siUnits, degree, contextUnits, conversionUnits });
+      typeRefs.set(key, { ref: t, gid: ifcGuid('part', partId), occ: [], embedded: true });
+      return typeRefs.get(key);
+    }
     const preset = avKind === 'SPEAKER' ? ALL_SPEAKER_PRESETS[kind] : MIC_PRESETS[kind];
     const known = partId ? partById.get(partId) : null;
     const tGid = partId ? ifcGuid('part', partId) : ifcGuid('decl', P, 'type', avKind.toLowerCase(), String(kind));

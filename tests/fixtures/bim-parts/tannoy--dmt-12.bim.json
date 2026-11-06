@@ -1,0 +1,41 @@
+{
+ "schema": "apk.bim.part/1",
+ "id": "tannoy/dmt-12",
+ "manufacturer": "Tannoy",
+ "maker": "tannoy",
+ "model": "DMT 12",
+ "name": "Tannoy DMT 12",
+ "description": "Tannoy DMT 12 · 12\" coaxial · 44 L",
+ "category": "Audio",
+ "class": "Loudspeaker",
+ "stage": "stub",
+ "ifc": {
+  "psets": {
+   "Pset_AudioVisualApplianceTypeSpeaker": {
+    "SpeakerType": "COAXIAL"
+   },
+   "APK_LoudspeakerType": {
+    "Sensitivity": 93,
+    "MaxSpl": 116,
+    "FrequencyLow": 45,
+    "FrequencyHigh": 20000,
+    "OmniBelow": 300,
+    "CoverageHorizontal": 90,
+    "CoverageVertical": 90,
+    "Pattern": "horn",
+    "Driver": "coaxial 12\"",
+    "EnclosureVolume": 44,
+    "FiguresTypical": true
+   }
+  }
+ },
+ "sources": [
+  "acoustic-presets"
+ ],
+ "seeded": {
+  "from": "Acoustic presets: a class's typical datasheet figures (EDITORS.Acoustic.Like.audio js/acoustics/devices.js)",
+  "fields": [
+   "ifc"
+  ]
+ }
+}

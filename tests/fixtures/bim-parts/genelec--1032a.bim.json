@@ -1,0 +1,44 @@
+{
+ "schema": "apk.bim.part/1",
+ "id": "genelec/1032a",
+ "manufacturer": "Genelec",
+ "maker": "genelec",
+ "model": "1032A",
+ "name": "Genelec 1032A",
+ "description": "Genelec 1032A · Mid field · 42–21k Hz",
+ "category": "Audio",
+ "class": "Loudspeaker",
+ "stage": "seeded",
+ "physical": {
+  "width_mm": 320.0,
+  "height_mm": 495.0,
+  "depth_mm": 290.0
+ },
+ "ifc": {
+  "psets": {
+   "Pset_AudioVisualApplianceTypeSpeaker": {
+    "SpeakerType": "FULLRANGE"
+   },
+   "APK_LoudspeakerType": {
+    "FrequencyLow": 42,
+    "FrequencyHigh": 21000,
+    "CrossoverFrequency": 1800,
+    "CentreHeight": 290.0,
+    "WooferHeight": 150.0,
+    "NearField": true,
+    "MidField": true,
+    "MainMonitor": false
+   }
+  }
+ },
+ "sources": [
+  "acoustx"
+ ],
+ "seeded": {
+  "from": "Acoustic X studio-monitor database (EDITORS.Acoustic.Like.audio js/acoustx/data.json)",
+  "fields": [
+   "physical",
+   "ifc"
+  ]
+ }
+}
