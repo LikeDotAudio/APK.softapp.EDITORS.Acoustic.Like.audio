@@ -257,7 +257,7 @@
       }
     },
     "toCad.hello": {
-      "description": "Resend view, geometry and mirror now. bimDrops (2.10.0): the host takes a part dropped from the BIM library itself — the CAD hands it over as toHost.bimDrop instead of placing its own block.",
+      "description": "Resend view, geometry and mirror now. bimDrops (2.10.0): the host takes a part dropped from the BIM library itself — the CAD hands it over as toHost.bimDrop instead of placing its own block. library (2.13.0, ROAD-3603): the host shows the BIM library itself — the CAD's 📚 Library and 📖 Catalog ask it with toHost.library instead of opening their own sash.",
       "type": "object",
       "required": [
         "protocol",
@@ -271,6 +271,9 @@
           "const": "hello"
         },
         "bimDrops": {
+          "type": "boolean"
+        },
+        "library": {
           "type": "boolean"
         }
       }
@@ -1992,6 +1995,29 @@
         },
         "type": {
           "const": "request"
+        }
+      }
+    },
+    "toHost.library": {
+      "description": "The user pressed 📚 Library or 📖 Catalog in a CAD whose host said hello { library: true } (ROAD-3603): the host opens, switches or closes ITS library — one library per sheet. lens is the library app's lens: 'part' (📚 Library) or 'catalog' (📖 Catalog).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "lens"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "library"
+        },
+        "lens": {
+          "enum": [
+            "part",
+            "catalog"
+          ]
         }
       }
     }

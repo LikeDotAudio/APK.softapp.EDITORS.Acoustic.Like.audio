@@ -3,7 +3,8 @@
   "toCad": [
     {
       "protocol": "cad.like.audio/host@1",
-      "type": "hello"
+      "type": "hello",
+      "library": true
     },
     {
       "protocol": "cad.like.audio/host@1",
@@ -789,6 +790,11 @@
         1200,
         -400
       ]
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "library",
+      "lens": "catalog"
     }
   ],
   "toEditor": [
