@@ -624,5 +624,21 @@ export function createFaceView({ tile, face, store, engine, onDrag, onJump, onPi
     readout.textContent = '';
   });
 
-  return { render, tile };
+  /**
+   * One SpaceMouse frame (ui/puck.js): zoom by `zoom` (> 1 in) about the middle of the tile, then pan by
+   * (dx, dy) CSS px in view terms (+dx the view moves right, +dy up) — the wheel's and the drag's zoom, all the
+   * way out the room fits again and stays put.
+   */
+  function fly({ zoom = 1, dx = 0, dy = 0 } = {}) {
+    if (!map) return;
+    const mid = map.toUV(map.cx, map.cy);
+    const k = Math.max(1, Math.min(ZOOM_MAX, view.k * (zoom > 0 ? zoom : 1)));
+    const s = (map.s / view.k) * k;
+    view.k = k;
+    view.uc = mid.u + dx / s;
+    view.vc = mid.v + dy / s;
+    render();
+  }
+
+  return { render, tile, fly, view };
 }

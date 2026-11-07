@@ -205,8 +205,9 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
     const B = basis(room);
     const view = camera() ?? cam;
     let focal = Math.min(w, h) * 1.1;
-    let ox = w / 2;
-    let oy = h / 2;
+    // the SpaceMouse's pan (fly): the drawing slid on the screen, in CSS px — the tour's framed camera keeps its own
+    let ox = w / 2 - (view.fit ? 0 : (view.px ?? 0));
+    let oy = h / 2 + (view.fit ? 0 : (view.py ?? 0));
     // the tour's camera fills its frame with the room: its corners fitted to the frame, a caption band left at the foot
     if (view.fit) {
       const corners = room.poly.flatMap((p) => [{ ...p, z: 0 }, { ...p, z: room.Hmax }]).map((p) => {
@@ -763,7 +764,24 @@ export function createView3d({ canvas, store, engine, introSpeed = () => 1, came
     render();
   }
 
-  return { render, replay };
+  /**
+   * One SpaceMouse frame (ui/puck.js): orbit by `yaw`/`pitch` radians, dolly by `zoom` (> 1 nearer), pan by
+   * (dx, dy) CSS px in view terms (+dx the view moves right, +dy up). The same camera the drag and the wheel move,
+   * drawn coarse while it moves and refined once it rests.
+   */
+  function fly({ yaw = 0, pitch = 0, zoom = 1, dx = 0, dy = 0 } = {}) {
+    cam.yaw -= yaw / DEG;
+    cam.pitch = Math.max(-10, Math.min(85, cam.pitch + pitch / DEG));
+    if (zoom > 0) cam.dist = Math.max(0.8, Math.min(5, cam.dist / zoom));
+    cam.px = (cam.px ?? 0) + dx;
+    cam.py = (cam.py ?? 0) + dy;
+    moving = true;
+    clearTimeout(settle);
+    render();
+    still();
+  }
+
+  return { render, replay, fly, camera: cam };
 }
 
 /**

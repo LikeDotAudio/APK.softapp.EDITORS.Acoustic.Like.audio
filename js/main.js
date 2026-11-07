@@ -41,6 +41,7 @@ import { makeFold } from './ui/fold.js';
 import { createPlayer } from './ui/player.js';
 import { createMonitor } from './ui/monitor.js';
 import { createWizard } from './ui/wizard.js';
+import { installPuck } from './ui/puck.js';
 import { readProjectFile, sessionFiles } from './model/session.js';
 import { bimApi, loadPartTypes, loadSpeakerParts } from './acoustics/speakerLibrary.js';
 import { SPEAKER_PARTS } from './acoustics/speakerParts.js';
@@ -210,6 +211,8 @@ createMeterFold({ store, engine, meters: document.getElementById('meters'), onUn
     view3d.replay();
   });
 }
+// the SpaceMouse, posted in by the OS shell: flies the 3-D room or an elevation, or goes on to the CAD (ui/puck.js)
+installPuck({ views, room: view3d, faces: Object.fromEntries(faces.map((f) => [f.tile.dataset.face, f])), iframe, cadDocked: () => !cad.link?.popped });
 const wallBuilder = createWallBuilder({ root: document.querySelector('.tile.wall'), store, engine, cad, inputs: () => wallInputs(store.state.cad.geometry), jumpTo });
 const meters = createMeters({
   root: document.getElementById('meters'),
