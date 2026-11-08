@@ -704,6 +704,13 @@
                 },
                 "minItems": 4,
                 "maxItems": 4
+              },
+              "fit": {
+                "enum": [
+                  "own",
+                  "shared"
+                ],
+                "description": "'own': this space frames itself (a Simulation group); default 'shared': every host space at the scale that fits the largest."
               }
             }
           }
