@@ -1260,6 +1260,22 @@
         }
       }
     },
+    "toCad.kicad": {
+      "description": "Ask for the sheet as File › Export KiCad writes it: a KiCad 9/10 project (the symbols by the KiCad Library Conventions, the BIM part in APK_ fields); answered with toHost.kicad (src/io/kicad/kicadSheet.ts).",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "kicad"
+        }
+      }
+    },
     "toCad.tool": {
       "description": "Put a tool in the user's hand, as its toolbar button would (hostPick.ts); an id this editor does not have is ignored. The Simulation asks for 'select'.",
       "type": "object",
@@ -1876,6 +1892,45 @@
         },
         "text": {
           "type": "string"
+        }
+      }
+    },
+    "toHost.kicad": {
+      "description": "The answer to toCad.kicad: the project's files by name (<name>.kicad_sch, <name>.kicad_pro, sym-lib-table, one <Library>.kicad_sym per symbol library), every one text, kept together in one folder.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "name",
+        "files"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "kicad"
+        },
+        "name": {
+          "type": "string"
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "placed": {
+          "type": "integer"
+        },
+        "nets": {
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

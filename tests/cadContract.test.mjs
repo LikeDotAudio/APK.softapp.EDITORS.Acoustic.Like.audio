@@ -85,7 +85,7 @@ test('every message cadLink sends is a valid toCad message', async () => {
   // and editorReady / blockChanged / blockSave / editorClose are a block editor's, in the CAD's own iframe (the `toEditor` direction's replies)
   const blockEditor = ['blockChanged', 'blockSave', 'editorClose', 'editorReady'];
   const unused = messageTypes(schema, 'toCad').filter((t) => !sent.has(t) && !blockEditor.includes(t));
-  assert.deepEqual(unused, ['dxf', 'layer', 'schematic', 'schematicMove', 'tool']);
+  assert.deepEqual(unused, ['dxf', 'kicad', 'layer', 'schematic', 'schematicMove', 'tool']);
 });
 
 test('every toHost sample reaches its callback', async () => {

@@ -494,6 +494,10 @@
     },
     {
       "protocol": "cad.like.audio/host@1",
+      "type": "kicad"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
       "type": "tool",
       "id": "select"
     }
@@ -764,6 +768,18 @@
       "type": "dxf",
       "fileName": "Simulation — Bench (mm).dxf",
       "text": "0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nEOF\n"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "kicad",
+      "name": "bench",
+      "files": {
+        "bench.kicad_sch": "(kicad_sch (version 20250114))",
+        "sym-lib-table": "(sym_lib_table (version 7))"
+      },
+      "placed": 2,
+      "nets": 1,
+      "skipped": []
     },
     {
       "protocol": "cad.like.audio/host@1",
