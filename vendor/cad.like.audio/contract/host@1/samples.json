@@ -507,6 +507,15 @@
             "terminal": "AUDIO INPUT 1–8 CH-1"
           }
         }
+      ],
+      "groups": [
+        {
+          "name": "Rack A",
+          "refs": [
+            "U8",
+            "U9"
+          ]
+        }
       ]
     },
     {

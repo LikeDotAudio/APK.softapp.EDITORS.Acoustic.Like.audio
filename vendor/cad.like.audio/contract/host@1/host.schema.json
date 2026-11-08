@@ -1261,7 +1261,7 @@
       }
     },
     "toCad.kicad": {
-      "description": "Ask for the sheet as File › Export KiCad writes it: a KiCad 9/10 project (the symbols by the KiCad Library Conventions, the BIM part in APK_ fields); answered with toHost.kicad (src/io/kicad/kicadSheet.ts). `connections` (the schematic shape) are wires the host keeps as its own line work — the Simulation's routes — joined into the nets; `name` the project's file stem.",
+      "description": "Ask for the sheet as File › Export KiCad writes it: a KiCad 9/10 project (the symbols by the KiCad Library Conventions, the BIM part in APK_ fields); answered with toHost.kicad (src/io/kicad/kicadSheet.ts). `connections` (the schematic shape) are wires the host keeps as its own line work — the Simulation's routes — joined into the nets; `groups` the host's own frames ({ name, refs: the refs it placed }), drawn as titled frames; `name` the project's file stem.",
       "type": "object",
       "required": [
         "protocol",
@@ -1318,6 +1318,27 @@
               },
               "label": {
                 "type": "string"
+              }
+            }
+          }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "refs"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "refs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             }
           }
