@@ -1965,7 +1965,7 @@
       }
     },
     "toHost.kicad": {
-      "description": "The answer to toCad.kicad: the project's files by name (<name>.kicad_sch, <name>.kicad_pro, sym-lib-table, one <Library>.kicad_sym per symbol library), every one text, kept together in one folder.",
+      "description": "The answer to toCad.kicad: the project's files by name (<name>.kicad_sch, <name>.kicad_pro, sym-lib-table, one <Library>.kicad_sym per symbol library), every one text, kept together in one folder; `zip` the same files as one .zip, base64, for a host that downloads rather than writes a folder.",
       "type": "object",
       "required": [
         "protocol",
@@ -2000,6 +2000,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "zip": {
+          "type": "string"
         }
       }
     },
