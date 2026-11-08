@@ -494,7 +494,20 @@
     },
     {
       "protocol": "cad.like.audio/host@1",
-      "type": "kicad"
+      "type": "kicad",
+      "name": "bench",
+      "connections": [
+        {
+          "a": {
+            "ref": "U8",
+            "terminal": "AUDIO THRU 1–8 THRU-1"
+          },
+          "b": {
+            "ref": "U9",
+            "terminal": "AUDIO INPUT 1–8 CH-1"
+          }
+        }
+      ]
     },
     {
       "protocol": "cad.like.audio/host@1",

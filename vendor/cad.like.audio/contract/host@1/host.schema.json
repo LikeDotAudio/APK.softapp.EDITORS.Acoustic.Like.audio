@@ -1261,7 +1261,7 @@
       }
     },
     "toCad.kicad": {
-      "description": "Ask for the sheet as File › Export KiCad writes it: a KiCad 9/10 project (the symbols by the KiCad Library Conventions, the BIM part in APK_ fields); answered with toHost.kicad (src/io/kicad/kicadSheet.ts).",
+      "description": "Ask for the sheet as File › Export KiCad writes it: a KiCad 9/10 project (the symbols by the KiCad Library Conventions, the BIM part in APK_ fields); answered with toHost.kicad (src/io/kicad/kicadSheet.ts). `connections` (the schematic shape) are wires the host keeps as its own line work — the Simulation's routes — joined into the nets; `name` the project's file stem.",
       "type": "object",
       "required": [
         "protocol",
@@ -1273,6 +1273,54 @@
         },
         "type": {
           "const": "kicad"
+        },
+        "name": {
+          "type": "string"
+        },
+        "connections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "a",
+              "b"
+            ],
+            "properties": {
+              "a": {
+                "type": "object",
+                "required": [
+                  "ref",
+                  "terminal"
+                ],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "terminal": {
+                    "type": "string"
+                  }
+                }
+              },
+              "b": {
+                "type": "object",
+                "required": [
+                  "ref",
+                  "terminal"
+                ],
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "terminal": {
+                    "type": "string"
+                  }
+                }
+              },
+              "label": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },
