@@ -37,5 +37,14 @@ Part of a bigger app: the `Design` group tile in APK:OS (baked by WEB.Frontend-A
 - **Pop-out is a CAD-to-CAD handover** (3a6fb19, LOOSE-acoustic-popout-readback) — `popOut()` opens the CAD at `&resume&handover=<token>` and sends the docked CAD `handover { token }`; the two CADs pass the drawing themselves and the iframe is blanked once the window says `ready`. No `session()` read-back. The vendored host@1 contract is re-copied from EDITORS.CAD.Like.audio 1.2.0 (ac4a657).
 - **Dock-back is the same handover** (0c2a068, LOOSE-acoustic-dockin-autosave) — `dockIn()` sends the window `handover { token }`, reloads the iframe at `&resume&handover=<token>` and closes the window only on the iframe's `ready`, so edits since the last autosave come back; a window closed by hand still docks from the autosave. Verified: `npm test` 289/289 (2026-10-31).
 
+## Delivered 2026-11-11 – 2026-11-12
+
+From this repository's own commits (the commit message is the record):
+
+- vendor: apk-contracts web bundle refreshed from contracts/generated/web (report.ts: LogLine + ProblemRecord, System/Problems family) (`4ed208a`)
+- vendor/apk-softapp: re-vendored — every problem card is reported through the SDK (ROAD-3695 step 2) (`ecc9c66`)
+- vendor: apk-contracts web bundle refreshed from contracts/generated/web (five report codes, ROAD-3695; unit-gate, ROAD-3684) (`d1eabe4`)
+- re-vendor apk-contracts web bundle: contracts 2.4.0 retires APK.audio/Tests/{suite} (ROAD-3729) (`d154b67`)
+
 ## Releases
 - **Released `2.0.0`, tag `v2.0.0`** (2026-11-01, ROAD-3452, the owner's V2) — no SDK pin; every manifest says 2.0.0; GitHub release `v2.0.0`.
