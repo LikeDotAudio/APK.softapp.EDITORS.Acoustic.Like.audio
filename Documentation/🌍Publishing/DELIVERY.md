@@ -45,6 +45,21 @@ From this repository's own commits (the commit message is the record):
 - vendor/apk-softapp: re-vendored — every problem card is reported through the SDK (ROAD-3695 step 2) (`ecc9c66`)
 - vendor: apk-contracts web bundle refreshed from contracts/generated/web (five report codes, ROAD-3695; unit-gate, ROAD-3684) (`d1eabe4`)
 - re-vendor apk-contracts web bundle: contracts 2.4.0 retires APK.audio/Tests/{suite} (ROAD-3729) (`d154b67`)
+- wiki: lanes, README and smoke result refreshed (wiki.py + smoke.py) (`cba1703`)
+- docs(smoke): pass — results in the wiki (`efc7c23`)
+- acoustx/database.js: the Acoustic X tables move to acoustx/data/ (ROAD-3752) (`8ca5cc2`)
+- acoustx/acoustx.js: createAcousticX cut into its windows (ROAD-3752) (`4f1487e`)
+- ui/inspector.js: createInspector cut into its tabs (ROAD-3753) (`fb6d327`)
+- views/plan.js: the plan's draw helpers, Walls mode and pointer work move out (ROAD-3753) (`c825a47`)
+- vendor: CAD host contract host@1 2.14.0 (the byte-for-byte test failed, which stopped the deploy — ROAD-3669) (`6a3f1ed`)
+- deploy: drop the retired catalogue/parts.json copy (vendor/bim went in 28e89df; the leftover step stopped the deploy — ROAD-3669) (`2d3361c`)
+- deploy: ship vendor/apk-table and vendor/apk-softapp too — index.html loads both, and the published page 404'd apk-table.css/.js (found deploying under apk.audio/sites/, ROAD-3669) (`88de9ca`)
+- Rack items keep the bench unit they are (device {ref, guid, key, name}): the only one of the part, else the row asks which, from the bench's own devices (ROAD-3727) (`7bccdac`)
+- main.js: the toolbar, the width lanes, the room library, the CAD layers, the tour, sessions and the wizard become parts (ROAD-3753) (`5eaf32c`)
+- cad/marks.js: one module per drawing (ROAD-3753) (`d7cec36`)
+- vendor: apk-contracts re-vendored (contracts gained the youtube_audio problem codes, root f013ba68a) (`506605e`)
+- vendor/apk-contracts: refresh to contracts/generated/web after ROAD-3759 (contracts split; CHAT_TOPIC origin note) (`285c4e7`)
+- vendor: apk-softapp / apk-table re-joined from their parts (one GENERATED banner line; ROAD-3762) (`ed85c7f`)
 
 ## Releases
 - **Released `2.0.0`, tag `v2.0.0`** (2026-11-01, ROAD-3452, the owner's V2) — no SDK pin; every manifest says 2.0.0; GitHub release `v2.0.0`.
