@@ -201,7 +201,8 @@ test('hearing: a just fifth, notes, roughness, phons and sones', () => {
 });
 
 test('topics: every source is a report on disk, and every topic names a group the windows draw', () => {
-  const src = readFileSync(new URL('../js/acoustx/acoustx.js', import.meta.url), 'utf8');
+  // the windows draw their groups from acoustx.js and the modules it was split into (ROAD-3752)
+  const src = ['acoustx.js', 'widgets.js', 'windows/modal.js', 'windows/sbir.js', 'windows/rays.js', 'windows/reverb.js', 'windows/calc.js', 'windows/screens.js'].map((f) => readFileSync(new URL(`../js/acoustx/${f}`, import.meta.url), 'utf8')).join('\n');
   for (const [n, [file]] of Object.entries(REPORTS)) assert.ok(existsSync(new URL(`../Documentation/acoustic-x/references/${file}`, import.meta.url)), `report ${n}`);
   for (const [legend, t] of Object.entries(TOPICS)) {
     assert.ok(src.includes(`group('${legend}'`) || src.includes(`group("${legend}"`), `no group draws “${legend}”`);
