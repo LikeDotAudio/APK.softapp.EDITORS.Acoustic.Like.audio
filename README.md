@@ -153,5 +153,5 @@ The ecosystem's rules for this app are written down in `Documentation/🏛Philos
 - **No build.** Plain ES modules and `node --test`; `package.json` has no dependencies.
 
 <!-- wiki:smoke -->
-**Smoke test** — ✅ PASS 4/4 since 2026-11-12 00:15 EST — [results](Documentation/%F0%9F%A7%A9Manual%20and%20Artifacts/SMOKE.md)
+**Smoke test** — ✅ PASS 4/4 since 2026-11-12 00:40 EST — [results](Documentation/%F0%9F%A7%A9Manual%20and%20Artifacts/SMOKE.md)
 <!-- /wiki:smoke -->
