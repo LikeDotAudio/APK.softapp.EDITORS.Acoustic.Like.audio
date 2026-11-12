@@ -833,6 +833,13 @@
       "protocol": "cad.like.audio/host@1",
       "type": "library",
       "lens": "catalog"
+    },
+    {
+      "protocol": "cad.like.audio/host@1",
+      "type": "drawing",
+      "name": "Audio",
+      "refdes": "U19",
+      "port": "608 EARTH IN"
     }
   ],
   "toEditor": [

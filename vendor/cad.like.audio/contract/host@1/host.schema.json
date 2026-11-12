@@ -873,7 +873,7 @@
       }
     },
     "toCad.schematic": {
-      "description": "The host's devices as BIM blocks with ports, not line work (hostSchematic.ts). Replaces everything placed under key: the CAD builds each block from its part (partToDefinition) and resolves each terminal to a port itself. A placement's ports are the terminals that instance showed beyond its part's. portals: { ref: { terminal: far } }, far a string (a patch-bay position, grey) or { text, wired } (another block, accent). A hash already on the sheet is ignored.",
+      "description": "The host's devices as BIM blocks with ports, not line work (hostSchematic.ts). Replaces everything placed under key: the CAD builds each block from its part (partToDefinition) and resolves each terminal to a port itself. A placement's ports are the terminals that instance showed beyond its part's. portals: { ref: { terminal: far } }, far a string (a patch-bay position, grey) or { text, wired, to? } (another block, accent; to { drawing, refdes?, port? } when it is on another drawing). A hash already on the sheet is ignored.",
       "type": "object",
       "required": [
         "protocol",
@@ -1105,6 +1105,24 @@
                     },
                     "wired": {
                       "type": "boolean"
+                    },
+                    "to": {
+                      "type": "object",
+                      "description": "The far end is on another drawing (ROAD-3666): drawing names it (the capsule says ⧉ drawing); a click sends the host `drawing` { name, refdes?, port? }.",
+                      "required": [
+                        "drawing"
+                      ],
+                      "properties": {
+                        "drawing": {
+                          "type": "string"
+                        },
+                        "refdes": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "string"
+                        }
+                      }
                     }
                   }
                 }
@@ -2152,6 +2170,32 @@
             "part",
             "catalog"
           ]
+        }
+      }
+    },
+    "toHost.drawing": {
+      "description": "A fly capsule whose far end is on another drawing (a portal with to.drawing) was clicked (ROAD-3666): a host with pages opens that drawing — the Simulation switches to the page so named — and may frame refdes there. port is the far port when the capsule named one.",
+      "type": "object",
+      "required": [
+        "protocol",
+        "type",
+        "name"
+      ],
+      "properties": {
+        "protocol": {
+          "const": "cad.like.audio/host@1"
+        },
+        "type": {
+          "const": "drawing"
+        },
+        "name": {
+          "type": "string"
+        },
+        "refdes": {
+          "type": "string"
+        },
+        "port": {
+          "type": "string"
         }
       }
     }
