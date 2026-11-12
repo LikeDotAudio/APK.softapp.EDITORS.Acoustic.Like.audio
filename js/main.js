@@ -1,52 +1,38 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { listen } from './audio/auralize.js';
-import { ELEVATION_LAYER, elevationFaceOf, seedOutline } from './acoustics/elevations.js';
+import { ELEVATION_LAYER, seedOutline } from './acoustics/elevations.js';
 import { middleOf } from './acoustics/inRoom.js';
-import { buildRoom } from './acoustics/room.js';
-import { elevationOrigin, faceCoords } from './acoustics/patches.js';
-import { activeSet, arrangedSpeakers, arrayFront, LAYOUTS, NO_LAYOUT, relayArray, selectSet, setLayout, setOf, SPEAKER_SETS } from './acoustics/layouts.js';
-import { powerMean, roomSeats, seatWeight } from './compute/compute.js';
-import { widthSweep } from './acoustics/widthFinder.js';
-import { CLEAR_M, growthDetail, growthText, roomGrowth } from './acoustics/roomFit.js';
-import { consoleOf, consoleSettled, consoleSpot } from './acoustics/console.js';
 import { paletteItems } from './acoustics/materials.js';
-import { ROOM_LIBRARY, furnish, grabBag, roomById } from './acoustics/roomLibrary.js';
-import { makeMic } from './acoustics/devices.js';
-import { makeWindow } from './acoustics/windows.js';
+import { grabBag, roomById } from './acoustics/roomLibrary.js';
 import { connectCad, METRES_PER_UNIT } from './cad/cadLink.js';
 import { SITE } from './site.js';
-import { buildMarks, furnitureLayer, hashOf, MARK_KEYS, spacesOf } from './cad/marks.js';
-import { F_MAX, F_MIN } from './compute/compute.js';
 import { createAcousticX } from './acoustx/acoustx.js';
 import { makePoppable } from './ui/popout.js';
 import { createMeterFold } from './ui/meterFold.js';
 import { installSashes } from './ui/sashes.js';
 import { watchForUpdates } from './ui/freshness.js';
-import { crossings, DIRECT_MARKS_MS, GAP_MARKS_MS, radiusLanes } from './acoustics/radiusScale.js';
-import { drawResponse, hz } from './ui/meters.js';
-import { REFINE_LABEL, createEngine, patchesFromCad, sweepFrames } from './compute/engine.js';
+import { REFINE_LABEL, createEngine } from './compute/engine.js';
 import { createStore } from './model/store.js';
 import { createInspector } from './ui/inspector.js';
 import { createMeters } from './ui/meters.js';
 import { createFaceView } from './views/faceView.js';
 import { createWallBuilder } from './views/wallBuilder.js';
 import { FACE_COLOURS } from './views/glyphs.js';
-import { fieldScale, rampGradient } from './views/paint.js';
-import { createPlanView, planLabel } from './views/plan.js';
+import { fieldScale } from './views/paint.js';
+import { createPlanView } from './views/plan.js';
 import { createView3d } from './views/view3d.js';
-import { askLicence } from './ui/licence.js';
-import { createTour } from './ui/tour.js';
-import { makeFold } from './ui/fold.js';
-import { createPlayer } from './ui/player.js';
-import { createMonitor } from './ui/monitor.js';
-import { createWizard } from './ui/wizard.js';
 import { installPuck } from './ui/puck.js';
-import { readProjectFile, sessionFiles } from './model/session.js';
-import { bimApi, loadPartTypes, loadSpeakerParts } from './acoustics/speakerLibrary.js';
+import { bimApi, loadSpeakerParts } from './acoustics/speakerLibrary.js';
 import { SPEAKER_PARTS } from './acoustics/speakerParts.js';
-import { resultsOf, sessionFromModel } from './ifc/roomModel.js';
-import { badFile, showProblem } from './ui/problem.js';
+import { showProblem } from './ui/problem.js';
+import { startToolbar } from './main/toolbar.js';
+import { startWidthLanes } from './main/widthLanes.js';
+import { startRooms } from './main/rooms.js';
+import { startLayers } from './main/layers.js';
+import { startTour } from './main/tour.js';
+import { startSessions } from './main/sessions.js';
+import { startWizard } from './main/wizard.js';
 
 const CEILING_LAYER = 'Ceiling';
 
@@ -434,942 +420,127 @@ store.subscribe((state, what) => {
   }
 });
 
-// ------------------------------------------------------------------ toolbar
-// the edit modes (CAD, Walls) and the placing ones (＋ Speaker, ＋ Mic), grouped apart on the bar
-for (const id of ['modes', 'place'])
-  document.getElementById(id).addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-mode]');
-    if (b) store.setMode(b.dataset.mode);
-  });
-document.getElementById('viewmode').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-view]');
-  if (b) store.setSettings({ view: b.dataset.view });
-  // ray tracing is not a view: an overlay over whichever is up
-  const t = e.target.closest('button[data-show]');
-  if (t) store.setShow({ [t.dataset.show]: !store.state.settings.show[t.dataset.show] });
-});
-// the 3-D room's bar: kept by its node, not looked up — it goes to another window with the tile
-const viewbar = document.querySelector('.tile.t3d .viewbar');
-viewbar.addEventListener('click', (e) => {
-  const m = e.target.closest('button[data-method]');
-  if (m) return store.setSettings({ method: m.dataset.method });
-  const sh = e.target.closest('button[data-show]');
-  if (sh) return store.setShow({ [sh.dataset.show]: !(store.state.settings.show[sh.dataset.show] ?? true) });
-  if (e.target.closest('.viewMore')) viewbar.classList.toggle('open');
-});
-const freq = document.getElementById('freq');
-freq.addEventListener('input', () => store.setSettings({ freq: Math.round(10 ** parseFloat(freq.value)) }));
-
-/** One colour scale for every drawing of the field — they all share it, so it is shown once, above the meters. */
-const scaleBar = document.getElementById('fieldScale');
-scaleBar.querySelector('.ramp').style.background = rampGradient();
-function syncFieldScale() {
-  const { scale } = engine.out;
-  const { settings, speakers } = store.state;
-  scaleBar.hidden = !(settings.show.field && scale && speakers.length);
-  if (scaleBar.hidden) return;
-  const lo = scale.top - scale.range;
-  scaleBar.querySelector('.lo').textContent = `${+lo.toFixed(1)} dB`;
-  const hi = scaleBar.querySelector('.hi');
-  // the frequency is the slider's under the ramp, said once there; a window dragged out offers the whole field back
-  hi.replaceChildren(`${+scale.top.toFixed(1)} dB`);
-  if (scaleZoom) {
-    const all = Object.assign(document.createElement('button'), { className: 'scaleAll', textContent: '⤢ all', title: 'Back to the whole field: the loudest cell sets the top' });
-    all.onclick = () => zoomScale(null);
-    hi.append(' ', all);
-  }
-  const ramp = scaleBar.querySelector('.ramp');
-  ramp.replaceChildren();
-  // the dB scale over the ramp: a tick every 1, 2 or 5 dB, a number every five ticks
-  const step = [1, 2, 5, 10].find((s) => scale.range / s <= 16) ?? 10;
-  for (let v = Math.ceil(lo / step) * step; v <= scale.top + 1e-9; v += step) {
-    const at = ((v - lo) / scale.range) * 100;
-    const major = Math.round(v / step) % 5 === 0;
-    ramp.append(Object.assign(document.createElement('i'), { className: `dbTick${major ? ' major' : ''}`, style: `left:${at}%` }));
-    if (major) ramp.append(Object.assign(document.createElement('span'), { className: 'dbNum', style: `left:${at}%`, textContent: String(+v.toFixed(1)) }));
-  }
-  // markers: what the mix seat and the whole room read on this scale, at the current frequency — a small triangle under the ramp each
-  const { reports } = engine.out;
-  const read = (rep) => (!rep ? NaN : settings.method === 'energy' ? rep.energy?.[settings.band]?.total : settings.method === 'modal' ? rep.modal : rep.wave);
-  const mix = store.state.mics.find((m) => m.mix);
-  const seats = roomSeats(store.state.mics);
-  const marks = [['MIX', read(reports?.[mix?.id]), '#f43f5e']];
-  if (seats.length > 1) marks.push([`room ·${seats.length}`, powerMean(seats.map((m) => read(reports?.[m.id])), seats.map(seatWeight)), '#a3e635']);
-  for (const [name, db, colour] of marks) {
-    if (!Number.isFinite(db)) continue;
-    const t = Math.max(0, Math.min(1, (db - (scale.top - scale.range)) / scale.range));
-    const mark = Object.assign(document.createElement('i'), { className: `mark${t <= 0 || t >= 1 ? ' off' : ''}`, title: `${name}: ${db.toFixed(1)} dB at the current frequency${t <= 0 || t >= 1 ? ' — outside this window' : ''}` });
-    mark.style.left = `${t * 100}%`;
-    mark.style.setProperty('--c', colour);
-    mark.append(Object.assign(document.createElement('span'), { textContent: `${name} ${db.toFixed(1)}` }));
-    ramp.append(mark);
-  }
-  if (rampDrag.sel) ramp.append(rampDrag.sel);
-}
-
-/** A window of the scale to look at: the field's colours spread over it alone, every view repainted (no recompute). */
-function zoomScale(zoom) {
-  scaleZoom = zoom;
-  engine.out.scale = fieldScale(engine.out.values, store.state.settings.rangeDb, zoom);
-  renderGeometry();
-  syncFieldScale();
-  meters.render();
-}
-
-// drag across the ramp to look at that range of dB; ⤢ all (or a double-click) gives the whole field back
-const rampDrag = { from: null, sel: null };
-{
-  const ramp = scaleBar.querySelector('.ramp');
-  const dbAt = (e) => {
-    const { scale } = engine.out;
-    const box = ramp.getBoundingClientRect();
-    const t = Math.max(0, Math.min(1, (e.clientX - box.left) / box.width));
-    return { t, db: scale.top - scale.range + t * scale.range };
-  };
-  ramp.addEventListener('pointerdown', (e) => {
-    if (!engine.out.scale || e.button !== 0) return;
-    ramp.setPointerCapture(e.pointerId);
-    rampDrag.from = dbAt(e);
-    rampDrag.sel = Object.assign(document.createElement('i'), { className: 'sel' });
-    ramp.append(rampDrag.sel);
-  });
-  ramp.addEventListener('pointermove', (e) => {
-    const now = dbAt(e);
-    ramp.title = `${now.db.toFixed(1)} dB — drag to look at a range`;
-    if (!rampDrag.from) return;
-    const [a, b] = [Math.min(rampDrag.from.t, now.t), Math.max(rampDrag.from.t, now.t)];
-    Object.assign(rampDrag.sel.style, { left: `${a * 100}%`, width: `${(b - a) * 100}%` });
-    rampDrag.sel.textContent = `${Math.min(rampDrag.from.db, now.db).toFixed(1)} – ${Math.max(rampDrag.from.db, now.db).toFixed(1)}`;
-  });
-  const end = (e) => {
-    if (!rampDrag.from) return;
-    const now = dbAt(e);
-    const [lo, hi] = [Math.min(rampDrag.from.db, now.db), Math.max(rampDrag.from.db, now.db)];
-    rampDrag.sel?.remove();
-    rampDrag.from = rampDrag.sel = null;
-    // a click is not a range: a window narrower than 1 dB is ignored
-    if (e.type === 'pointerup' && hi - lo >= 1) zoomScale({ top: +hi.toFixed(1), range: +(hi - lo).toFixed(1) });
-  };
-  ramp.addEventListener('pointerup', end);
-  ramp.addEventListener('pointercancel', end);
-  ramp.addEventListener('dblclick', () => scaleZoom && zoomScale(null));
-}
-
-function syncToolbar() {
-  const { mode, settings, placeKind } = store.state;
-  for (const b of document.querySelectorAll('button[data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
-  for (const b of document.querySelectorAll('#viewmode button')) b.classList.toggle('on', b.dataset.view === settings.view);
-  for (const b of viewbar.querySelectorAll('button[data-method]')) b.classList.toggle('on', b.dataset.method === settings.method);
-  for (const b of [...viewbar.querySelectorAll('button[data-show]'), ...document.querySelectorAll('#viewmode button[data-show]')]) b.classList.toggle('on', Boolean(settings.show[b.dataset.show] ?? true));
-  viewbar.querySelector('.viewMore').classList.toggle('on', viewbar.classList.contains('open'));
-  for (const b of document.querySelectorAll('#furniture button[data-arm]')) b.classList.toggle('on', mode === 'place-furniture' && b.dataset.arm === placeKind?.furniture);
-  views.className = settings.view === '3d' ? 'three' : settings.view === 'wall' ? 'wall' : 'six';
-  const { sheet } = store.state;
-  inPlan('sheetName').textContent = sheet === 'plan' ? '' : sheet === 'ceiling' ? `treating the ceiling — layer “${CEILING_LAYER}”: place clouds and tiles over the plan` : `editing the ${sheet} elevation — layer “${ELEVATION_LAYER[sheet]}”`;
-  inPlan('toPlan').hidden = sheet === 'plan';
-  const popped = store.state.cad.popped;
-  const pop = inPlan('popCad');
-  pop.textContent = popped ? '⇲ Dock CAD' : '⇱ Pop out';
-  pop.title = popped ? 'Bring the CAD back into this tile (or just close its window)' : 'Give the CAD a window of its own — the plan stays here';
-  askToPop();
-  syncRoomGrowth();
-  syncWidthScale();
-  if (popped) inPlan('sheetName').textContent = 'the CAD is in its own window · the plan here places and moves speakers and mics';
-  for (const t of document.querySelectorAll('.tile.face')) t.classList.toggle('editing', t.dataset.face === sheet);
-  if (document.activeElement !== freq) freq.value = Math.log10(settings.freq);
-  const freqOut = document.getElementById('freqOut');
-  freqOut.replaceChildren(Object.assign(document.createElement('small'), { textContent: settings.method === 'energy' ? 'current band' : 'current frequency' }), settings.method === 'energy' ? `${[125, 250, 500, '1k', '2k', '4k'][settings.band]} oct` : `${hz(settings.freq)} Hz`);
-  freq.disabled = settings.method === 'energy';
-  for (const row of document.querySelectorAll('#arrangement .speakerSet')) {
-    const live = row.dataset.set === activeSet(settings);
-    const preset = setLayout(settings, row.dataset.set).preset;
-    row.classList.toggle('live', live);
-    row.querySelector('.setLetter').classList.toggle('on', live);
-    for (const b of row.querySelectorAll('button[data-preset]')) b.classList.toggle('on', b.dataset.preset === preset);
-  }
-  for (const input of document.querySelectorAll('.arrayFields input')) {
-    if (document.activeElement === input) continue;
-    const key = input.dataset.array;
-    const k = input.dataset.set ?? activeSet(settings);
-    const l = setLayout(settings, k);
-    input.value = Math.round(key === 'radius' ? (l.radius ?? 2) * 1000 : key === 'rotate' ? l.rotate ?? 0 : l.offset?.[key] ?? 0);
-  }
-  for (const slider of document.querySelectorAll('.setRadius')) {
-    if (document.activeElement === slider) continue;
-    const k = slider.dataset.set;
-    const l = setLayout(settings, k);
-    slider.value = Math.round((l.radius ?? 2) * 1000);
-    slider.disabled = !LAYOUTS[l.preset];
-  }
-  for (const btn of document.querySelectorAll('.arrayBtn[data-set]')) {
-    const k = btn.dataset.set;
-    const l = setLayout(settings, k);
-    const live = k === activeSet(settings);
-    btn.textContent = `◎ ${k} r ${Math.round((l.radius ?? 2) * 1000)}${l.rotate ? ` ⟲${Math.round(l.rotate)}°` : ''} ▾`;
-    btn.classList.toggle('live', live);
-  }
-  const spreader = document.getElementById('spreader');
-  if (spreader) spreader.hidden = !Object.keys(SPEAKER_SETS).some((k) => LAYOUTS[setLayout(settings, k).preset]);
-}
-
-for (const header of document.querySelectorAll('.tile header, .tile.face canvas, .tile.t3d canvas')) {
-  header.addEventListener('dblclick', (e) => {
-    // a quick second press on a bar's button is that button again, not a wish to fill the screen
-    if (e.target.closest('button')) return;
-    const tile = e.currentTarget.closest('.tile');
-    const was = tile.classList.contains('max');
-    for (const t of document.querySelectorAll('.tile')) t.classList.remove('max');
-    if (!was) tile.classList.add('max');
-    views.classList.toggle('maxed', !was);
-    requestAnimationFrame(renderGeometry);
-  });
-}
-
-window.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault();
-    saveSession();
-    return;
-  }
-  if (e.target.closest?.('input, select, textarea')) return;
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z' || e.key === 'y')) {
-    e.preventDefault();
-    if (e.key === 'y' || e.shiftKey) store.redo();
-    else store.undo();
-    return;
-  }
-  if (e.key === 'Escape') store.setMode('cad');
-  if ((e.key === 'Delete' || e.key === 'Backspace') && store.state.selected) store.remove(store.state.selected.kind, store.state.selected.id);
-});
-
-new ResizeObserver(() => {
-  // the pairs lay out by the shape of the space they get: a letterbox in one row, a tall one in three
-  const aspect = views.clientWidth / Math.max(1, views.clientHeight);
-  views.dataset.shape = aspect > 3.2 ? 'wide' : aspect < 1.1 ? 'tall' : '';
-  renderGeometry();
-}).observe(views);
-
-/**
- * The frames cached so far (engine.js): a tick under the slider for each one,
- * and the tour's button filled as far as the cache is — breathing while it fills.
- */
-function showCache() {
-  const strip = document.getElementById('freqCache');
-  const { ready = [], ladder = [] } = engine.out.frames ?? {};
-  const w = strip.clientWidth;
-  const h = strip.clientHeight;
-  if (w && h) {
-    const dpr = window.devicePixelRatio || 1;
-    if (strip.width !== Math.round(w * dpr)) [strip.width, strip.height] = [Math.round(w * dpr), Math.round(h * dpr)];
-    const ctx = strip.getContext('2d');
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    const lo = Math.log10(F_MIN);
-    const span = Math.log10(F_MAX) - lo;
-    ctx.fillStyle = 'rgba(253, 224, 71, .7)';
-    for (const f of ready) ctx.fillRect(((Math.log10(f) - lo) / span) * (w - 1), 0, 1, h);
-  }
-  const share = ladder.length ? Math.min(1, ready.length / ladder.length) : 0;
-  // looked up here: the engine can answer before the tour's part of this file has run
-  const tourBtn = document.getElementById('tour');
-  tourBtn.dataset.title ??= tourBtn.title;
-  tourBtn.style.setProperty('--cache', share.toFixed(3));
-  tourBtn.classList.toggle('filling', share > 0 && share < 1);
-  tourBtn.classList.toggle('full', share >= 1);
-  tourBtn.title = `${tourBtn.dataset.title} — ${ready.length} of ${ladder.length} frames painted`;
-}
-
-// ------------------------------------------------------------------ the slider, read as a log scale
-{
-  const ticks = document.getElementById('freqTicks');
-  const lo = Math.log10(F_MIN);
-  const span = Math.log10(F_MAX) - lo;
-  for (const f of [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
-    const at = ((Math.log10(f) - lo) / span) * 100;
-    ticks.insertAdjacentHTML('beforeend', `<i style="left:${at}%"></i>${[20, 100, 1000, 10000].includes(f) ? `<span style="left:${at}%">${hz(f)}</span>` : ''}`);
-  }
-}
-
-/** The Width slider's range, mm. */
-const WIDTH_MM = [800, 6000];
-const widthLanes = { key: [], list: [] };
-
-// ------------------------------------------------------------------ speaker arrangements
-{
-  const bar = document.getElementById('arrangement');
-  // one row per speaker set (layouts.js SPEAKER_SETS): its letter selects it, a preset selects it and lays that
-  // arrangement over the room, Place puts it round the mix seat and Empty beside it silences the set —
-  // only the selected set sounds
-  const pick = (k, patch = {}) => {
-    const settings = selectSet(store.state.settings, k);
-    store.setSettings({ speakerSet: settings.speakerSet ?? 'A', layout: { ...settings.layout, ...patch }, layoutSets: settings.layoutSets, ...(patch.preset && patch.preset !== NO_LAYOUT ? { show: { ...settings.show, arrangement: true } } : {}) });
-  };
-  for (const [k, set] of Object.entries(SPEAKER_SETS)) {
-    const row = document.createElement('div');
-    row.className = 'group speakerSet';
-    row.dataset.set = k;
-    const letter = Object.assign(document.createElement('button'), { className: 'setLetter', textContent: set.label, title: `${set.title}: make it the set that sounds` });
-    // a set picked is a set to listen to: the monitor controller opens beside them
-    letter.onclick = () => {
-      pick(k);
-      monitorFold.open = true;
-    };
-    const none = document.createElement('button');
-    none.dataset.preset = NO_LAYOUT;
-    none.textContent = 'Empty';
-    none.title = 'Empty: this set is silent — every box in it muted. A speaker placed by hand afterwards makes it a set placed by hand, and it sounds';
-    none.onclick = () => pick(k, { preset: NO_LAYOUT });
-    row.append(letter);
-    for (const preset of set.presets) {
-      const l = LAYOUTS[preset];
-      const b = document.createElement('button');
-      b.dataset.preset = preset;
-      b.textContent = preset;
-      b.title = `${set.title} · ${l.label}: show its reference angles over the room`;
-      b.onclick = () => pick(k, { preset });
-      row.append(b);
-    }
-    const place = document.createElement('button');
-    place.dataset.place = '';
-    place.textContent = 'Place';
-    place.title = `Place this arrangement around the mix seat (replaces the ${set.title.split(' — ')[0]}'s arranged speakers)`;
-    place.onclick = () => {
-      if (k !== activeSet(store.state.settings)) pick(k);
-      if (!LAYOUTS[store.state.settings.layout.preset]) status.textContent = '⚠ pick an arrangement to place — Empty and By hand place nothing';
-      else if (!inspector.placeLayout()) status.textContent = '⚠ place a mix-position mic first';
-    };
-    row.append(place, none);
-    bar.append(row);
-  }
-  // the monitor controller sits at the end of the last set's row, beside the sets it switches
-  const lastRow = bar.lastElementChild;
-  lastRow.append(document.getElementById('monitorBtn'), document.getElementById('monitor'));
-
-  // the spreader: a shared table chart with a spacing fader for each speaker set (A, B, C),
-  // and the shared ruler scale underneath them
-  const spreader = Object.assign(document.createElement('div'), { id: 'spreader', className: 'spreaderTable' });
-  for (const [k, set] of Object.entries(SPEAKER_SETS)) {
-    const row = document.createElement('div');
-    row.className = 'spreaderRow';
-    row.dataset.set = k;
-
-    // the fold with the set's centre offsets and rotation
-    const field = (key, glyph, title) => {
-      const input = Object.assign(document.createElement('input'), { type: 'number', step: key === 'rotate' ? 1 : 10, title });
-      input.dataset.array = key;
-      input.dataset.set = k;
-      input.addEventListener('change', () => {
-        const v = parseFloat(input.value);
-        if (Number.isFinite(v)) moveSetArray(k, key, v);
-      });
-      const label = document.createElement('label');
-      label.className = 'arrayField';
-      label.title = title;
-      label.append(glyph, input);
-      return label;
-    };
-    const fields = document.createElement('div');
-    fields.className = 'group arrayFields';
-    fields.append(
-      field('right', '↔', `${set.title} centre: mm to the listener’s right of the mix seat`),
-      field('front', '↕', `${set.title} centre: mm toward the front from the mix seat`),
-      field('up', '⇡', `${set.title} centre: mm above the mix seat’s ears`),
-      field('radius', 'r', `${set.title} radius, mm — the placed speakers scale with it`),
-      field('rotate', '⟲', `${set.title} rotation, degrees counter-clockwise — the placed speakers turn round the listener with it`),
-    );
-    const arrayBtn = Object.assign(document.createElement('button'), {
-      className: 'arrayBtn',
-      title: `${set.title}: centre off mix seat, width and turn — click to open offsets and make it the sounding set`,
-    });
-    arrayBtn.dataset.set = k;
-    arrayBtn.addEventListener('click', () => {
-      if (k !== activeSet(store.state.settings)) pick(k);
-    });
-    row.append(arrayBtn);
-    makeFold(arrayBtn, fields);
-
-    // each speaker set's own spacing fader
-    const fader = Object.assign(document.createElement('input'), {
-      type: 'range',
-      className: 'setRadius',
-      min: WIDTH_MM[0],
-      max: WIDTH_MM[1],
-      step: 10,
-      title: `${set.title} width: radius round the listener — the placed speakers follow`,
-    });
-    fader.dataset.set = k;
-    fader.setAttribute('list', 'bestWidth');
-    fader.addEventListener('input', () => moveSetArray(k, 'radius', parseFloat(fader.value), true));
-    fader.addEventListener('change', () => moveSetArray(k, 'radius', parseFloat(fader.value)));
-
-    row.append(fader);
-    spreader.append(row);
-  }
-
-  // under the faders: the shared scale ruler chart
-  const scaleRow = document.createElement('div');
-  scaleRow.className = 'spreaderScale';
-  const spacer = Object.assign(document.createElement('div'), { className: 'scaleSpacer' });
-  const scale = Object.assign(document.createElement('div'), { className: 'widthScale' });
-  const lanes = Object.assign(document.createElement('div'), { id: 'widthLanes', className: 'lanes' });
-  lanes.addEventListener('pointermove', (e) => {
-    const box = lanes.getBoundingClientRect();
-    const r = (WIDTH_MM[0] + ((e.clientX - box.left - 8) / (box.width - 16)) * (WIDTH_MM[1] - WIDTH_MM[0])) / 1000;
-    const near = widthLanes.list.reduce((b, l) => (!b || Math.abs(l.r - r) < Math.abs(b.r - r) ? l : b), null);
-    lanes.title = near ? laneText(near) : '';
-  });
-  scale.append(lanes);
-  const find = Object.assign(document.createElement('button'), { id: 'findWidthBtn', textContent: '⌖', title: 'Find the width with the flattest low end over the room’s seats' });
-  find.onclick = () => findWidth();
-  const grow = Object.assign(document.createElement('span'), { id: 'roomGrow', className: 'roomGrow', hidden: true });
-  const ticks = Object.assign(document.createElement('datalist'), { id: 'bestWidth' });
-  scaleRow.append(spacer, scale, find, grow, ticks);
-  spreader.append(scaleRow);
-
-  bar.after(spreader);
-}
-const monitor = createMonitor({ root: document.getElementById('monitor'), store, engine });
-const monitorFold = makeFold(document.getElementById('monitorBtn'), document.getElementById('monitor'), { sticky: true, onOpen: () => monitor.render() });
-makeFold(document.getElementById('furnitureBtn'), document.getElementById('furniture'), { closeOn: 'button[data-arm]' });
-
-/**
- * Sweep the array's width for the flattest low end over the room's seats
- * (acoustics/widthFinder.js), a few radii a frame so the page keeps drawing.
- * The answer goes in state.widthFit (not saved) and shows as a tick on both
- * Width sliders; the Layout tab offers to snap to it.
- */
-function findWidth() {
-  const room = engine.out.room;
-  const { speakers, mics, settings } = store.state;
-  if (!room || !mics.some((m) => m.mix)) {
-    status.textContent = '⚠ place a mix-position mic first';
-    return;
-  }
-  const sweep = widthSweep(room, speakers, mics, settings, { to: Math.min(6, Math.max(1, Math.hypot(room.L, room.W) / 2)) });
-  let done = 0;
-  const tick = () => {
-    const t0 = performance.now();
-    let more = true;
-    while (more && performance.now() - t0 < 30) {
-      more = sweep.step();
-      done++;
-    }
-    store.state.widthFit = { ...sweep.result, running: more, done, total: sweep.total };
-    store.emit('fit');
-    if (more) requestAnimationFrame(tick);
-  };
-  tick();
-}
-
-/** The arranged speakers through a wall or the ceiling: the room they would need, beside the Width slider. */
-function syncRoomGrowth() {
-  const el = document.getElementById('roomGrow');
-  if (!el) return;
-  const g = roomGrowth(engine.out.room, arrangedSpeakers(store.state.speakers, store.state.settings));
-  el.hidden = !g.any;
-  el.textContent = g.any ? `⤢ room ${growthText(g)}` : '';
-  el.title = g.any ? `This width puts speakers outside the room. To keep them ${CLEAR_M} m clear of the walls: ${growthDetail(g)} — the dashed outline on the plan.` : '';
-}
-
-const laneText = (l) => `r ${l.r.toFixed(2)} m · direct ${l.direct.toFixed(1)} ms · first reflection +${l.gap.toFixed(1)} ms${l.fits ? '' : ' · outside the room'}`;
-
-/**
- * The scale under the Width slider (acoustics/radiusScale.js): a metre ruler; the room's footprint as a strip,
- * green where the carried speakers fit and red where they would go through a wall; ticks where the main speakers'
- * direct sound reaches the mix seat in a round number of ms (blue), and where the first reflection's lag behind
- * it falls through 20, 10, 5 ms (amber). Recomputed only when the room, the boxes, the seats or the layout change.
- */
-function syncWidthScale() {
-  const el = document.getElementById('widthLanes');
-  if (!el) return;
-  const { speakers, mics, settings } = store.state;
-  const key = [engine.out.room, speakers, mics, settings.layout, settings.speakerSet];
-  if (key.every((k, i) => k === widthLanes.key[i])) return;
-  widthLanes.key = key;
-  const list = radiusLanes(engine.out.room, speakers, mics, settings, { from: WIDTH_MM[0] / 1000, to: WIDTH_MM[1] / 1000 });
-  widthLanes.list = list;
-  const span = WIDTH_MM[1] - WIDTH_MM[0];
-  const pos = (r) => `left: calc(8px + (100% - 16px) * ${((r * 1000 - WIDTH_MM[0]) / span).toFixed(4)})`;
-  const parts = [];
-  // the footprint strip: one gradient stop per change of fit
-  if (list.length) {
-    const stops = [];
-    list.forEach((l, i) => {
-      const f = ((l.r * 1000 - WIDTH_MM[0]) / span) * 100;
-      const c = l.fits ? 'var(--ok)' : 'var(--bad)';
-      if (i === 0 || l.fits !== list[i - 1].fits) stops.push(`${c} ${f.toFixed(2)}%`);
-      if (i === list.length - 1 || l.fits !== list[i + 1].fits) stops.push(`${c} ${f.toFixed(2)}%`);
-    });
-    parts.push(`<i class="foot" style="background: linear-gradient(90deg, ${stops.join(', ')})" title="The room's footprint: green, the speakers fit; red, they would go through a wall or the ceiling"></i>`);
-  }
-  for (let r = Math.ceil(WIDTH_MM[0] / 500) * 0.5; r * 1000 <= WIDTH_MM[1]; r += 0.5) {
-    parts.push(`<i class="tick${r % 1 ? '' : ' major'}" style="${pos(r)}"></i>`);
-    if (!(r % 1)) parts.push(`<span class="m" style="${pos(r)}">${r}${r === 1 ? ' m' : ''}</span>`);
-  }
-  for (const c of crossings(list, 'direct', DIRECT_MARKS_MS)) parts.push(`<b class="mark direct" style="${pos(c.r)}" title="The direct sound reaches the mix seat in ${c.ms} ms at r ${c.r.toFixed(2)} m">${c.ms}</b>`);
-  for (const c of crossings(list, 'gap', GAP_MARKS_MS)) parts.push(`<b class="mark gap" style="${pos(c.r)}" title="The first reflection arrives ${c.ms} ms after the direct sound at r ${c.r.toFixed(2)} m — narrower keeps it later">+${c.ms}</b>`);
-  el.innerHTML = parts.join('');
-}
-
-/** The best width as a tick on every Width slider. */
-function syncWidthTicks() {
-  const fit = store.state.widthFit;
-  const best = fit?.preset === store.state.settings.layout.preset ? fit.best : null;
-  const list = document.getElementById('bestWidth');
-  if (list) list.replaceChildren(...(best ? [Object.assign(document.createElement('option'), { value: Math.round(best.r * 1000) })] : []));
-}
-
-/**
- * Keep the console at the mixer's nose (acoustics/console.js): after every
- * recompute — so while the seat is dragged or turned too — the nearest
- * console on the sheet is moved square in front of the mix seat, its near
- * edge the set number of people clear. Nothing is sent once it is there.
- */
-function followConsole() {
-  const { settings, mics, cad: { geometry } } = store.state;
-  const mix = mics.find((m) => m.mix);
-  if (!cad.link || !geometry || !mix || settings.console?.follow === false) return;
-  const desk = consoleOf(patchesFromCad(geometry), mix);
-  if (!desk) return;
-  const spot = consoleSpot(mix, desk.paletteId, settings.console?.people ?? 2);
-  if (consoleSettled(desk, spot)) return;
-  const k = METRES_PER_UNIT[geometry.units] ?? 1;
-  cad.link.move([{ id: desk.id, at: [+(spot.x / k).toFixed(4), +(spot.y / k).toFixed(4)], rotation: spot.rotation }]);
-}
-
-/** Change set k's array centre offset or radius (mm), or its rotation (degrees), carrying its placed speakers along. */
-function moveSetArray(k, key, mm, live = false) {
-  const { settings, speakers, mics } = store.state;
-  const layout = setLayout(settings, k);
-  const next =
-    key === 'radius' ? { ...layout, radius: Math.max(0.3, mm / 1000) }
-    : key === 'rotate' ? { ...layout, rotate: ((((mm + 180) % 360) + 360) % 360) - 180 }
-    : { ...layout, offset: { ...layout.offset, [key]: mm } };
-  const mix = mics.find((m) => m.mix);
-  const setSettings = { ...settings, speakerSet: k, layout };
-  const moved = relayArray(speakers, setSettings, mix, next, engine.out.room);
-  if (moved.length) store.updateMany('speaker', moved, true);
-  if (k === activeSet(settings)) {
-    if (key === 'rotate' && mix) store.updateMany('mic', [{ id: mix.id, aim: +arrayFront({ ...settings, layout: next }).toFixed(1) }], true);
-    store.setSettings({ layout: next }, live);
-  } else {
-    store.setSettings({ layoutSets: { ...settings.layoutSets, [k]: next } }, live);
-  }
-}
-
-/** Change the active array's centre offset or radius (mm), or its rotation (degrees), carrying the speakers placed in it along. */
-function moveArray(key, mm, live = false) {
-  moveSetArray(activeSet(store.state.settings), key, mm, live);
-}
-
-// ------------------------------------------------------------------ furniture: the CAD draws it, at true size
-document.getElementById('furniture').addEventListener('click', (e) => {
-  const b = e.target.closest('button[data-arm]');
-  if (!b) return;
-  const paletteId = b.dataset.arm;
-  const inFurnitureMode = store.state.mode === 'place-furniture';
-  const currentArm = store.state.placeKind.furniture;
-  if (inFurnitureMode && currentArm === paletteId) {
-    store.setMode('cad');
-    return;
-  }
-  store.setPlaceKind('furniture', paletteId);
-  store.setMode('place-furniture');
-  jumpTo('plan');
-  if (cad.link) cad.link.arm(paletteId);
-});
-
-// ------------------------------------------------------------------ the room library
-let pendingRoom = null;
-
-/** Draw a library room into the CAD beside whatever is there, on a layer of its own, and make it the room. */
-function drawRoom(entry) {
-  if (!entry || !cad.link) return;
-  const g = store.state.cad.geometry;
-  const k = METRES_PER_UNIT[g?.units ?? store.state.cad.view?.units ?? 'm'] ?? 1;
-  const xs = (g?.walls ?? []).flatMap((w) => [w.a[0], w.b[0]]).map((x) => x * k);
-  const ys = (g?.walls ?? []).flatMap((w) => [w.a[1], w.b[1]]).map((y) => y * k);
-  // far enough from the last room that its blow-up (ceiling, floor and walls drawn above it) has room
-  const gap = Math.max(4, 2 * (entry.h ?? 3) + 2);
-  const ox = xs.length ? Math.max(...xs) + gap - Math.min(...entry.poly.map(([x]) => x)) : 0;
-  const oy = ys.length ? Math.min(...ys) : 0;
-  const layer = `Room · ${entry.name}`;
-  const seed = entry.poly.map(([x, y]) => [+((x + ox) / k).toFixed(4), +((y + oy) / k).toFixed(4)]);
-  pendingRoom = { layer, h: entry.h, id: entry.id, entry, ox, oy, k };
-  store.setSheet('plan');
-  cad.link.sheet(layer, { color: '#e5e7eb', seed });
-  status.textContent = `drawing “${entry.name}” into the CAD…`;
-}
-
-/** A dice room's arrangement waits for the engine to make the drawn loop the room and seat the mixer, then goes in. */
-let pendingLayout = null;
-function placePendingLayout() {
-  if (!pendingLayout || engine.out.planLayer !== pendingLayout) return;
-  if (!store.state.mics.some((m) => m.mix)) return;
-  pendingLayout = null;
-  inspector.placeLayout();
-}
-
-/** The floor plan's drawing is on the sheet: a clean overlay for it, and its room furnished once the engine finds one. */
-function startPlan() {
-  const name = pendingPlan;
-  pendingPlan = null;
-  const doc = store.exportDoc();
-  store.importDoc({ ...doc, settings: { ...doc.settings, lastLibraryRoom: null }, speakers: [], mics: [], furniture: [], locked: [] });
-  const k = METRES_PER_UNIT[store.state.cad.geometry?.units ?? 'm'] ?? 1;
-  const h = store.state.settings.roomHeight;
-  pendingRoom = { layer: null, h, id: 'floorplan', entry: { id: 'floorplan', group: 'Control rooms', name, h }, ox: 0, oy: 0, k };
-}
-
-/** Once the CAD has drawn it, the new loop becomes the room (a floor plan's: the first plan loop, on whatever layer). */
-function pickDrawnRoom() {
-  if (!pendingRoom) return;
-  const loop = pendingRoom.layer === null ? engine.out.rooms?.[0] : engine.out.rooms?.find((r) => r.layerId === pendingRoom.layer);
-  if (!loop) return;
-  const { h, id, ox, oy, k } = pendingRoom;
-  // a floor plan's room is only known now: furnished from the loop the CAD found
-  const entry = pendingRoom.entry.poly ? pendingRoom.entry : { ...pendingRoom.entry, poly: loop.poly.map((q) => [q.x, q.y]) };
-  pendingRoom = null;
-  const heights = { ...store.state.settings.roomHeights, [loop.layerId]: +h.toFixed(3) };
-  // its glass, if it has any, belongs to the loop just drawn
-  const windows = { ...store.state.settings.windows, [loop.layerId]: (entry.windows ?? []).map(makeWindow) };
-  // a room built with its own finishes (a hardwood floor) has them; the rest keep what the surfaces were given
-  const faceMaterials = { ...store.state.settings.faceMaterials, ...entry.faces };
-  store.setSettings({ roomId: loop.id, roomHeight: +h.toFixed(3), lastLibraryRoom: id, frontDeg: 90, roomHeights: heights, windows, faceMaterials });
-  // furnished, and with its people in it: the console, couch and rack into the CAD as real blocks, the listeners seated
-  if (entry.group) {
-    const { furniture, seats, door } = furnish(entry);
-    // each kind of furniture on a layer of its own (marks.js slices)
-    for (const f of furniture) cad.link.place(furnitureLayer(f.paletteId), [{ paletteId: f.paletteId, at: [+((f.x + ox) / k).toFixed(4), +((f.y + oy) / k).toFixed(4)], rotation: f.rotation }]);
-    store.seat(seats.map((s) => makeMic(s.kind, { x: s.x + ox, y: s.y + oy, z: s.z }, { aim: s.aim, mix: Boolean(s.mix) })));
-    // the arrangement picked on the toolbar goes in round the new mix seat, once the engine has the room
-    if (seats.some((x) => x.mix) && LAYOUTS[store.state.settings.layout.preset]) pendingLayout = loop.layerId;
-    if (door) hangDoor(loop, door, h, ox, oy, k);
-  }
-}
-
-/**
- * The door goes on the back elevation, where a door is drawn: its frame is
- * the one the engine will read the patch in (patches.js elevationOrigin) — the
- * back loop already drawn, or the seed under this plan — so it is built here
- * as the engine is about to build the room.
- */
-function hangDoor(loop, door, h, ox, oy, k) {
-  const room = buildRoom(loop.poly, { ...store.state.settings, frontDeg: 90, roomHeight: h }, engine.out.elevations ?? []);
-  const origin = elevationOrigin(room, 'back');
-  if (!origin) return;
-  const { t } = faceCoords(room, 'back')({ x: door.x + ox, y: door.y + oy });
-  // the back elevation is seen from inside, looking back: t (from the left) runs right to left on the sheet
-  const at = [origin.x + room.W - t, origin.y + door.h / 2];
-  cad.link.place(ELEVATION_LAYER.back, [{ paletteId: door.paletteId, at: at.map((v) => +(v / k).toFixed(4)), rotation: 0 }]);
-}
-
-document.getElementById('grabBag').addEventListener('click', () => drawRoom(grabBag(store.state.settings.lastLibraryRoom)));
-
-// the library by name, a group per kind of room: the one picked is drawn into the CAD, as the grab bag's is
-const roomPick = document.getElementById('roomPick');
-roomPick.append(new Option('Room shapes …', ''));
-for (const group of [...new Set(ROOM_LIBRARY.map((r) => r.group))]) {
-  const og = document.createElement('optgroup');
-  og.label = group;
-  for (const r of ROOM_LIBRARY.filter((x) => x.group === group)) og.append(Object.assign(new Option(r.name, r.id), { title: r.note }));
-  roomPick.append(og);
-}
-roomPick.value = roomById(store.state.settings.lastLibraryRoom) ? store.state.settings.lastLibraryRoom : '';
-roomPick.addEventListener('change', () => drawRoom(roomById(roomPick.value)));
-store.subscribe(() => {
-  // a floor plan's room is none of the library's: the picker goes back to its prompt
-  const id = roomById(store.state.settings.lastLibraryRoom) ? store.state.settings.lastLibraryRoom : '';
-  if (roomPick.value !== id) roomPick.value = id;
-});
-
-// ------------------------------------------------------------------ what this app draws into the CAD file
-/**
- * What is drawn on the walls' elevations, in sheet metres: the user's own regions and the mirrored copies
- * the symmetry made (the schedule and the wall builder list both), and the lines drawn there.
- */
-function wallInputs(g) {
-  if (!g) return { patches: [], lines: [] };
-  const k = METRES_PER_UNIT[g.units] ?? 1;
-  const names = new Map((g.layers ?? []).map((l) => [l.id, l.name]));
-  return {
-    patches: patchesFromCad(g).filter((p) => elevationFaceOf(p.layer) && (!p.host || p.host === 'symmetry')),
-    lines: (g.walls ?? [])
-      .map((w) => ({ layer: names.get(w.layerId) ?? w.layerId, a: { x: w.a[0] * k, y: w.a[1] * k }, b: { x: w.b[0] * k, y: w.b[1] * k } }))
-      .filter((w) => elevationFaceOf(w.layer)),
-  };
-}
-
-let marksTimer = 0;
-function syncMarks() {
-  clearTimeout(marksTimer);
-  marksTimer = setTimeout(() => {
-    const g = store.state.cad.geometry;
-    if (!cad.link || !g || !engine.out.room) return;
-    const k = METRES_PER_UNIT[g.units] ?? 1;
-    const xs = (g.walls ?? []).flatMap((w) => [w.a[0], w.b[0]]).map((x) => x * k);
-    const ys = (g.walls ?? []).flatMap((w) => [w.a[1], w.b[1]]).map((y) => y * k);
-    const sheetBounds = xs.length ? { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) } : null;
-    const layers = new Set((g.layers ?? []).map((l) => l.name));
-    // every plan on the sheet gets its blow-up: the one being designed as the engine has it, the rest built here
-    const names = new Map((g.layers ?? []).map((l) => [l.id, l.name]));
-    const patches = patchesFromCad(g).filter((p) => !elevationFaceOf(p.layer));
-    const settings = store.state.settings;
-    const rooms = (engine.out.rooms ?? []).map((loop) => ({
-      name: String(names.get(loop.layerId) ?? loop.layerId).replace(/^Room · /, ''),
-      room: loop.layerId === engine.out.planLayer && !engine.out.virtual ? engine.out.room : buildRoom(loop.poly, { ...settings, roomHeight: settings.roomHeights?.[loop.layerId] ?? settings.roomHeight }, [], patches),
-    }));
-    const { patches: wallPatches, lines: wallLines } = wallInputs(g);
-    const sets = buildMarks({ room: engine.out.room, state: store.state, planLayer: engine.out.planLayer, sheetBounds, k, layers, rooms, wallPatches, wallLines, patches: patchesFromCad(g) });
-    const onSheet = g.marks ?? {};
-    for (const key of MARK_KEYS) {
-      const items = sets[key];
-      const hash = hashOf(items);
-      if (onSheet[key] === hash || (onSheet[key] === undefined && !items.length)) continue;
-      cad.link.marks(key, hash, items);
-    }
-    // every drawing on the sheet a model space of its own, one scale for all (marks.js spacesOf)
-    const spaces = spacesOf(engine.out.room, sets, k);
-    const spacesHash = hashOf(spaces);
-    if (spacesHash !== lastSpaces) {
-      lastSpaces = spacesHash;
-      cad.link.spaces(spaces);
-    }
-  }, 350);
-}
-let lastSpaces = null;
-
-// ------------------------------------------------------------------ sweep and tour
-const sweepBtn = document.getElementById('sweep');
-const tourBtn = document.getElementById('tour');
-let sweep = null;
-
-function stopSweep() {
-  if (!sweep) return;
-  clearInterval(sweep.timer);
-  sweep = null;
-  engine.frames(false);
-  sweepBtn.classList.remove('on');
-  tourBtn.classList.remove('on');
-  sweepBtn.textContent = '▶ Sweep';
-}
-
-/**
- * Up and down the frames the engine has painted, a lap every `seconds`
- * however many are ready — coarse at first, smoother as the gaps fill in.
- */
-function startSweep({ seconds = 16 } = {}) {
-  stopSweep();
-  if (store.state.settings.method === 'energy') store.setSettings({ method: 'wave' });
-  engine.frames(true);
-  sweep = {
-    timer: setInterval(() => {
-      const now = performance.now();
-      const ready = engine.out.frames.ready;
-      if (ready.length && now - sweep.stepped >= Math.max(40, (seconds * 1000) / ready.length)) {
-        sweep.stepped = now;
-        // from wherever the slider is to the next ready frame, turning round at the ends
-        const at = store.state.settings.freq;
-        let i = sweep.dir > 0 ? ready.findIndex((f) => f > at) : ready.findLastIndex((f) => f < at);
-        if (i < 0) {
-          sweep.dir = -sweep.dir;
-          i = sweep.dir > 0 ? Math.min(1, ready.length - 1) : Math.max(0, ready.length - 2);
-        }
-        if (ready[i] !== at) store.setSettings({ freq: ready[i] });
-      }
-    }, 30),
-    stepped: 0,
-    dir: 1,
-  };
-  sweepBtn.classList.add('on');
-  sweepBtn.textContent = '■ Stop';
-}
-
-// a song: the field shows the room at the frequency the music is exciting (ui/player.js); it and the sweep take turns
-const player = createPlayer({
-  root: document.getElementById('player'),
-  store,
-  engine,
-  onPlay: (on) => {
-    if (on) stopSweep();
-  },
-});
-document.getElementById('songFile').addEventListener('change', (e) => {
-  const f = e.target.files?.[0];
-  if (f) player.load(f);
-  e.target.value = '';
-});
-
-// the tour's sweep moves a twelfth of an octave a frame
-const TOUR_FRAMES = sweepFrames(1 / 12);
-
-// the tour: a window of its own plays every view in turn while the frequency sweeps, and saves it as a video
-const tour = createTour({
-  store,
-  engine,
-  drawResponse,
-  // with a song loaded, the tour plays it from the top, the field following it, and records it under the pictures
-  soundtrack: () => (player.loaded ? { stream: player.stream(), duration: player.duration } : null),
-  onStart: (seconds, withSong) => {
-    if (withSong) player.restart();
-    else {
-      // the views are held still while the engine paints the frames the sweep will play
-      stopSweep();
-      if (store.state.settings.method === 'energy') store.setSettings({ method: 'wave' });
-      engine.frames(true, TOUR_FRAMES);
-    }
-    tourBtn.classList.add('on');
-  },
-  // the tour's frame nearest the point that far up the range, on a log scale — false while it is still being painted
-  sweepTo: (u) => {
-    const want = Math.log(F_MIN) + u * (Math.log(F_MAX) - Math.log(F_MIN));
-    const f = TOUR_FRAMES.reduce((best, g) => (Math.abs(Math.log(g) - want) < Math.abs(Math.log(best) - want) ? g : best));
-    if (!engine.out.frames.ready.includes(f)) return false;
-    if (f !== store.state.settings.freq) store.setSettings({ freq: f });
-    return true;
-  },
-  onStop: () => {
-    if (player.playing) player.pause();
-    stopSweep();
-    engine.frames(false);
-    tourBtn.classList.remove('on');
-  },
-  caption: () => {
-    const { settings } = store.state;
-    const room = engine.out.room;
-    const size = room ? `${Math.round(room.L * 1000)} × ${Math.round(room.W * 1000)} × ${Math.round(room.H * 1000)} mm` : '';
-    return [store.state.fileName, size, settings.method, settings.method === 'energy' ? '' : `${hz(settings.freq)} Hz`].filter(Boolean).join(' · ');
-  },
-  name: () => (store.state.fileName || 'room').replace(/\.[^.]+$/, ''),
-});
-
-sweepBtn.addEventListener('click', () => (tour.running ? tour.stop() : sweep ? stopSweep() : (player.pause(), startSweep())));
-tourBtn.addEventListener('click', () => (tour.running ? tour.stop() : tour.start()));
-
-// ------------------------------------------------------------------ sessions: this overlay and the name of the CAD drawing it sits on (model/session.js)
-async function saveSession() {
-  const drawingName = store.state.cad.geometry?.fileName ?? store.state.fileName ?? null;
-  const overlay = store.exportDoc();
-  // each speaker's own BIM part type, as the library has it (acoustics/speakerLibrary.js): offline, none
-  const { types } = (await bimLibraryUp) ? await loadPartTypes(overlay) : { types: {} };
-  let files;
-  try {
-    // the session and its .ifc twin, both or neither (model/session.js sessionFiles)
-    files = sessionFiles({ overlay, drawingName, geometry: store.state.cad.geometry, mirror: store.state.cad.mirror, results: resultsOf(engine.out, store.state.settings), types });
-  } catch (e) {
-    showProblem('save_failed', { subject: drawingName ?? 'room', detail: String(e?.message || e), fix: ['Nothing was saved: the room could not be written as IFC.', 'File → Export overlay still downloads the overlay JSON.'] });
-    return;
-  }
-  const name = (drawingName || 'room').replace(/\.[^.]+$/, '');
-  const said = (where) => { status.textContent = `💾 saved ${name} — ${store.state.speakers.length} speakers, ${store.state.mics.length} mics, and its .ifc twin${where}; the drawing stays the CAD's to save`; };
-  const [session, twin] = files;
-  const S = globalThis.APKSoftapp;
-  if (typeof S?.saveModel !== 'function') {
-    files.forEach((f, i) => setTimeout(() => download(f), i * 300));
-    said('');
-    return;
-  }
-  // Save Model (FrontEnd/shared/apk-softapp.js, ROAD-3583): one folder picked once a
-  // session, the .ifc first, then the session JSON — both or neither — else both download.
-  S.saveModel(JSON.parse(session.text), { name: session.name.replace(/\.json$/i, ''), toIfc: () => twin.text }).then((r) => {
-    if (r.ok) said(r.via === 'directory' ? ` (${r.files.join(' + ')})` : '');
-    else if (!r.cancelled) showProblem('save_failed', { subject: name, detail: r.problem?.detail ?? r.problem?.title ?? 'Save Model failed', fix: ['Nothing was saved: try 💾 Save again, or pick another folder.'] });
-  });
-}
-
-function download({ name, type, text }) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-/** An .ifc opened: its overlay adopted under its drawing name, its loops, walls, products and mirror handed to the CAD. */
-function openIfc(file, { model, report }) {
-  const units = store.state.cad.geometry?.units ?? store.state.cad.view?.units ?? 'mm';
-  const { fileName, overlay, cad: toCad } = sessionFromModel(model, units);
-  pendingPlan = null;
-  store.adopt(fileName, overlay);
-  if (cad.link) {
-    for (const s of toCad.sheets) cad.link.sheet(s.layer, { color: '#e5e7eb', seed: s.seed });
-    const main = toCad.sheets.find((s) => s.main);
-    if (main) cad.link.sheet(main.layer, { color: '#e5e7eb' });
-    for (const l of toCad.lines) cad.link.walls({ op: 'add', a: l.a, b: l.b, layer: l.layer });
-    for (const p of toCad.place) cad.link.place(p.layer, [p.item]);
-    if (toCad.mirror) cad.link.setMirror(toCad.mirror.x, toCad.mirror.enabled);
-  }
-  const said = [
-    report.own ? `📂 opened ${file.name}` : `📂 opened the room of ${file.name} (${report.schema})`,
-    `${model.spaces.length} room${model.spaces.length === 1 ? '' : 's'}, ${model.speakers.length} speakers, ${model.mics.length} mics`,
-    ...(toCad.fills ? [`${toCad.fills} painted finish${toCad.fills === 1 ? '' : 'es'} are in the file but not repainted — the CAD's own drawing holds them`] : []),
-    ...(report.guessed.length ? [`materials guessed: ${report.guessed.map((g) => `${g.material} → ${g.as ?? 'none'}`).join(', ')}`] : []),
-    ...(report.resultsStale ? ['its saved results are stale (the room changed after they were computed): recomputing'] : []),
-    ...report.warnings,
-  ];
-  status.textContent = said.join(' · ');
-}
-
-async function openSession(file) {
-  let session;
-  try {
-    session = readProjectFile(file.name, await file.text());
-  } catch (e) {
-    const again = () => document.getElementById('openSession').click();
-    if (e && (e.name === 'NotReadableError' || e.name === 'NotFoundError')) showProblem('file_unreadable', { subject: file.name, detail: e.message, onRetry: again });
-    else badFile(e, file, ['Open a project saved here with 💾 Save (a .acoustic-session.json file, or its .ifc twin), or an architect\'s .ifc room.'], again);
-    return;
-  }
-  if (session.kind === 'ifc') return openIfc(file, session);
-  const { fileName, overlay, handOver } = session;
-  pendingPlan = null;
-  store.adopt(fileName, overlay);
-  // an old session@1 file carried the drawing: the CAD takes it, nothing here keeps it
-  if (handOver && cad.link) cad.link.open(handOver);
-  const onSheet = store.state.cad.geometry?.fileName ?? null;
-  status.textContent = handOver || !fileName || fileName === onSheet ? `📂 opened ${fileName ?? 'session'}` : `📂 opened the acoustics of ${fileName} — open that drawing in the CAD to see them on it`;
-}
-
-/**
- * A floor plan as a new room layout: the CAD opens it under the file's name, and when its geometry
- * comes back under that name the overlay starts again (startPlan) — no speakers, mics or furniture
- * carried over from the last room, the settings and speaker sets kept. A DXF is the walls; an image
- * goes under a cleared sheet to trace them over. Either way the first room loop on the sheet is
- * furnished and seated as a library room is (pickDrawnRoom), and the toolbar's arrangement placed.
- */
+/** A floor plan opened and not yet back from the CAD (main/sessions.js openFloorPlan; main/rooms.js startPlan reads it). */
 let pendingPlan = null;
-function openFloorPlan(file) {
-  if (!cad.link) {
-    showProblem('timeout', {
-      subject: file.name,
-      detail: 'The CAD in the plan tile has not started yet.',
-      fix: ['Wait for the plan to draw, then Retry.', `If it never draws, check the CAD is served beside this app (${SITE.cad}).`],
-      onRetry: () => openFloorPlan(file),
-    });
-    return;
-  }
-  pendingPlan = file.name;
-  cad.link.floorPlan(file);
-  status.textContent = /\.dxf$/i.test(file.name) ? `📐 opening ${file.name} as a new room layout…` : `📐 ${file.name} is under the sheet — draw the walls over it (▭ Walls)`;
+// ── the shared context the parts read (js/main/toolbar.js, js/main/widthLanes.js, js/main/rooms.js, js/main/layers.js, js/main/tour.js, js/main/sessions.js, js/main/wizard.js) ──
+const app = {
+  get acx() {
+    return acx;
+  },
+  get askToPop() {
+    return askToPop;
+  },
+  get bimLibraryUp() {
+    return bimLibraryUp;
+  },
+  get cad() {
+    return cad;
+  },
+  get CEILING_LAYER() {
+    return CEILING_LAYER;
+  },
+  get drawnNothing() {
+    return drawnNothing;
+  },
+  get engine() {
+    return engine;
+  },
+  get inPlan() {
+    return inPlan;
+  },
+  get inspector() {
+    return inspector;
+  },
+  get jumpTo() {
+    return jumpTo;
+  },
+  get meters() {
+    return meters;
+  },
+  get pendingPlan() {
+    return pendingPlan;
+  },
+  set pendingPlan(v) {
+    pendingPlan = v;
+  },
+  get renderGeometry() {
+    return renderGeometry;
+  },
+  get scaleZoom() {
+    return scaleZoom;
+  },
+  set scaleZoom(v) {
+    scaleZoom = v;
+  },
+  get status() {
+    return status;
+  },
+  get store() {
+    return store;
+  },
+  get views() {
+    return views;
+  },
+};
+// the parts' functions main.js calls, hoisted as its own were: each looks its part up when called
+function drawRoom(...a) {
+  return app.drawRoom(...a);
+}
+function findWidth(...a) {
+  return app.findWidth(...a);
+}
+function followConsole(...a) {
+  return app.followConsole(...a);
+}
+function moveArray(...a) {
+  return app.moveArray(...a);
+}
+function pickDrawnRoom(...a) {
+  return app.pickDrawnRoom(...a);
+}
+function placePendingLayout(...a) {
+  return app.placePendingLayout(...a);
+}
+function showCache(...a) {
+  return app.showCache(...a);
+}
+function startPlan(...a) {
+  return app.startPlan(...a);
+}
+function syncFieldScale(...a) {
+  return app.syncFieldScale(...a);
+}
+function syncMarks(...a) {
+  return app.syncMarks(...a);
+}
+function syncToolbar(...a) {
+  return app.syncToolbar(...a);
+}
+function syncWidthTicks(...a) {
+  return app.syncWidthTicks(...a);
+}
+function wallInputs(...a) {
+  return app.wallInputs(...a);
 }
 
-document.getElementById('saveSession').addEventListener('click', saveSession);
-const openFold = makeFold(document.getElementById('openBtn'), document.getElementById('open'));
-// 📂 Open project and 📐 Open floor plan ask for a licence key first, as the 1997 program did. A placebo: any key, Enter, and the file picker opens.
-for (const [id, open] of [['openSession', openSession], ['openFloorPlan', openFloorPlan]]) {
-  const input = document.getElementById(id);
-  input.closest('label').addEventListener('click', (e) => {
-    if (e.target === input) return;
-    e.preventDefault();
-    openFold.open = false;
-    askLicence(() => input.click());
-  });
-  input.addEventListener('change', (e) => {
-    const f = e.target.files?.[0];
-    if (f) open(f);
-    e.target.value = '';
-  });
-}
+// ------------------------------------------------------------------ toolbar, the field scale, keys (main/toolbar.js)
+Object.assign(app, startToolbar(app));
+
+// ------------------------------------------------------------------ the frequency slider, the speaker arrangements and their width lanes (main/widthLanes.js)
+Object.assign(app, startWidthLanes(app));
+const { monitor } = app;
+
+// ------------------------------------------------------------------ furniture and the room library (main/rooms.js)
+Object.assign(app, startRooms(app));
+
+// ------------------------------------------------------------------ what this app draws into the CAD file (main/layers.js)
+Object.assign(app, startLayers(app));
+
+// ------------------------------------------------------------------ sweep and tour (main/tour.js)
+Object.assign(app, startTour(app));
+
+// ------------------------------------------------------------------ sessions (main/sessions.js)
+Object.assign(app, startSessions(app));
 
 // ------------------------------------------------------------------ every panel can have a window of its own
 for (const tile of document.querySelectorAll('.tile.face, .tile.t3d')) {
@@ -1409,60 +580,9 @@ const acx = createAcousticX({
   onDrawRoom: ({ L, W, H }) => drawRoom({ id: 'optimised', group: 'Control rooms', name: `Optimised ${W.toFixed(2)} × ${L.toFixed(2)} × ${H.toFixed(2)} m`, h: H, poly: [[-W / 2, 0], [W / 2, 0], [W / 2, L], [-W / 2, L]] }),
 });
 
-// ------------------------------------------------------------------ the wizard: room, things, system, walls, go
-const wizard = createWizard({
-  store,
-  engine,
-  rooms: ROOM_LIBRARY,
-  act: {
-    drawRoom,
-    dice: () => grabBag(store.state.settings.lastLibraryRoom),
-    drawOwn: () => {
-      store.setMode('pick-wall');
-      jumpTo('plan');
-    },
-    openFile: () => document.getElementById('openSession').closest('label').click(),
-    openFloorPlan: () => document.getElementById('openFloorPlan').closest('label').click(),
-    // the toolbar's own furniture buttons, so a piece is armed exactly as the fold arms it
-    furniture: () => [...document.querySelectorAll('#furniture button[data-arm]')].map((b) => ({ id: b.dataset.arm, label: b.textContent, title: b.title })),
-    arm: (id) => document.querySelector(`#furniture button[data-arm="${id}"]`)?.click(),
-    seat: () => place('place-mic', 'mic', 'mixer'),
-    mic: () => place('place-mic', 'mic', 'cardioid'),
-    byHand: () => place('place-speaker'),
-    sets: () => Object.entries(SPEAKER_SETS).map(([k, set]) => ({ k, title: set.title, presets: [{ id: NO_LAYOUT, label: 'Nothing in this set', text: 'Empty' }, ...set.presets.map((id) => ({ id, label: LAYOUTS[id].label }))] })),
-    // the arrangement bar's own buttons: the preset picked on its row, then that row's Place
-    system: (k, preset) => {
-      const row = document.querySelector(`#arrangement .speakerSet[data-set="${k}"]`);
-      row?.querySelector(`button[data-preset="${preset}"]`)?.click();
-      // nothing in this set: its arranged boxes go, the boxes placed by hand stay
-      if (preset === NO_LAYOUT) store.replaceSpeakers(store.state.speakers.filter((s) => !s.role || setOf(s) !== k));
-      else row?.querySelector('button[data-place]')?.click();
-    },
-    pickWall: () => {
-      store.setMode('pick-wall');
-      jumpTo('plan');
-      inspector.show('Inspect');
-    },
-    go: ({ view, method, trace, meters: kinds, sweep: sweepToo, report }) => {
-      store.setSettings({ view, method });
-      if (trace) store.setShow({ trace: true });
-      // the graphs hidden by 📈: shown again by it, so it remembers
-      if (document.body.classList.contains('meters-hidden')) document.getElementById('graphsBtn').click();
-      for (const k of kinds) meters.open(k);
-      if (sweepToo) startSweep();
-      if (report.length) acx.report(report);
-    },
-    closed: () => {
-      if (drawnNothing(store.state.cad.geometry)) drawRoom(grabBag(store.state.settings.lastLibraryRoom));
-    },
-  },
-});
-function place(mode, kind, preset) {
-  if (kind) store.setPlaceKind(kind, preset);
-  store.setMode(mode);
-  jumpTo('plan');
-}
-document.getElementById('wizardBtn').addEventListener('click', () => (wizard.isOpen ? wizard.close(false) : wizard.open(drawnNothing(store.state.cad.geometry) ? 0 : 1)));
+// ------------------------------------------------------------------ the wizard: room, things, system, walls, go (main/wizard.js)
+Object.assign(app, startWizard(app));
+const { wizard } = app;
 
 // `?debug` hands the console the store and engine; nothing reads them otherwise.
 if (new URLSearchParams(location.search).has('debug')) window.acoustic = { store, engine };
