@@ -26,3 +26,24 @@ test('a pick from the library is racked with its body read off its BIM reference
   const none = await rackItemOfPick(item, 1, async () => { throw new Error('down'); });
   assert.deepEqual([none.units, none.depth, none.bimRef.part], [1, null, 'qsc/core-110f']);
 });
+
+test('ROAD-3727: a rack item keeps the bench unit it is — the only one of its part, or none guessed among several', async () => {
+  const { benchUnits, rackedUnits } = await import('../js/ui/rackPanel.js');
+  const bench = { instances: [
+    { ref: 'U7', name: 'Basement TV', part: { id: 'google/cast-video-device' }, guid: 'G7', live: { key: 'serial:google:chromecast:db2e', state: 'online' } },
+    { ref: 'U11', name: 'Garage TV', part: { id: 'google/cast-video-device' }, guid: 'G11', live: { key: 'serial:google:chromecast:c65c', state: 'graveyard' } },
+    { ref: 'U24', name: '34401A · MY41001234', part: 'keysight/34401a', guid: 'G24' }] };
+  const units = await benchUnits(async () => ({ ok: true, json: async () => bench }), '/api/bim/bench');
+  assert.deepEqual(units.get('google/cast-video-device').map((u) => [u.ref, u.key, u.state]),
+    [['U7', 'serial:google:chromecast:db2e', 'online'], ['U11', 'serial:google:chromecast:c65c', 'graveyard']]);
+  assert.equal((await benchUnits(async () => ({ ok: true, json: async () => bench }), null)).size, 0, 'no bench: nothing to choose from');
+
+  const nobody = async () => { throw new Error('down'); };
+  const dmm = await rackItemOfPick({ bim: { id: 'keysight/34401a' }, ref: { part: 'keysight/34401a' } }, 1, nobody, units.get('keysight/34401a'));
+  assert.deepEqual(dmm.device, { ref: 'U24', name: '34401A · MY41001234', guid: 'G24' }, 'the one box of its part: it is that one');
+  const cast = await rackItemOfPick({ bim: { id: 'google/cast-video-device' }, ref: { part: 'google/cast-video-device' } }, 1, nobody, units.get('google/cast-video-device'));
+  assert.equal(cast.device, undefined, 'two of the part: the row asks which, nothing guessed');
+
+  const taken = rackedUnits({ r1: { items: [dmm, { ...cast, device: { ref: 'U7', guid: 'G7' } }] } });
+  assert.deepEqual([...taken.keys()], ['G24', 'G7']);
+});

@@ -669,6 +669,8 @@ table.rack-items th:nth-child(5) { width: 3.6em; }
 table.rack-items th:nth-child(6) { width: 2.2em; }
 table.rack-items input { width: 100%; min-width: 0; box-sizing: border-box; padding: 1px 3px; }
 table.rack-items button { padding: 0 4px; }
+table.rack-items select { width: 100%; min-width: 0; box-sizing: border-box; margin-top: 2px; font-size: 11px; }
+table.rack-items select.ask { border-color: var(--warn, #fbbf24); color: var(--warn, #fbbf24); }
 table.rack-items tr.bad td { color: var(--bad); }
 ul.warn { color: var(--bad); margin: 4px 0; padding-left: 16px; font-size: 11px; }
 table.rack-items input[type=number] { -moz-appearance: textfield; appearance: textfield; text-align: right; }

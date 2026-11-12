@@ -1,7 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 import { firstFree, itemFromPart, rackFootprint, rackOf, rackPlan } from '../acoustics/rack.js';
-import { button, h, num, row, text } from './dom.js';
+import { button, h, num, row, select, text } from './dom.js';
 import { acceptLibraryDrops, bimFields, libraryButton, setPickerUrls } from '../bimLibrary.js';
 import { SITE } from '../site.js';
 
@@ -15,8 +15,12 @@ setPickerUrls(SITE.picker);   // where the picker is: the one config point (site
  * front rail, its cables after it, against the line where the rails stop —
  * then what it holds as rows to edit. Gear comes from the BIM library (📚
  * Library, ROAD-3572: its U, and its depth where the part declares one) — never
- * a list of its own, never typed in. Each item keeps bimId and bimRef. All of it
- * saves into settings.racks under the rack's CAD block id.
+ * a list of its own, never typed in. Each item keeps bimId and bimRef, and the
+ * bench UNIT it is (`device`, ROAD-3727): with several boxes of one part on the
+ * bench (three Chromecasts), the item's row asks which — picked from the bench's
+ * own devices of that part, never typed — so the OS Simulation's By rack seats
+ * exactly that box. One box of the part: it is that one. All of it saves into
+ * settings.racks under the rack's CAD block id.
  */
 
 /** One BIM part as the rack wants it: apk.bim.part/1 (physical.rack_units /
@@ -48,11 +52,89 @@ export async function partOfPick(item, fetcher = globalThis.fetch) {
   } catch (_) { return item.bim; }
 }
 
-/** A picked {bim, ref} as a rack item at `at`, keeping its BIM reference. */
-export async function rackItemOfPick(item, at, fetcher) {
+/** A bench instance (apk.bim.bench/1) as the unit a rack item keeps: { ref, guid, key, name }
+    — ref the bench's (U7), guid its stable id, key its live identity (serial / MAC, never an IP). */
+export function unitOfInstance(inst) {
+  const out = { ref: String(inst?.ref ?? ''), name: String(inst?.name ?? inst?.ref ?? '') };
+  if (inst?.guid) out.guid = String(inst.guid);
+  if (inst?.live?.key) out.key = String(inst.live.key);
+  return out;
+}
+const partIdOf = (inst) => String((inst?.part && typeof inst.part === 'object' ? inst.part.id : inst?.part) ?? '').split('@')[0];
+
+/** The bench's units of each part: Map part → [unit] (state: its live state), from the bench
+    the OS Simulation draws (SITE.bench, apk.bim.bench/1). No bench (the static site): an empty Map. */
+export async function benchUnits(fetcher = globalThis.fetch, url = SITE.bench) {
+  const out = new Map();
+  if (!url) return out;
+  try {
+    const r = await fetcher(url, { cache: 'no-store' });
+    if (!r.ok) return out;
+    const bench = await r.json();
+    for (const inst of bench.instances ?? []) {
+      const part = partIdOf(inst);
+      if (!part || !inst.ref) continue;
+      if (!out.has(part)) out.set(part, []);
+      out.get(part).push({ ...unitOfInstance(inst), state: inst.live?.state ?? '' });
+    }
+  } catch (_) { /* no bench: no units to choose from */ }
+  return out;
+}
+// one read of the bench for every panel drawn within 30 s: { at, loading: Promise<Map>, units: Map | null }
+let benchCache = null;
+function benchUnitsCached() {
+  if (!benchCache || Date.now() - benchCache.at > 30000) {
+    const c = { at: Date.now(), units: null };
+    c.loading = benchUnits().then((u) => { c.units = u; return u; });
+    benchCache = c;
+  }
+  return benchCache.loading;
+}
+/** The bench's units now when they are in hand; else null, and `then()` once they arrive. */
+function benchUnitsNow(then) {
+  const was = benchCache;
+  benchUnitsCached();
+  if (benchCache.units) return benchCache.units;
+  if (then) benchCache.loading.then((u) => { if (u.size) then(); });
+  return was?.units ?? null;   // the last read while a fresh one comes
+}
+const unitId = (u) => u?.guid || u?.key || u?.ref || '';
+/** Every unit any rack item of the project already names: unit id → the item's rack and index. */
+export function rackedUnits(racks) {
+  const out = new Map();
+  for (const [rackId, r] of Object.entries(racks ?? {})) (r?.items ?? []).forEach((it, i) => { if (it?.device) out.set(unitId(it.device), { rackId, i }); });
+  return out;
+}
+
+/** A picked {bim, ref} as a rack item at `at`, keeping its BIM reference — and its unit when the
+    bench has exactly one box of the part (`units`: that part's bench units). Several: none is
+    guessed; the row asks which. */
+export async function rackItemOfPick(item, at, fetcher, units = []) {
   const part = asRackPart(await partOfPick(item, fetcher));
   const { bimId, bimRef } = bimFields(item);
-  return { ...itemFromPart(part, at), bimId, ...(bimRef ? { bimRef } : {}) };
+  const only = units.length === 1 ? units[0] : null;
+  return { ...itemFromPart(part, at), bimId, ...(bimRef ? { bimRef } : {}),
+           ...(only ? { device: unitOfInstance({ ...only, live: only.key ? { key: only.key } : null }) } : {}) };
+}
+
+/** The `which unit?` choice of one rack item: a select of the bench's units of its part, those
+    another item already racks marked so; null when the item names no part or the bench has none. */
+function unitChoice(it, units, taken, mine, onPick) {
+  if (!it.bimId || !units?.length) return null;
+  const NONE = '';
+  const options = [{ value: NONE, label: units.length > 1 ? `which unit? (${units.length} on the bench)` : 'which unit?' },
+    ...units.map((u) => {
+      const t = taken.get(unitId(u));
+      const elsewhere = t && !(t.rackId === mine.rackId && t.i === mine.i);
+      return { value: unitId(u), label: `${u.name}${u.name !== u.ref ? ` · ${u.ref}` : ''}${u.state && u.state !== 'online' ? ` · ${u.state}` : ''}${elsewhere ? ' · racked' : ''}` };
+    })];
+  const el = select(it.device ? unitId(it.device) : NONE, options, (v) => {
+    const u = units.find((x) => unitId(x) === v);
+    onPick(u ? unitOfInstance({ ...u, live: u.key ? { key: u.key } : null }) : null);
+  });
+  el.title = 'The bench unit in this rack: the OS Simulation\'s By rack seats exactly this box';
+  if (!it.device) el.classList.add('ask');
+  return el;
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -116,6 +198,9 @@ export function rackPanel(piece, racks, put, rerender) {
   const items = told.items ?? [];
   const setItems = (list) => save({ items: list });
   const upItem = (i, patch) => setItems(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  // the bench's units of each part (ROAD-3727): read once, then the panel is drawn again with them
+  const units = benchUnitsNow(rerender);
+  const taken = rackedUnits(racks);
   const runs = plan.runs.map((r) => (r.from === r.to ? `U${r.from}` : `U${r.from}–U${r.to}`)).join(', ');
   const deepest = plan.deepest;
 
@@ -127,8 +212,10 @@ export function rackPanel(piece, racks, put, rerender) {
   // static site. Each pick is racked with its U and depth, keeping its BIM reference.
   const addPicks = async (picks) => {
     let list = items;
+    const bench = await benchUnitsCached();
     for (const it of picks) {
-      const item = await rackItemOfPick(it, 1);
+      const part = String(bimFields(it).bimId).split('@')[0];
+      const item = await rackItemOfPick(it, 1, undefined, bench.get(part) ?? []);
       const at = firstFree(rackPlan({ ...rack, items: list }), item.units);
       list = [...list, { ...item, at: at ?? plan.units + 1 }];
     }
@@ -159,7 +246,9 @@ export function rackPanel(piece, racks, put, rerender) {
           { class: p.fits === false ? 'bad' : '' },
           h('td', {}, num(it.at, (v) => upItem(i, { at: Math.round(v) }), { step: 1, min: 1 })),
           h('td', {}, num(it.units ?? 1, (v) => upItem(i, { units: Math.max(1, Math.round(v)) }), { step: 1, min: 1 })),
-          h('td', {}, text(it.name, (v) => upItem(i, { name: v }))),
+          h('td', {}, text(it.name, (v) => upItem(i, { name: v })),
+            unitChoice(it, units?.get(String(it.bimId).split('@')[0]), taken, { rackId: piece.id, i },
+              (device) => upItem(i, { device }))),
           h('td', {}, num(it.depth, (v) => upItem(i, { depth: Math.max(0, v) }), { step: 5, min: 0 })),
           h('td', {}, p.reach == null ? '?' : `${Math.round(p.reach)}`),
           h('td', {}, button('✕', () => setItems(items.filter((_, j) => j !== i)), { title: 'Take it out of the rack' })),

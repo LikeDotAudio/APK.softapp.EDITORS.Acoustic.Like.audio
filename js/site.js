@@ -15,4 +15,6 @@ export const SITE = {
   cad: '../EDITORS.CAD.Like.audio/dist/index.html',
   /** The BIM library's picker (ROAD-3597): the copy published with the OS, by its root path, else apk.audio's. */
   picker: ['/APK%3AOS/system/bim/library/picker.js', 'https://apk.audio/APK%3AOS/system/bim/library/picker.js'],
+  /** The bench the OS Simulation draws (apk.bim.bench/1): a rack item's unit is picked from its devices (ROAD-3727). */
+  bench: '/api/bim/bench',
 };

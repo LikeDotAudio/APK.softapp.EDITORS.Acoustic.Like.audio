@@ -9,4 +9,5 @@
 export const SITE = {
   cad: 'cad/index.html',
   picker: ['https://apk.audio/APK%3AOS/system/bim/library/picker.js'],
+  bench: null,   // no bench here: a rack item names its part only
 };
